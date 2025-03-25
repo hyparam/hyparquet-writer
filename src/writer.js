@@ -50,6 +50,24 @@ Writer.prototype.appendUint32 = function(value) {
 /**
  * @param {number} value
  */
+Writer.prototype.appendInt32 = function(value) {
+  this.ensure(this.offset + 4)
+  this.view.setInt32(this.offset, value, true)
+  this.offset += 4
+}
+
+/**
+ * @param {bigint} value
+ */
+Writer.prototype.appendInt64 = function(value) {
+  this.ensure(this.offset + 8)
+  this.view.setBigInt64(this.offset, BigInt(value), true)
+  this.offset += 8
+}
+
+/**
+ * @param {number} value
+ */
 Writer.prototype.appendFloat64 = function(value) {
   this.ensure(this.offset + 8)
   this.view.setFloat64(this.offset, value, true)
