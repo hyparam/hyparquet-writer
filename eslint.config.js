@@ -9,7 +9,8 @@ export default [
 
     languageOptions: {
       globals: {
-        'atob': false,
+        'TextDecoder': false,
+        'TextEncoder': false,
       },
     },
 
