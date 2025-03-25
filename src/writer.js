@@ -25,6 +25,10 @@ Writer.prototype.ensure = function(size) {
   }
 }
 
+Writer.prototype.getBuffer = function() {
+  return this.buffer.slice(0, this.offset)
+}
+
 /**
  * @param {number} value
  */
