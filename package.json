@@ -6,7 +6,8 @@
   "homepage": "https://hyperparam.app",
   "keywords": [
     "hyparquet",
-    "parquet"
+    "parquet",
+    "thrift"
   ],
   "license": "MIT",
   "repository": {
@@ -15,14 +16,27 @@
   },
   "main": "src/index.js",
   "files": [
-    "src"
+    "src",
+    "types"
   ],
   "type": "module",
   "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.js",
+      "types": "./types/index.d.ts"
+    },
+    "./src/*.js": {
+      "import": "./src/*.js",
+      "types": "./types/*.d.ts"
+    }
+  },
   "scripts": {
+    "build:types": "tsc -p ./tsconfig.build.json",
     "coverage": "vitest run --coverage",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
+    "prepare": "npm run build:types",
     "test": "vitest run"
   },
   "devDependencies": {

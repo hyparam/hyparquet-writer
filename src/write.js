@@ -7,17 +7,17 @@ import { getSchemaElementForValues } from './schema.js'
  * Write data as parquet to an ArrayBuffer
  *
  * @import {ColumnChunk, DecodedArray, FileMetaData, SchemaElement, SchemaTree} from 'hyparquet'
- * @param {Record<string, DecodedArray>} columnData
+ * @import {ColumnData} from '../src/types.js'
+ * @param {ColumnData[]} columnData
  * @returns {ArrayBuffer}
  */
 export function parquetWrite(columnData) {
   const writer = new Writer()
 
   // Check if all columns have the same length
-  const columnNames = Object.keys(columnData)
-  const num_rows = columnNames.length ? BigInt(columnData[columnNames[0]].length) : 0n
-  for (const name of columnNames) {
-    if (BigInt(columnData[name].length) !== num_rows) {
+  const num_rows = columnData.length ? BigInt(columnData[0].data.length) : 0n
+  for (const { data } of columnData) {
+    if (BigInt(data.length) !== num_rows) {
       throw new Error('parquetWrite: all columns must have the same length')
     }
   }
@@ -29,7 +29,7 @@ export function parquetWrite(columnData) {
   /** @type {SchemaElement[]} */
   const schema = [{
     name: 'root',
-    num_children: columnNames.length,
+    num_children: columnData.length,
   }]
 
   // row group columns
@@ -37,9 +37,9 @@ export function parquetWrite(columnData) {
   const columns = []
 
   // Write columns
-  for (const name of columnNames) {
-    const values = columnData[name]
-    const schemaElement = getSchemaElementForValues(name, values)
+  for (const { name, data } of columnData) {
+    // auto-detect type
+    const schemaElement = getSchemaElementForValues(name, data)
     if (!schemaElement.type) throw new Error(`column ${name} cannot determine type`)
     const file_offset = BigInt(writer.offset)
     /** @type {SchemaElement[]} */
@@ -47,7 +47,7 @@ export function parquetWrite(columnData) {
       schema[0],
       schemaElement,
     ]
-    const meta_data = writeColumn(writer, schemaPath, values)
+    const meta_data = writeColumn(writer, schemaPath, data)
 
     // save metadata
     schema.push(schemaElement)

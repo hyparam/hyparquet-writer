@@ -16,7 +16,7 @@ export const exampleMetadata = {
     { name: 'int', type: 'INT32', repetition_type: 'REQUIRED' },
     { name: 'bigint', type: 'INT64', repetition_type: 'REQUIRED' },
     { name: 'double', type: 'DOUBLE', repetition_type: 'REQUIRED' },
-    { name: 'string', type: 'BYTE_ARRAY', repetition_type: 'REQUIRED' },
+    { name: 'string', type: 'BYTE_ARRAY', repetition_type: 'REQUIRED', converted_type: 'UTF8' },
     { name: 'nullable', type: 'BOOLEAN', repetition_type: 'OPTIONAL' },
   ],
   num_rows: 4n,
@@ -110,7 +110,7 @@ export const exampleMetadata = {
     total_byte_size: 236n,
     num_rows: 4n,
   }],
-  metadata_length: 336,
+  metadata_length: 338,
 }
 
 describe('writeMetadata', () => {

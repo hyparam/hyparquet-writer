@@ -21,7 +21,7 @@ const CompactType = {
  *
  * Expects keys named like "field_1", "field_2", etc. in ascending order.
  *
- * @import {Writer} from './types.js'
+ * @import {Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {Record<string, any>} data
  */

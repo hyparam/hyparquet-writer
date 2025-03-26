@@ -84,10 +84,9 @@ function writePlainDouble(writer, values) {
  * @param {DecodedArray} values
  */
 function writePlainByteArray(writer, values) {
-  const encoder = new TextEncoder()
   for (const value of values) {
-    const bytes = typeof value === 'string' ? encoder.encode(value) : value
-    writer.appendUint32(bytes.length)
-    writer.appendBytes(bytes)
+    if (!(value instanceof Uint8Array)) throw new Error('BYTE_ARRAY must be Uint8Array')
+    writer.appendUint32(value.length)
+    writer.appendBytes(value)
   }
 }

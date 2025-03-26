@@ -29,7 +29,13 @@ export function getSchemaElementForValues(name, values) {
       else if (typeof value === 'bigint') valueType = 'INT64'
       else if (Number.isInteger(value)) valueType = 'INT32'
       else if (typeof value === 'number') valueType = 'DOUBLE'
-      else if (typeof value === 'string') valueType = 'BYTE_ARRAY'
+      else if (value instanceof Uint8Array) valueType = 'BYTE_ARRAY'
+      else if (typeof value === 'string') {
+        valueType = 'BYTE_ARRAY'
+        // make sure they are all strings
+        if (type && !converted_type) throw new Error('mixed types not supported')
+        converted_type = 'UTF8'
+      }
       else if (value instanceof Date) {
         valueType = 'INT64'
         // make sure they are all dates

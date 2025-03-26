@@ -1,3 +1,9 @@
+import { DecodedArray, ParquetType } from "hyparquet"
+
+export interface ColumnData {
+  name: string
+  data: DecodedArray
+}
 
 export interface Writer {
   buffer: ArrayBuffer

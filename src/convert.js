@@ -13,9 +13,14 @@ export function unconvert(schemaElement, values) {
     return values.map(v => v.getTime())
   }
   if (ctype === 'JSON') {
-    const encoder = new TextEncoder()
     if (!Array.isArray(values)) throw new Error('JSON must be an array')
+    const encoder = new TextEncoder()
     return values.map(v => encoder.encode(JSON.stringify(v)))
+  }
+  if (ctype === 'UTF8') {
+    if (!Array.isArray(values)) throw new Error('strings must be an array')
+    const encoder = new TextEncoder()
+    return values.map(v => encoder.encode(v))
   }
   return values
 }

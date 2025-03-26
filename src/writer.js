@@ -2,8 +2,7 @@
 /**
  * Self-expanding buffer view
  *
- * @import {Writer} from './types.js'
- * @returns {Writer}
+ * @returns {import('../src/types.js').Writer}
  */
 export function Writer() {
   this.buffer = new ArrayBuffer(1024)

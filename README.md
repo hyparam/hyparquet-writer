@@ -1,17 +1,21 @@
 # Hyparquet Writer
 
+[![workflow status](https://github.com/hyparam/hyparquet-writer/actions/workflows/ci.yml/badge.svg)](https://github.com/hyparam/hyparquet-writer/actions)
 [![mit license](https://img.shields.io/badge/License-MIT-orange.svg)](https://opensource.org/licenses/MIT)
 ![coverage](https://img.shields.io/badge/Coverage-96-darkred)
+[![dependencies](https://img.shields.io/badge/Dependencies-0-blueviolet)](https://www.npmjs.com/package/hyparquet?activeTab=dependencies)
 
 ## Usage
 
-```javascript
-import { writeParquet } from 'hyparquet-writer'
+Call `parquetWrite` with a list of columns, each column is an object with a `name` and `data` field. The `data` field should be an array of same-type values.
 
-const arrayBuffer = writeParquet({
-  name: ['Alice', 'Bob', 'Charlie'],
-  age: [25, 30, 35],
-})
+```javascript
+import { parquetWrite } from 'hyparquet-writer'
+
+const arrayBuffer = parquetWrite([
+  { name: 'name', data: ['Alice', 'Bob', 'Charlie'] },
+  { name: 'age', data: [25, 30, 35] },
+])
 ```
 
 ## References

@@ -62,7 +62,10 @@ describe('writePlain', () => {
   it('writes BYTE_ARRAY', () => {
     const writer = new Writer()
     const strings = ['a', 'b', 'c', 'd']
-    writePlain(writer, strings, 'BYTE_ARRAY')
+    // strings must be pre-converted to Uint8Array
+    const encoder = new TextEncoder()
+    const bytes = strings.map(s => encoder.encode(s))
+    writePlain(writer, bytes, 'BYTE_ARRAY')
 
     let offset = 0
     for (const s of strings) {

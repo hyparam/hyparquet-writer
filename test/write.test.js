@@ -6,32 +6,33 @@ import { exampleMetadata } from './metadata.test.js'
 /**
  * Utility to encode a parquet file and then read it back into a JS object.
  *
- * @param {Record<string, any[]>} columnData
+ * @import {ColumnData} from '../src/types.js'
+ * @param {ColumnData[]} columnData
  * @returns {Promise<Record<string, any>>}
  */
 async function roundTripDeserialize(columnData) {
   const file = parquetWrite(columnData)
-  return await parquetReadObjects({ file })
+  return await parquetReadObjects({ file, utf8: false })
 }
 
-const data = {
-  bool: [true, false, true, false], // BOOLEAN
-  int: [0, 127, 0x7fff, 0x7fffffff], // INT32
-  bigint: [0n, 127n, 0x7fffn, 0x7fffffffffffffffn], // INT64
-  double: [0, 0.0001, 123.456, 1e100], // DOUBLE
-  string: ['a', 'b', 'c', 'd'], // BYTE_ARRAY
-  nullable: [true, false, null, null], // BOOLEAN nullable
-}
+const basicData = [
+  { name: 'bool', data: [true, false, true, false] },
+  { name: 'int', data: [0, 127, 0x7fff, 0x7fffffff] },
+  { name: 'bigint', data: [0n, 127n, 0x7fffn, 0x7fffffffffffffffn] },
+  { name: 'double', data: [0, 0.0001, 123.456, 1e100] },
+  { name: 'string', data: ['a', 'b', 'c', 'd'] },
+  { name: 'nullable', data: [true, false, null, null] },
+]
 
 describe('parquetWrite', () => {
   it('writes expected metadata', () => {
-    const file = parquetWrite(data)
+    const file = parquetWrite(basicData)
     const metadata = parquetMetadata(file)
     expect(metadata).toEqual(exampleMetadata)
   })
 
   it('serializes basic types', async () => {
-    const result = await roundTripDeserialize(data)
+    const result = await roundTripDeserialize(basicData)
     expect(result).toEqual([
       { bool: true, int: 0, bigint: 0n, double: 0, string: 'a', nullable: true },
       { bool: false, int: 127, bigint: 127n, double: 0.0001, string: 'b', nullable: false },
@@ -46,16 +47,17 @@ describe('parquetWrite', () => {
     bool[100] = false
     bool[500] = true
     bool[9999] = false
-    const buffer = parquetWrite({ bool })
+    const buffer = parquetWrite([{ name: 'bool', data: bool }])
     expect(buffer.byteLength).toBe(1399)
     const metadata = parquetMetadata(buffer)
     expect(metadata.metadata_length).toBe(89)
   })
 
   it('serializes list types', async () => {
-    const result = await roundTripDeserialize({
-      list: [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
-    })
+    const result = await roundTripDeserialize([{
+      name: 'list',
+      data: [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
+    }])
     expect(result).toEqual([
       { list: [1, 2, 3] },
       { list: [4, 5, 6] },
@@ -65,9 +67,10 @@ describe('parquetWrite', () => {
   })
 
   it('serializes object types', async () => {
-    const result = await roundTripDeserialize({
-      obj: [{ a: 1, b: 2 }, { a: 3, b: 4 }, { a: 5, b: 6 }, { a: 7, b: 8 }],
-    })
+    const result = await roundTripDeserialize([{
+      name: 'obj',
+      data: [{ a: 1, b: 2 }, { a: 3, b: 4 }, { a: 5, b: 6 }, { a: 7, b: 8 }],
+    }])
     expect(result).toEqual([
       { obj: { a: 1, b: 2 } },
       { obj: { a: 3, b: 4 } },
@@ -77,9 +80,10 @@ describe('parquetWrite', () => {
   })
 
   it('serializes date types', async () => {
-    const result = await roundTripDeserialize({
-      date: [new Date(0), new Date(100000), new Date(200000), new Date(300000)],
-    })
+    const result = await roundTripDeserialize([{
+      name: 'date',
+      data: [new Date(0), new Date(100000), new Date(200000), new Date(300000)],
+    }])
     expect(result).toEqual([
       { date: new Date(0) },
       { date: new Date(100000) },
@@ -88,8 +92,21 @@ describe('parquetWrite', () => {
     ])
   })
 
+  it('serializes byte array types', async () => {
+    const result = await roundTripDeserialize([{
+      name: 'bytes',
+      data: [Uint8Array.of(1, 2, 3), Uint8Array.of(4, 5, 6), Uint8Array.of(7, 8, 9), Uint8Array.of(10, 11, 12)],
+    }])
+    expect(result).toEqual([
+      { bytes: Uint8Array.of(1, 2, 3) },
+      { bytes: Uint8Array.of(4, 5, 6) },
+      { bytes: Uint8Array.of(7, 8, 9) },
+      { bytes: Uint8Array.of(10, 11, 12) },
+    ])
+  })
+
   it('throws for mixed types', () => {
-    expect(() => parquetWrite({ mixed: [1, 2, 3, 'boom'] }))
-      .toThrow('parquet cannot write mixed types: INT32 and BYTE_ARRAY')
+    expect(() => parquetWrite([{ name: 'mixed', data: [1, 2, 3, 'boom'] }]))
+      .toThrow('mixed types not supported')
   })
 })
