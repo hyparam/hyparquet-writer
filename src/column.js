@@ -5,17 +5,16 @@ import { serializeTCompactProtocol } from './thrift.js'
 import { Writer } from './writer.js'
 
 /**
- * @import {ColumnMetaData, DecodedArray, PageHeader, ParquetType} from 'hyparquet/src/types.js'
+ * @import {ColumnMetaData, DecodedArray, FieldRepetitionType, PageHeader, ParquetType, SchemaElement} from 'hyparquet/src/types.js'
  * @param {Writer} writer
- * @param {string} columnName
+ * @param {SchemaElement[]} schemaPath schema path for the column
  * @param {DecodedArray} values
  * @param {ParquetType} type
  * @returns {ColumnMetaData}
  */
-export function writeColumn(writer, columnName, values, type) {
-  // Get data stats
-  const num_nulls = values.filter(v => v === null).length
+export function writeColumn(writer, schemaPath, values, type) {
   const offsetStart = writer.offset
+  let num_nulls = 0
 
   // Write page to temp buffer
   const page = new Writer()
@@ -24,28 +23,39 @@ export function writeColumn(writer, columnName, values, type) {
   const encoding = 'PLAIN'
 
   // TODO: repetition levels
-  const maxRepetitionLevel = 0
+  const maxRepetitionLevel = getMaxRepetitionLevel(schemaPath)
   let repetition_levels_byte_length = 0
   if (maxRepetitionLevel) {
     repetition_levels_byte_length = writeRleBitPackedHybrid(page, [])
   }
 
   // TODO: definition levels
-  const maxDefinitionLevel = 0
+  const maxDefinitionLevel = getMaxDefinitionLevel(schemaPath)
   let definition_levels_byte_length = 0
   if (maxDefinitionLevel) {
-    definition_levels_byte_length = writeRleBitPackedHybrid(page, [])
+    const definitionLevels = []
+    for (const value of values) {
+      if (value === null || value === undefined) {
+        definitionLevels.push(maxDefinitionLevel - 1)
+        num_nulls++
+      } else {
+        definitionLevels.push(maxDefinitionLevel)
+      }
+    }
+    definition_levels_byte_length = writeRleBitPackedHybrid(page, definitionLevels)
   }
 
-  // write page data (TODO: compressed)
-  const { uncompressed_page_size, compressed_page_size } = writePageData(page, values, type)
+  // write page data
+  writePageData(page, values, type)
+
+  // TODO: compress page data
 
   // write page header
   /** @type {PageHeader} */
   const header = {
     type: 'DATA_PAGE_V2',
-    uncompressed_page_size,
-    compressed_page_size,
+    uncompressed_page_size: page.offset,
+    compressed_page_size: page.offset,
     data_page_header_v2: {
       num_values: values.length,
       num_nulls,
@@ -64,7 +74,7 @@ export function writeColumn(writer, columnName, values, type) {
   return {
     type,
     encodings: ['PLAIN'],
-    path_in_schema: [columnName],
+    path_in_schema: schemaPath.slice(1).map(s => s.name),
     codec: 'UNCOMPRESSED',
     num_values: BigInt(values.length),
     total_compressed_size: BigInt(writer.offset - offsetStart),
@@ -74,18 +84,50 @@ export function writeColumn(writer, columnName, values, type) {
 }
 
 /**
- * Deduce a ParquetType from the JS value
+ * Deduce a ParquetType from JS values
  *
  * @param {DecodedArray} values
- * @returns {ParquetType}
+ * @returns {{ type: ParquetType, repetition_type: 'REQUIRED' | 'OPTIONAL' }}
  */
 export function getParquetTypeForValues(values) {
-  if (values.every(v => typeof v === 'boolean')) return 'BOOLEAN'
-  if (values.every(v => typeof v === 'bigint')) return 'INT64'
-  if (values.every(v => Number.isInteger(v))) return 'INT32'
-  if (values.every(v => typeof v === 'number')) return 'DOUBLE'
-  if (values.every(v => typeof v === 'string')) return 'BYTE_ARRAY'
-  throw new Error(`Cannot determine parquet type for: ${values}`)
+  if (values instanceof Int32Array) return { type: 'INT32', repetition_type: 'REQUIRED' }
+  if (values instanceof BigInt64Array) return { type: 'INT64', repetition_type: 'REQUIRED' }
+  if (values instanceof Float32Array) return { type: 'FLOAT', repetition_type: 'REQUIRED' }
+  if (values instanceof Float64Array) return { type: 'DOUBLE', repetition_type: 'REQUIRED' }
+  /** @type {ParquetType | undefined} */
+  let type = undefined
+  /** @type {FieldRepetitionType} */
+  let repetition_type = 'REQUIRED'
+  for (const value of values) {
+    const valueType = getParquetTypeForValue(value)
+    if (!valueType) {
+      repetition_type = 'OPTIONAL'
+    } else if (type === undefined) {
+      type = valueType
+    } else if (type === 'INT32' && valueType === 'DOUBLE') {
+      type = 'DOUBLE'
+    } else if (type === 'DOUBLE' && valueType === 'INT32') {
+      // keep
+    } else if (type !== valueType) {
+      throw new Error(`parquet cannot write mixed types: ${type} and ${valueType}`)
+    }
+  }
+  if (!type) throw new Error('parquetWrite: empty column cannot determine type')
+  return { type, repetition_type }
+}
+
+/**
+ * @param {any} value
+ * @returns {ParquetType | undefined}
+ */
+function getParquetTypeForValue(value) {
+  if (value === null || value === undefined) return undefined
+  if (value === true || value === false) return 'BOOLEAN'
+  if (typeof value === 'bigint') return 'INT64'
+  if (Number.isInteger(value)) return 'INT32'
+  if (typeof value === 'number') return 'DOUBLE'
+  if (typeof value === 'string') return 'BYTE_ARRAY'
+  throw new Error(`Cannot determine parquet type for: ${value}`)
 }
 
 /**
@@ -114,13 +156,40 @@ function writePageHeader(writer, header) {
  * @param {Writer} writer
  * @param {DecodedArray} values
  * @param {ParquetType} type
- * @returns {{ uncompressed_page_size: number, compressed_page_size: number }}
  */
 function writePageData(writer, values, type) {
   // write plain data
-  const startOffset = writer.offset
   writePlain(writer, values, type)
-  const size = writer.offset - startOffset
+}
 
-  return { uncompressed_page_size: size, compressed_page_size: size }
+/**
+ * Get the max repetition level for a given schema path.
+ *
+ * @param {SchemaElement[]} schemaPath
+ * @returns {number} max repetition level
+ */
+function getMaxRepetitionLevel(schemaPath) {
+  let maxLevel = 0
+  for (const element of schemaPath) {
+    if (element.repetition_type === 'REPEATED') {
+      maxLevel++
+    }
+  }
+  return maxLevel
+}
+
+/**
+ * Get the max definition level for a given schema path.
+ *
+ * @param {SchemaElement[]} schemaPath
+ * @returns {number} max definition level
+ */
+function getMaxDefinitionLevel(schemaPath) {
+  let maxLevel = 0
+  for (const element of schemaPath.slice(1)) {
+    if (element.repetition_type !== 'REQUIRED') {
+      maxLevel++
+    }
+  }
+  return maxLevel
 }

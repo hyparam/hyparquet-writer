@@ -5,7 +5,7 @@ import { writeMetadata } from './metadata.js'
 /**
  * Write data as parquet to an ArrayBuffer
  *
- * @import {ColumnChunk, DecodedArray, FileMetaData, SchemaElement} from 'hyparquet'
+ * @import {ColumnChunk, DecodedArray, FileMetaData, SchemaElement, SchemaTree} from 'hyparquet'
  * @param {Record<string, DecodedArray>} columnData
  * @returns {ArrayBuffer}
  */
@@ -29,7 +29,6 @@ export function parquetWrite(columnData) {
   const schema = [{
     name: 'root',
     num_children: columnNames.length,
-    repetition_type: 'REQUIRED',
   }]
 
   // row group columns
@@ -39,10 +38,15 @@ export function parquetWrite(columnData) {
   // Write columns
   for (const name of columnNames) {
     const values = columnData[name]
-    const type = getParquetTypeForValues(values)
+    const { type, repetition_type } = getParquetTypeForValues(values)
+    if (!type) throw new Error(`parquetWrite: empty column ${name} cannot determine type`)
     const file_offset = BigInt(writer.offset)
-    const meta_data = writeColumn(writer, name, values, type)
-    const repetition_type = 'REQUIRED'
+    /** @type {SchemaElement[]} */
+    const schemaElements = [
+      schema[0],
+      { type, name, repetition_type, num_children: 0 },
+    ]
+    const meta_data = writeColumn(writer, schemaElements, values, type)
 
     // save metadata
     schema.push({ type, name, repetition_type })

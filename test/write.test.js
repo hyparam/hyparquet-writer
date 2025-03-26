@@ -20,6 +20,7 @@ const data = {
   bigint: [0n, 127n, 0x7fffn, 0x7fffffffffffffffn], // INT64
   double: [0, 0.0001, 123.456, 1e100], // DOUBLE
   string: ['a', 'b', 'c', 'd'], // BYTE_ARRAY
+  nullable: [true, false, null, null], // BOOLEAN nullable
 }
 
 describe('parquetWrite', () => {
@@ -32,10 +33,10 @@ describe('parquetWrite', () => {
   it('serializes basic types correctly', async () => {
     const result = await roundTripDeserialize(data)
     expect(result).toEqual([
-      { bool: true, int: 0, bigint: 0n, double: 0, string: 'a' },
-      { bool: false, int: 127, bigint: 127n, double: 0.0001, string: 'b' },
-      { bool: true, int: 0x7fff, bigint: 0x7fffn, double: 123.456, string: 'c' },
-      { bool: false, int: 0x7fffffff, bigint: 0x7fffffffffffffffn, double: 1e100, string: 'd' },
+      { bool: true, int: 0, bigint: 0n, double: 0, string: 'a', nullable: true },
+      { bool: false, int: 127, bigint: 127n, double: 0.0001, string: 'b', nullable: false },
+      { bool: true, int: 0x7fff, bigint: 0x7fffn, double: 123.456, string: 'c', nullable: null },
+      { bool: false, int: 0x7fffffff, bigint: 0x7fffffffffffffffn, double: 1e100, string: 'd', nullable: null },
     ])
   })
 })

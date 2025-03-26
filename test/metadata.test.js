@@ -11,12 +11,13 @@ export const exampleMetadata = {
   version: 2,
   created_by: 'hyparquet',
   schema: [
-    { name: 'root', num_children: 5, repetition_type: 'REQUIRED' },
+    { name: 'root', num_children: 6 },
     { name: 'bool', type: 'BOOLEAN', repetition_type: 'REQUIRED' },
     { name: 'int', type: 'INT32', repetition_type: 'REQUIRED' },
     { name: 'bigint', type: 'INT64', repetition_type: 'REQUIRED' },
     { name: 'double', type: 'DOUBLE', repetition_type: 'REQUIRED' },
     { name: 'string', type: 'BYTE_ARRAY', repetition_type: 'REQUIRED' },
+    { name: 'nullable', type: 'BOOLEAN', repetition_type: 'OPTIONAL' },
   ],
   num_rows: 4n,
   row_groups: [{
@@ -91,11 +92,25 @@ export const exampleMetadata = {
           data_page_offset: 173n,
         },
       },
+      {
+        file_path: 'nullable',
+        file_offset: 215n,
+        meta_data: {
+          type: 'BOOLEAN',
+          encodings: ['PLAIN'],
+          path_in_schema: ['nullable'],
+          codec: 'UNCOMPRESSED',
+          num_values: 4n,
+          total_uncompressed_size: 25n,
+          total_compressed_size: 25n,
+          data_page_offset: 215n,
+        },
+      },
     ],
-    total_byte_size: 211n,
+    total_byte_size: 236n,
     num_rows: 4n,
   }],
-  metadata_length: 280,
+  metadata_length: 336,
 }
 
 describe('writeMetadata', () => {
