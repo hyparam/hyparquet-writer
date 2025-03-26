@@ -1,6 +1,6 @@
+import { Writer } from './writer.js'
 
 /**
- * @import {Writer} from './writer.js'
  * @param {Writer} writer
  * @param {number[]} values
  * @returns {number} bytes written
@@ -10,8 +10,18 @@ export function writeRleBitPackedHybrid(writer, values) {
   // find max bitwidth
   const bitWidth = Math.ceil(Math.log2(Math.max(...values) + 1))
 
-  // TODO: Try both RLE and bit-packed and choose the best
-  writeBitPacked(writer, values, bitWidth)
+  // try both RLE and bit-packed and choose the best
+  const rle = new Writer()
+  writeRle(rle, values, bitWidth)
+  const bitPacked = new Writer()
+  writeBitPacked(bitPacked, values, bitWidth)
+
+  if (rle.offset < bitPacked.offset) {
+    writer.appendBuffer(rle.getBuffer())
+  } else {
+    writer.appendBuffer(bitPacked.getBuffer())
+  }
+
   return writer.offset - offsetStart
 }
 
@@ -69,6 +79,41 @@ function writeBitPacked(writer, values, bitWidth) {
 
   // Flush any remaining bits
   if (bitsUsed > 0) {
-    writer.appendUint8(buffer & 0xFF)
+    writer.appendUint8(buffer & 0xff)
+  }
+}
+
+/**
+ * Run-length encoding: write repeated values by encoding the value and its count.
+ *
+ * @param {Writer} writer
+ * @param {number[]} values
+ * @param {number} bitWidth
+ */
+function writeRle(writer, values, bitWidth) {
+  if (!values.length) return
+
+  let currentValue = values[0]
+  let count = 1
+
+  for (let i = 1; i <= values.length; i++) {
+    if (i < values.length && values[i] === currentValue) {
+      count++ // continue the run
+    } else {
+      // write the count of repeated values
+      writer.appendVarInt(count)
+
+      // write the value
+      const width = bitWidth + 7 >> 3 // bytes needed
+      for (let j = 0; j < width; j++) {
+        writer.appendUint8(currentValue >> (j << 3) & 0xff)
+      }
+
+      // reset for the next run
+      if (i < values.length) {
+        currentValue = values[i]
+        count = 1
+      }
+    }
   }
 }

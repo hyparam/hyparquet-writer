@@ -39,4 +39,16 @@ describe('parquetWrite', () => {
       { bool: false, int: 0x7fffffff, bigint: 0x7fffffffffffffffn, double: 1e100, string: 'd', nullable: null },
     ])
   })
+
+  it('efficiently serializes sparse booleans', () => {
+    const bool = Array(10000).fill(null)
+    bool[10] = true
+    bool[100] = false
+    bool[500] = true
+    bool[9999] = false
+    const buffer = parquetWrite({ bool })
+    expect(buffer.byteLength).toBe(1399)
+    const metadata = parquetMetadata(buffer)
+    expect(metadata.metadata_length).toBe(89)
+  })
 })
