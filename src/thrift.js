@@ -29,6 +29,8 @@ export function serializeTCompactProtocol(writer, data) {
   let lastFid = 0
   // Write each field
   for (const [key, value] of Object.entries(data)) {
+    if (value === undefined) continue
+
     // We expect key = "field_N" so we can extract N as the field ID
     const fid = parseInt(key.replace(/^field_/, ''), 10)
     if (Number.isNaN(fid)) {
@@ -179,6 +181,8 @@ function writeElement(writer, type, value) {
     // Recursively write sub-fields as "field_N: val", end with STOP
     let lastFid = 0
     for (const [k, v] of Object.entries(value)) {
+      if (v === undefined) continue
+
       const fid = parseInt(k.replace(/^field_/, ''), 10)
       if (Number.isNaN(fid)) {
         throw new Error(`Invalid sub-field name: ${k}. Expected "field_###"`)
