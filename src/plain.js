@@ -15,6 +15,8 @@ export function writePlain(writer, values, type) {
     writePlainInt64(writer, values)
   } else if (type === 'DOUBLE') {
     writePlainDouble(writer, values)
+  } else if (type === 'BYTE_ARRAY') {
+    writePlainByteArray(writer, values)
   } else {
     throw new Error(`parquet unsupported type: ${type}`)
   }
@@ -74,5 +76,17 @@ function writePlainInt64(writer, values) {
 function writePlainDouble(writer, values) {
   for (const value of values) {
     writer.appendFloat64(value)
+  }
+}
+
+/**
+ * @param {Writer} writer
+ * @param {DecodedArray} values
+ */
+function writePlainByteArray(writer, values) {
+  for (const value of values) {
+    const bytes = new TextEncoder().encode(value)
+    writer.appendUint32(bytes.length)
+    writer.appendBytes(bytes)
   }
 }

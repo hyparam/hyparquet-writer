@@ -3,13 +3,16 @@
  * @import {Writer} from './writer.js'
  * @param {Writer} writer
  * @param {number[]} values
+ * @returns {number} bytes written
  */
 export function writeRleBitPackedHybrid(writer, values) {
+  const offsetStart = writer.offset
   // find max bitwidth
   const bitWidth = Math.ceil(Math.log2(Math.max(...values) + 1))
 
   // TODO: Try both RLE and bit-packed and choose the best
   writeBitPacked(writer, values, bitWidth)
+  return writer.offset - offsetStart
 }
 
 /**

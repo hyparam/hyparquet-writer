@@ -1,4 +1,4 @@
-import { Encoding, ParquetType } from 'hyparquet/src/constants.js'
+import { Encoding, FieldRepetitionType, ParquetType } from 'hyparquet/src/constants.js'
 import { serializeTCompactProtocol } from './thrift.js'
 
 const CompressionCodec = [
@@ -24,7 +24,7 @@ export function writeMetadata(writer, metadata) {
     field_2: metadata.schema && metadata.schema.map(element => ({
       field_1: element.type && ParquetType.indexOf(element.type),
       field_2: element.type_length,
-      field_3: element.repetition_type,
+      field_3: element.repetition_type && FieldRepetitionType.indexOf(element.repetition_type),
       field_4: element.name,
       field_5: element.num_children,
       field_6: element.converted_type,

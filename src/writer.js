@@ -78,9 +78,16 @@ Writer.prototype.appendFloat64 = function(value) {
  * @param {ArrayBuffer} value
  */
 Writer.prototype.appendBuffer = function(value) {
-  this.ensure(this.offset + value.byteLength)
-  new Uint8Array(this.buffer, this.offset, value.byteLength).set(new Uint8Array(value))
-  this.offset += value.byteLength
+  this.appendBytes(new Uint8Array(value))
+}
+
+/**
+ * @param {Uint8Array} value
+ */
+Writer.prototype.appendBytes = function(value) {
+  this.ensure(this.offset + value.length)
+  new Uint8Array(this.buffer, this.offset, value.length).set(value)
+  this.offset += value.length
 }
 
 /**

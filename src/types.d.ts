@@ -9,6 +9,7 @@ export interface Writer {
   appendInt64(value: bigint): void
   appendFloat64(value: number): void
   appendBuffer(buffer: ArrayBuffer): void
+  appendBytes(value: Uint8Array): void
   appendVarInt(value: number): void
   appendVarBigInt(value: bigint): void
 }

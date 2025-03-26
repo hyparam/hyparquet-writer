@@ -59,9 +59,27 @@ describe('writePlain', () => {
     }
   })
 
+  it('writes BYTE_ARRAY', () => {
+    const writer = new Writer()
+    const strings = ['a', 'b', 'c', 'd']
+    writePlain(writer, strings, 'BYTE_ARRAY')
+
+    let offset = 0
+    for (const s of strings) {
+      const length = writer.view.getUint32(offset, true)
+      expect(length).toBe(s.length)
+      offset += 4
+
+      for (let i = 0; i < s.length; i++) {
+        expect(writer.view.getUint8(offset)).toBe(s.charCodeAt(i))
+        offset += 1
+      }
+    }
+  })
+
   it('throws error on unsupported type', () => {
     const writer = new Writer()
-    expect(() => writePlain(writer, [1, 2, 3], 'BYTE_ARRAY'))
+    expect(() => writePlain(writer, [1, 2, 3], 'INT96'))
       .toThrow(/parquet unsupported type/i)
   })
 })
