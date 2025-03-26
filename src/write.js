@@ -1,6 +1,7 @@
-import { getParquetTypeForValues, writeColumn } from './column.js'
+import { writeColumn } from './column.js'
 import { Writer } from './writer.js'
 import { writeMetadata } from './metadata.js'
+import { getSchemaElementForValues } from './schema.js'
 
 /**
  * Write data as parquet to an ArrayBuffer
@@ -38,18 +39,18 @@ export function parquetWrite(columnData) {
   // Write columns
   for (const name of columnNames) {
     const values = columnData[name]
-    const { type, repetition_type } = getParquetTypeForValues(values)
-    if (!type) throw new Error(`parquetWrite: empty column ${name} cannot determine type`)
+    const schemaElement = getSchemaElementForValues(name, values)
+    if (!schemaElement.type) throw new Error(`column ${name} cannot determine type`)
     const file_offset = BigInt(writer.offset)
     /** @type {SchemaElement[]} */
-    const schemaElements = [
+    const schemaPath = [
       schema[0],
-      { type, name, repetition_type, num_children: 0 },
+      schemaElement,
     ]
-    const meta_data = writeColumn(writer, schemaElements, values, type)
+    const meta_data = writeColumn(writer, schemaPath, values)
 
     // save metadata
-    schema.push({ type, name, repetition_type })
+    schema.push(schemaElement)
     columns.push({
       file_path: name,
       file_offset,

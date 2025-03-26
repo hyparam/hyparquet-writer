@@ -30,7 +30,7 @@ describe('parquetWrite', () => {
     expect(metadata).toEqual(exampleMetadata)
   })
 
-  it('serializes basic types correctly', async () => {
+  it('serializes basic types', async () => {
     const result = await roundTripDeserialize(data)
     expect(result).toEqual([
       { bool: true, int: 0, bigint: 0n, double: 0, string: 'a', nullable: true },
@@ -50,5 +50,46 @@ describe('parquetWrite', () => {
     expect(buffer.byteLength).toBe(1399)
     const metadata = parquetMetadata(buffer)
     expect(metadata.metadata_length).toBe(89)
+  })
+
+  it('serializes list types', async () => {
+    const result = await roundTripDeserialize({
+      list: [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
+    })
+    expect(result).toEqual([
+      { list: [1, 2, 3] },
+      { list: [4, 5, 6] },
+      { list: [7, 8, 9] },
+      { list: [10, 11, 12] },
+    ])
+  })
+
+  it('serializes object types', async () => {
+    const result = await roundTripDeserialize({
+      obj: [{ a: 1, b: 2 }, { a: 3, b: 4 }, { a: 5, b: 6 }, { a: 7, b: 8 }],
+    })
+    expect(result).toEqual([
+      { obj: { a: 1, b: 2 } },
+      { obj: { a: 3, b: 4 } },
+      { obj: { a: 5, b: 6 } },
+      { obj: { a: 7, b: 8 } },
+    ])
+  })
+
+  it('serializes date types', async () => {
+    const result = await roundTripDeserialize({
+      date: [new Date(0), new Date(100000), new Date(200000), new Date(300000)],
+    })
+    expect(result).toEqual([
+      { date: new Date(0) },
+      { date: new Date(100000) },
+      { date: new Date(200000) },
+      { date: new Date(300000) },
+    ])
+  })
+
+  it('throws for mixed types', () => {
+    expect(() => parquetWrite({ mixed: [1, 2, 3, 'boom'] }))
+      .toThrow('parquet cannot write mixed types: INT32 and BYTE_ARRAY')
   })
 })
