@@ -48,7 +48,7 @@ describe('parquetWrite', () => {
     bool[500] = true
     bool[9999] = false
     const file = parquetWrite([{ name: 'bool', data: bool }])
-    expect(file.byteLength).toBe(147)
+    expect(file.byteLength).toBe(148)
     const metadata = parquetMetadata(file)
     expect(metadata.metadata_length).toBe(86)
     const result = await parquetReadObjects({ file })
@@ -64,7 +64,7 @@ describe('parquetWrite', () => {
   it('efficiently serializes long string', () => {
     const str = 'a'.repeat(10000)
     const file = parquetWrite([{ name: 'string', data: [str] }])
-    expect(file.byteLength).toBe(10136)
+    expect(file.byteLength).toBe(606)
   })
 
   it('serializes list types', async () => {

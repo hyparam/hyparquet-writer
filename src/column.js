@@ -3,6 +3,7 @@ import { unconvert } from './convert.js'
 import { writeRleBitPackedHybrid } from './encoding.js'
 import { writePlain } from './plain.js'
 import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
+import { snappyCompress } from './snappy.js'
 import { serializeTCompactProtocol } from './thrift.js'
 import { Writer } from './writer.js'
 
@@ -55,14 +56,16 @@ export function writeColumn(writer, schemaPath, values) {
   const page = new Writer()
   writePageData(page, values, type)
 
-  // TODO: compress page data
+  // compress page data
+  const compressed = new Writer()
+  snappyCompress(compressed, new Uint8Array(page.getBuffer()))
 
   // write page header
   /** @type {PageHeader} */
   const header = {
     type: 'DATA_PAGE_V2',
     uncompressed_page_size: levels.offset + page.offset,
-    compressed_page_size: levels.offset + page.offset,
+    compressed_page_size: levels.offset + compressed.offset,
     data_page_header_v2: {
       num_values,
       num_nulls,
@@ -70,7 +73,7 @@ export function writeColumn(writer, schemaPath, values) {
       encoding: 'PLAIN',
       definition_levels_byte_length,
       repetition_levels_byte_length,
-      is_compressed: false,
+      is_compressed: true,
     },
   }
   writePageHeader(writer, header)
@@ -79,13 +82,13 @@ export function writeColumn(writer, schemaPath, values) {
   writer.appendBuffer(levels.getBuffer())
 
   // write page data
-  writer.appendBuffer(page.getBuffer())
+  writer.appendBuffer(compressed.getBuffer())
 
   return {
     type,
     encodings: ['PLAIN'],
     path_in_schema: schemaPath.slice(1).map(s => s.name),
-    codec: 'UNCOMPRESSED',
+    codec: 'SNAPPY',
     num_values: BigInt(num_values),
     total_compressed_size: BigInt(writer.offset - offsetStart),
     total_uncompressed_size: BigInt(writer.offset - offsetStart),
