@@ -2,9 +2,9 @@ import { Encoding, PageType } from 'hyparquet/src/constants.js'
 import { unconvert } from './convert.js'
 import { writeRleBitPackedHybrid } from './encoding.js'
 import { writePlain } from './plain.js'
+import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
 import { serializeTCompactProtocol } from './thrift.js'
 import { Writer } from './writer.js'
-import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
 
 /**
  * @import {ColumnMetaData, DecodedArray, PageHeader, ParquetType, SchemaElement} from 'hyparquet'
@@ -18,22 +18,17 @@ export function writeColumn(writer, schemaPath, values) {
   const { type } = schemaElement
   if (!type) throw new Error(`column ${schemaElement.name} cannot determine type`)
   const offsetStart = writer.offset
+  const num_values = values.length
   let num_nulls = 0
 
-  // Unconvert type if necessary
-  values = unconvert(schemaElement, values)
-
-  // Write page to temp buffer
-  const page = new Writer()
-
-  /** @type {import('hyparquet/src/types.js').Encoding} */
-  const encoding = 'PLAIN'
+  // Write levels to temp buffer
+  const levels = new Writer()
 
   // TODO: repetition levels
   const maxRepetitionLevel = getMaxRepetitionLevel(schemaPath)
   let repetition_levels_byte_length = 0
   if (maxRepetitionLevel) {
-    repetition_levels_byte_length = writeRleBitPackedHybrid(page, [])
+    repetition_levels_byte_length = writeRleBitPackedHybrid(levels, [])
   }
 
   // definition levels
@@ -49,10 +44,15 @@ export function writeColumn(writer, schemaPath, values) {
         definitionLevels.push(maxDefinitionLevel)
       }
     }
-    definition_levels_byte_length = writeRleBitPackedHybrid(page, definitionLevels)
+    definition_levels_byte_length = writeRleBitPackedHybrid(levels, definitionLevels)
   }
 
-  // write page data
+  // Unconvert type and filter out nulls
+  values = unconvert(schemaElement, values)
+    .filter(v => v !== null && v !== undefined)
+
+  // write page data to temp buffer
+  const page = new Writer()
   writePageData(page, values, type)
 
   // TODO: compress page data
@@ -61,19 +61,22 @@ export function writeColumn(writer, schemaPath, values) {
   /** @type {PageHeader} */
   const header = {
     type: 'DATA_PAGE_V2',
-    uncompressed_page_size: page.offset,
-    compressed_page_size: page.offset,
+    uncompressed_page_size: levels.offset + page.offset,
+    compressed_page_size: levels.offset + page.offset,
     data_page_header_v2: {
-      num_values: values.length,
+      num_values,
       num_nulls,
-      num_rows: values.length,
-      encoding,
+      num_rows: num_values,
+      encoding: 'PLAIN',
       definition_levels_byte_length,
       repetition_levels_byte_length,
       is_compressed: false,
     },
   }
   writePageHeader(writer, header)
+
+  // write levels
+  writer.appendBuffer(levels.getBuffer())
 
   // write page data
   writer.appendBuffer(page.getBuffer())
@@ -83,7 +86,7 @@ export function writeColumn(writer, schemaPath, values) {
     encodings: ['PLAIN'],
     path_in_schema: schemaPath.slice(1).map(s => s.name),
     codec: 'UNCOMPRESSED',
-    num_values: BigInt(values.length),
+    num_values: BigInt(num_values),
     total_compressed_size: BigInt(writer.offset - offsetStart),
     total_uncompressed_size: BigInt(writer.offset - offsetStart),
     data_page_offset: BigInt(offsetStart),

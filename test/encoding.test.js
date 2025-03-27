@@ -56,4 +56,14 @@ describe('RLE bit-packed hybrid', () => {
     const decoded = roundTripDeserialize(original)
     expect(decoded).toEqual(original)
   })
+
+  it('should round-trip a sparse array of booleans', () => {
+    const original = Array(10000).fill(0)
+    original[10] = 1
+    original[100] = 1
+    original[500] = 1
+    original[9999] = 1
+    const decoded = roundTripDeserialize(original)
+    expect(decoded).toEqual(original)
+  })
 })

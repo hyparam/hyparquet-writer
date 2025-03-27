@@ -101,7 +101,8 @@ function writeRle(writer, values, bitWidth) {
       count++ // continue the run
     } else {
       // write the count of repeated values
-      writer.appendVarInt(count)
+      const header = count << 1
+      writer.appendVarInt(header)
 
       // write the value
       const width = bitWidth + 7 >> 3 // bytes needed

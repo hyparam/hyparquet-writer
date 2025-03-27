@@ -41,16 +41,30 @@ describe('parquetWrite', () => {
     ])
   })
 
-  it('efficiently serializes sparse booleans', () => {
+  it('efficiently serializes sparse booleans', async () => {
     const bool = Array(10000).fill(null)
     bool[10] = true
     bool[100] = false
     bool[500] = true
     bool[9999] = false
-    const buffer = parquetWrite([{ name: 'bool', data: bool }])
-    expect(buffer.byteLength).toBe(1399)
-    const metadata = parquetMetadata(buffer)
-    expect(metadata.metadata_length).toBe(89)
+    const file = parquetWrite([{ name: 'bool', data: bool }])
+    expect(file.byteLength).toBe(147)
+    const metadata = parquetMetadata(file)
+    expect(metadata.metadata_length).toBe(86)
+    const result = await parquetReadObjects({ file })
+    expect(result.length).toBe(10000)
+    expect(result[0]).toEqual({ bool: null })
+    expect(result[9]).toEqual({ bool: null })
+    expect(result[10]).toEqual({ bool: true })
+    expect(result[100]).toEqual({ bool: false })
+    expect(result[500]).toEqual({ bool: true })
+    expect(result[9999]).toEqual({ bool: false })
+  })
+
+  it('efficiently serializes long string', () => {
+    const str = 'a'.repeat(10000)
+    const file = parquetWrite([{ name: 'string', data: [str] }])
+    expect(file.byteLength).toBe(10136)
   })
 
   it('serializes list types', async () => {
