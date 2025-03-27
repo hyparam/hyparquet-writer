@@ -12,9 +12,10 @@ import { Writer } from './writer.js'
  * @param {Writer} writer
  * @param {SchemaElement[]} schemaPath
  * @param {DecodedArray} values
+ * @param {boolean} compressed
  * @returns {ColumnMetaData}
  */
-export function writeColumn(writer, schemaPath, values) {
+export function writeColumn(writer, schemaPath, values, compressed) {
   const schemaElement = schemaPath[schemaPath.length - 1]
   const { type } = schemaElement
   if (!type) throw new Error(`column ${schemaElement.name} cannot determine type`)
@@ -57,15 +58,18 @@ export function writeColumn(writer, schemaPath, values) {
   writePageData(page, values, type)
 
   // compress page data
-  const compressed = new Writer()
-  snappyCompress(compressed, new Uint8Array(page.getBuffer()))
+  let compressedPage = page
+  if (compressed) {
+    compressedPage = new Writer()
+    snappyCompress(compressedPage, new Uint8Array(page.getBuffer()))
+  }
 
   // write page header
   /** @type {PageHeader} */
   const header = {
     type: 'DATA_PAGE_V2',
     uncompressed_page_size: levels.offset + page.offset,
-    compressed_page_size: levels.offset + compressed.offset,
+    compressed_page_size: levels.offset + compressedPage.offset,
     data_page_header_v2: {
       num_values,
       num_nulls,
@@ -82,13 +86,13 @@ export function writeColumn(writer, schemaPath, values) {
   writer.appendBuffer(levels.getBuffer())
 
   // write page data
-  writer.appendBuffer(compressed.getBuffer())
+  writer.appendBuffer(compressedPage.getBuffer())
 
   return {
     type,
     encodings: ['PLAIN'],
     path_in_schema: schemaPath.slice(1).map(s => s.name),
-    codec: 'SNAPPY',
+    codec: compressed ? 'SNAPPY' : 'UNCOMPRESSED',
     num_values: BigInt(num_values),
     total_compressed_size: BigInt(writer.offset - offsetStart),
     total_uncompressed_size: BigInt(writer.offset - offsetStart),

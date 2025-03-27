@@ -11,7 +11,7 @@ import { exampleMetadata } from './metadata.test.js'
  * @returns {Promise<Record<string, any>>}
  */
 async function roundTripDeserialize(columnData) {
-  const file = parquetWrite(columnData)
+  const file = parquetWrite({ columnData })
   return await parquetReadObjects({ file, utf8: false })
 }
 
@@ -26,7 +26,7 @@ const basicData = [
 
 describe('parquetWrite', () => {
   it('writes expected metadata', () => {
-    const file = parquetWrite(basicData)
+    const file = parquetWrite({ columnData: basicData })
     const metadata = parquetMetadata(file)
     expect(metadata).toEqual(exampleMetadata)
   })
@@ -47,7 +47,7 @@ describe('parquetWrite', () => {
     bool[100] = false
     bool[500] = true
     bool[9999] = false
-    const file = parquetWrite([{ name: 'bool', data: bool }])
+    const file = parquetWrite({ columnData: [{ name: 'bool', data: bool }] })
     expect(file.byteLength).toBe(148)
     const metadata = parquetMetadata(file)
     expect(metadata.metadata_length).toBe(86)
@@ -63,8 +63,21 @@ describe('parquetWrite', () => {
 
   it('efficiently serializes long string', () => {
     const str = 'a'.repeat(10000)
-    const file = parquetWrite([{ name: 'string', data: [str] }])
+    const file = parquetWrite({ columnData: [{ name: 'string', data: [str] }] })
     expect(file.byteLength).toBe(606)
+  })
+
+  it('less efficiently serializes string without compression', () => {
+    const str = 'a'.repeat(10000)
+    const columnData = [{ name: 'string', data: [str] }]
+    const file = parquetWrite({ columnData, compressed: false })
+    expect(file.byteLength).toBe(10135)
+  })
+
+  it('efficiently represents column with few distinct values', () => {
+    const data = Array(10000).fill('aaaa')
+    const file = parquetWrite({ columnData: [{ name: 'string', data }] })
+    expect(file.byteLength).toBe(3908)
   })
 
   it('serializes list types', async () => {
@@ -120,7 +133,7 @@ describe('parquetWrite', () => {
   })
 
   it('throws for mixed types', () => {
-    expect(() => parquetWrite([{ name: 'mixed', data: [1, 2, 3, 'boom'] }]))
+    expect(() => parquetWrite({ columnData: [{ name: 'mixed', data: [1, 2, 3, 'boom'] }] }))
       .toThrow('mixed types not supported')
   })
 })

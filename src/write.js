@@ -8,10 +8,12 @@ import { getSchemaElementForValues } from './schema.js'
  *
  * @import {ColumnChunk, DecodedArray, FileMetaData, SchemaElement, SchemaTree} from 'hyparquet'
  * @import {ColumnData} from '../src/types.js'
- * @param {ColumnData[]} columnData
+ * @param {object} options
+ * @param {ColumnData[]} options.columnData
+ * @param {boolean} [options.compressed]
  * @returns {ArrayBuffer}
  */
-export function parquetWrite(columnData) {
+export function parquetWrite({ columnData, compressed = true }) {
   const writer = new Writer()
 
   // Check if all columns have the same length
@@ -47,7 +49,7 @@ export function parquetWrite(columnData) {
       schema[0],
       schemaElement,
     ]
-    const meta_data = writeColumn(writer, schemaPath, data)
+    const meta_data = writeColumn(writer, schemaPath, data, compressed)
 
     // save metadata
     schema.push(schemaElement)

@@ -1,6 +1,7 @@
 # Hyparquet Writer
 
 [![npm](https://img.shields.io/npm/v/hyparquet-writer)](https://www.npmjs.com/package/hyparquet-writer)
+[![minzipped](https://img.shields.io/bundlephobia/minzip/hyparquet-writer)](https://www.npmjs.com/package/hyparquet-writer)
 [![workflow status](https://github.com/hyparam/hyparquet-writer/actions/workflows/ci.yml/badge.svg)](https://github.com/hyparam/hyparquet-writer/actions)
 [![mit license](https://img.shields.io/badge/License-MIT-orange.svg)](https://opensource.org/licenses/MIT)
 ![coverage](https://img.shields.io/badge/Coverage-96-darkred)
@@ -13,10 +14,12 @@ Call `parquetWrite` with a list of columns, each column is an object with a `nam
 ```javascript
 import { parquetWrite } from 'hyparquet-writer'
 
-const arrayBuffer = parquetWrite([
-  { name: 'name', data: ['Alice', 'Bob', 'Charlie'] },
-  { name: 'age', data: [25, 30, 35] },
-])
+const arrayBuffer = parquetWrite({
+  columnData: [
+    { name: 'name', data: ['Alice', 'Bob', 'Charlie'] },
+    { name: 'age', data: [25, 30, 35] },
+  ],
+})
 ```
 
 ## References
