@@ -74,10 +74,14 @@ describe('parquetWrite', () => {
     expect(file.byteLength).toBe(10135)
   })
 
-  it('efficiently represents column with few distinct values', () => {
+  it('efficiently serializes column with few distinct values', async () => {
     const data = Array(10000).fill('aaaa')
     const file = parquetWrite({ columnData: [{ name: 'string', data }] })
-    expect(file.byteLength).toBe(3908)
+    expect(file.byteLength).toBe(161)
+    // round trip
+    const result = await parquetReadObjects({ file })
+    expect(result.length).toBe(10000)
+    expect(result[0]).toEqual({ string: 'aaaa' })
   })
 
   it('serializes list types', async () => {

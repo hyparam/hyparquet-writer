@@ -1,8 +1,9 @@
 import { Writer } from './writer.js'
 
 /**
+ * @import {DecodedArray} from 'hyparquet'
  * @param {Writer} writer
- * @param {number[]} values
+ * @param {DecodedArray} values
  * @returns {number} bytes written
  */
 export function writeRleBitPackedHybrid(writer, values) {
@@ -27,7 +28,7 @@ export function writeRleBitPackedHybrid(writer, values) {
 
 /**
  * @param {Writer} writer
- * @param {number[]} values
+ * @param {DecodedArray} values
  * @param {number} bitWidth
  */
 function writeBitPacked(writer, values, bitWidth) {
@@ -87,7 +88,7 @@ function writeBitPacked(writer, values, bitWidth) {
  * Run-length encoding: write repeated values by encoding the value and its count.
  *
  * @param {Writer} writer
- * @param {number[]} values
+ * @param {DecodedArray} values
  * @param {number} bitWidth
  */
 function writeRle(writer, values, bitWidth) {
