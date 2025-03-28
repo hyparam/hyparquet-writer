@@ -39,9 +39,9 @@ export function parquetWrite({ columnData, compressed = true }) {
   const columns = []
 
   // Write columns
-  for (const { name, data } of columnData) {
+  for (const { name, data, type } of columnData) {
     // auto-detect type
-    const schemaElement = getSchemaElementForValues(name, data)
+    const schemaElement = getSchemaElementForValues(name, data, type)
     if (!schemaElement.type) throw new Error(`column ${name} cannot determine type`)
     const file_offset = BigInt(writer.offset)
     /** @type {SchemaElement[]} */

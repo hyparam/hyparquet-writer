@@ -16,8 +16,8 @@ import { parquetWrite } from 'hyparquet-writer'
 
 const arrayBuffer = parquetWrite({
   columnData: [
-    { name: 'name', data: ['Alice', 'Bob', 'Charlie'] },
-    { name: 'age', data: [25, 30, 35] },
+    { name: 'name', data: ['Alice', 'Bob', 'Charlie'], type: 'STRING' },
+    { name: 'age', data: [25, 30, 35], type: 'INT32' },
   ],
 })
 ```

@@ -136,6 +136,32 @@ describe('parquetWrite', () => {
     ])
   })
 
+  it('serializes empty column', async () => {
+    const result = await roundTripDeserialize([{
+      name: 'empty',
+      data: [null, null, null, null],
+      type: 'BOOLEAN',
+    }])
+    expect(result).toEqual([
+      { empty: null },
+      { empty: null },
+      { empty: null },
+      { empty: null },
+    ])
+  })
+
+  it('throws for wrong type specified', () => {
+    expect(() => parquetWrite({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'BOOLEAN' }] }))
+      .toThrow('parquet cannot write mixed types')
+  })
+
+  it('throws for empty column with no type specified', () => {
+    expect(() => parquetWrite({ columnData: [{ name: 'empty', data: [] }] }))
+      .toThrow('column empty cannot determine type')
+    expect(() => parquetWrite({ columnData: [{ name: 'empty', data: [null, null, null, null] }] }))
+      .toThrow('column empty cannot determine type')
+  })
+
   it('throws for mixed types', () => {
     expect(() => parquetWrite({ columnData: [{ name: 'mixed', data: [1, 2, 3, 'boom'] }] }))
       .toThrow('mixed types not supported')

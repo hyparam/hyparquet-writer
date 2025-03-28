@@ -3,6 +3,7 @@ import { DecodedArray, ParquetType } from "hyparquet"
 export interface ColumnData {
   name: string
   data: DecodedArray
+  type?: ParquetType
 }
 
 export interface Writer {
