@@ -20,7 +20,7 @@ export function parquetWrite({ columnData, compressed = true }) {
   const num_rows = columnData.length ? BigInt(columnData[0].data.length) : 0n
   for (const { data } of columnData) {
     if (BigInt(data.length) !== num_rows) {
-      throw new Error('parquetWrite: all columns must have the same length')
+      throw new Error('columns must have the same length')
     }
   }
 

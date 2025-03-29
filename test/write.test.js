@@ -75,13 +75,16 @@ describe('parquetWrite', () => {
   })
 
   it('efficiently serializes column with few distinct values', async () => {
-    const data = Array(10000).fill('aaaa')
+    const data = Array(100000)
+      .fill('aaaa', 0, 50000)
+      .fill('bbbb', 50000, 100000)
     const file = parquetWrite({ columnData: [{ name: 'string', data }] })
-    expect(file.byteLength).toBe(161)
+    expect(file.byteLength).toBe(178)
     // round trip
     const result = await parquetReadObjects({ file })
-    expect(result.length).toBe(10000)
+    expect(result.length).toBe(100000)
     expect(result[0]).toEqual({ string: 'aaaa' })
+    expect(result[50000]).toEqual({ string: 'bbbb' })
   })
 
   it('serializes list types', async () => {
@@ -150,6 +153,25 @@ describe('parquetWrite', () => {
     ])
   })
 
+  it('serializes empty table', async () => {
+    const result = await roundTripDeserialize([])
+    expect(result).toEqual([])
+  })
+
+  it('handles special numeric values', async () => {
+    const data = [
+      { name: 'double', data: [NaN, Infinity, -Infinity, 42, 0, -0] },
+    ]
+    const result = await roundTripDeserialize(data)
+    expect(result[0].double).toBeNaN()
+    expect(result[1].double).toEqual(Infinity)
+    expect(result[2].double).toEqual(-Infinity)
+    expect(result[3].double).toEqual(42)
+    expect(result[4].double).toEqual(0)
+    expect(result[5].double).toEqual(-0)
+    expect(result[5].double).not.toEqual(0)
+  })
+
   it('throws for wrong type specified', () => {
     expect(() => parquetWrite({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'BOOLEAN' }] }))
       .toThrow('parquet cannot write mixed types')
@@ -165,5 +187,17 @@ describe('parquetWrite', () => {
   it('throws for mixed types', () => {
     expect(() => parquetWrite({ columnData: [{ name: 'mixed', data: [1, 2, 3, 'boom'] }] }))
       .toThrow('mixed types not supported')
+  })
+
+  it('throws error when columns have mismatched lengths', () => {
+    expect(() => parquetWrite({ columnData: [
+      { name: 'col1', data: [1, 2, 3] },
+      { name: 'col2', data: [4, 5] },
+    ] })).toThrow('columns must have the same length')
+  })
+
+  it('throws error for unsupported data types', () => {
+    expect(() => parquetWrite({ columnData: [{ name: 'func', data: [() => {}] }] }))
+      .toThrow('cannot determine parquet type for: () => {}')
   })
 })

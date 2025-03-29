@@ -46,7 +46,7 @@ export function getSchemaElementForValues(name, values, type) {
         converted_type = 'JSON'
         valueType = 'BYTE_ARRAY'
       }
-      else if (!valueType) throw new Error(`Cannot determine parquet type for: ${value}`)
+      else if (!valueType) throw new Error(`cannot determine parquet type for: ${value}`)
 
       // expand type if necessary
       if (type === undefined) {
