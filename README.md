@@ -25,5 +25,6 @@ const arrayBuffer = parquetWrite({
 ## References
 
  - https://github.com/hyparam/hyparquet
+ - https://github.com/hyparam/hyparquet-compressors
  - https://github.com/apache/parquet-format
  - https://github.com/apache/parquet-testing
