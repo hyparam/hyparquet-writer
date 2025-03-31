@@ -121,8 +121,15 @@ describe('writeMetadata', () => {
     writer.appendUint32(0x31524150)
 
     // Write metadata
-    /** @type {FileMetaData} */
-    writeMetadata(writer, exampleMetadata)
+    const withKvMetadata = {
+      ...exampleMetadata,
+      key_value_metadata: [
+        { key: 'key1', value: 'value1' },
+        { key: 'key2', value: 'value2' },
+      ],
+      metadata_length: 370,
+    }
+    writeMetadata(writer, withKvMetadata)
 
     // Write footer PAR1
     writer.appendUint32(0x31524150)
@@ -131,7 +138,7 @@ describe('writeMetadata', () => {
     const output = parquetMetadata(file)
 
     /** @type {FileMetaData} */
-    expect(output).toEqual(exampleMetadata)
+    expect(output).toEqual(withKvMetadata)
   })
 
 })

@@ -6,6 +6,11 @@ export interface ColumnData {
   type?: ParquetType
 }
 
+export interface KeyValue {
+  key: string
+  value?: string
+}
+
 export interface Writer {
   buffer: ArrayBuffer
   offset: number

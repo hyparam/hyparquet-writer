@@ -7,13 +7,14 @@ import { getSchemaElementForValues } from './schema.js'
  * Write data as parquet to an ArrayBuffer
  *
  * @import {ColumnChunk, DecodedArray, FileMetaData, SchemaElement, SchemaTree} from 'hyparquet'
- * @import {ColumnData} from '../src/types.js'
+ * @import {ColumnData, KeyValue} from '../src/types.js'
  * @param {object} options
  * @param {ColumnData[]} options.columnData
  * @param {boolean} [options.compressed]
+ * @param {KeyValue[]} [options.kvMetadata]
  * @returns {ArrayBuffer}
  */
-export function parquetWrite({ columnData, compressed = true }) {
+export function parquetWrite({ columnData, compressed = true, kvMetadata }) {
   const writer = new Writer()
 
   // Check if all columns have the same length
@@ -73,6 +74,7 @@ export function parquetWrite({ columnData, compressed = true }) {
       num_rows,
     }],
     metadata_length: 0,
+    key_value_metadata: kvMetadata,
   }
   // @ts-ignore don't want to actually serialize metadata_length
   delete metadata.metadata_length

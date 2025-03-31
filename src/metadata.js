@@ -1,4 +1,4 @@
-import { ConvertedType, Encoding, FieldRepetitionType, ParquetType } from 'hyparquet/src/constants.js'
+import { ConvertedType, Encoding, FieldRepetitionType, PageType, ParquetType } from 'hyparquet/src/constants.js'
 import { serializeTCompactProtocol } from './thrift.js'
 
 const CompressionCodec = [
@@ -51,10 +51,18 @@ export function writeMetadata(writer, metadata) {
           field_10: c.meta_data.index_page_offset,
           field_11: c.meta_data.dictionary_page_offset,
           field_12: c.meta_data.statistics,
-          field_13: c.meta_data.encoding_stats,
+          field_13: c.meta_data.encoding_stats && c.meta_data.encoding_stats.map(es => ({
+            field_1: PageType.indexOf(es.page_type),
+            field_2: Encoding.indexOf(es.encoding),
+            field_3: es.count,
+          })),
           field_14: c.meta_data.bloom_filter_offset,
           field_15: c.meta_data.bloom_filter_length,
-          field_16: c.meta_data.size_statistics,
+          field_16: c.meta_data.size_statistics && {
+            field_1: c.meta_data.size_statistics.unencoded_byte_array_data_bytes,
+            field_2: c.meta_data.size_statistics.repetition_level_histogram,
+            field_3: c.meta_data.size_statistics.definition_level_histogram,
+          },
         },
         field_4: c.offset_index_offset,
         field_5: c.offset_index_length,
@@ -65,12 +73,19 @@ export function writeMetadata(writer, metadata) {
       })),
       field_2: rg.total_byte_size,
       field_3: rg.num_rows,
-      field_4: rg.sorting_columns,
+      field_4: rg.sorting_columns && rg.sorting_columns.map(sc => ({
+        field_1: sc.column_idx,
+        field_2: sc.descending,
+        field_3: sc.nulls_first,
+      })),
       field_5: rg.file_offset,
       field_6: rg.total_compressed_size,
       field_7: rg.ordinal,
     })),
-    field_5: metadata.key_value_metadata,
+    field_5: metadata.key_value_metadata && metadata.key_value_metadata.map(kv => ({
+      field_1: kv.key,
+      field_2: kv.value,
+    })),
     field_6: metadata.created_by,
   }
 
