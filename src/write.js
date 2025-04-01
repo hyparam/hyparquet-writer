@@ -7,7 +7,8 @@ import { getSchemaElementForValues } from './schema.js'
  * Write data as parquet to an ArrayBuffer
  *
  * @import {ColumnChunk, DecodedArray, FileMetaData, SchemaElement, SchemaTree} from 'hyparquet'
- * @import {ColumnData, KeyValue} from '../src/types.js'
+ * @import {KeyValue} from 'hyparquet/src/types.js'
+ * @import {ColumnData} from '../src/types.js'
  * @param {object} options
  * @param {ColumnData[]} options.columnData
  * @param {boolean} [options.compressed]

@@ -1,16 +1,5 @@
-import { ConvertedType, Encoding, FieldRepetitionType, PageType, ParquetType } from 'hyparquet/src/constants.js'
+import { CompressionCodec, ConvertedType, Encoding, FieldRepetitionType, PageType, ParquetType } from 'hyparquet/src/constants.js'
 import { serializeTCompactProtocol } from './thrift.js'
-
-const CompressionCodec = [
-  'UNCOMPRESSED',
-  'SNAPPY',
-  'GZIP',
-  'LZO',
-  'BROTLI',
-  'LZ4',
-  'ZSTD',
-  'LZ4_RAW',
-]
 
 /**
  * @import {FileMetaData} from 'hyparquet'
