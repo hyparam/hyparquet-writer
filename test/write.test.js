@@ -172,6 +172,22 @@ describe('parquetWrite', () => {
     expect(result[5].double).not.toEqual(0)
   })
 
+  it('splits row groups', async () => {
+    const data = Array(200).fill(13)
+    const file = parquetWrite({ columnData: [{ name: 'int', data }], rowGroupSize: 100 })
+    const metadata = parquetMetadata(file)
+    expect(metadata.row_groups.length).toBe(2)
+    expect(metadata.row_groups[0].num_rows).toBe(100n)
+    expect(metadata.row_groups[1].num_rows).toBe(100n)
+    // round trip
+    const result = await parquetReadObjects({ file })
+    expect(result.length).toBe(200)
+    expect(result[0]).toEqual({ int: 13 })
+    expect(result[99]).toEqual({ int: 13 })
+    expect(result[100]).toEqual({ int: 13 })
+    expect(result[199]).toEqual({ int: 13 })
+  })
+
   it('throws for wrong type specified', () => {
     expect(() => parquetWrite({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'BOOLEAN' }] }))
       .toThrow('parquet cannot write mixed types')
