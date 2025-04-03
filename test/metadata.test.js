@@ -34,6 +34,11 @@ export const exampleMetadata = {
           total_uncompressed_size: 24n,
           total_compressed_size: 24n,
           data_page_offset: 4n,
+          statistics: {
+            null_count: 0n,
+            min_value: false,
+            max_value: true,
+          },
         },
       },
       {
@@ -48,6 +53,11 @@ export const exampleMetadata = {
           total_uncompressed_size: 39n,
           total_compressed_size: 39n,
           data_page_offset: 28n,
+          statistics: {
+            null_count: 0n,
+            min_value: 0,
+            max_value: 0x7fffffff,
+          },
         },
       },
       {
@@ -62,6 +72,11 @@ export const exampleMetadata = {
           total_uncompressed_size: 43n,
           total_compressed_size: 43n,
           data_page_offset: 67n,
+          statistics: {
+            null_count: 0n,
+            min_value: 0n,
+            max_value: 0x7fffffffffffffffn,
+          },
         },
       },
       {
@@ -76,6 +91,11 @@ export const exampleMetadata = {
           total_uncompressed_size: 51n,
           total_compressed_size: 51n,
           data_page_offset: 110n,
+          statistics: {
+            null_count: 0n,
+            min_value: 0,
+            max_value: 1e100,
+          },
         },
       },
       {
@@ -90,6 +110,11 @@ export const exampleMetadata = {
           total_uncompressed_size: 42n,
           total_compressed_size: 42n,
           data_page_offset: 161n,
+          statistics: {
+            null_count: 0n,
+            min_value: 'a',
+            max_value: 'd',
+          },
         },
       },
       {
@@ -104,13 +129,18 @@ export const exampleMetadata = {
           total_uncompressed_size: 26n,
           total_compressed_size: 26n,
           data_page_offset: 203n,
+          statistics: {
+            null_count: 2n,
+            min_value: false,
+            max_value: true,
+          },
         },
       },
     ],
     total_byte_size: 225n,
     num_rows: 4n,
   }],
-  metadata_length: 338,
+  metadata_length: 432,
 }
 
 describe('writeMetadata', () => {
@@ -127,7 +157,7 @@ describe('writeMetadata', () => {
         { key: 'key1', value: 'value1' },
         { key: 'key2', value: 'value2' },
       ],
-      metadata_length: 370,
+      metadata_length: 464,
     }
     writeMetadata(writer, withKvMetadata)
 

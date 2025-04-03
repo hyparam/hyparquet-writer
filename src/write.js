@@ -12,11 +12,12 @@ import { getSchemaElementForValues } from './schema.js'
  * @param {object} options
  * @param {ColumnData[]} options.columnData
  * @param {boolean} [options.compressed]
+ * @param {boolean} [options.statistics]
  * @param {number} [options.rowGroupSize]
  * @param {KeyValue[]} [options.kvMetadata]
  * @returns {ArrayBuffer}
  */
-export function parquetWrite({ columnData, compressed = true, rowGroupSize = 100000, kvMetadata }) {
+export function parquetWrite({ columnData, compressed = true, statistics = true, rowGroupSize = 100000, kvMetadata }) {
   const num_rows = columnData.length ? BigInt(columnData[0].data.length) : 0n
   const writer = new Writer()
 
@@ -54,7 +55,7 @@ export function parquetWrite({ columnData, compressed = true, rowGroupSize = 100
       const { name, data } = columnData[i]
       const file_offset = BigInt(writer.offset)
       const schemaPath = [schema[0], schema[i + 1]]
-      const meta_data = writeColumn(writer, schemaPath, data, compressed)
+      const meta_data = writeColumn(writer, schemaPath, data, compressed, statistics)
 
       // save metadata
       columns.push({

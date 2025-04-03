@@ -8,20 +8,46 @@ import { serializeTCompactProtocol } from './thrift.js'
 import { Writer } from './writer.js'
 
 /**
- * @import {ColumnMetaData, DecodedArray, PageHeader, ParquetType, SchemaElement} from 'hyparquet'
+ * @import {ColumnMetaData, DecodedArray, PageHeader, ParquetType, SchemaElement, Statistics} from 'hyparquet'
  * @param {Writer} writer
  * @param {SchemaElement[]} schemaPath
  * @param {DecodedArray} values
  * @param {boolean} compressed
+ * @param {boolean} stats
  * @returns {ColumnMetaData}
  */
-export function writeColumn(writer, schemaPath, values, compressed) {
+export function writeColumn(writer, schemaPath, values, compressed, stats) {
   const schemaElement = schemaPath[schemaPath.length - 1]
   const { type } = schemaElement
   if (!type) throw new Error(`column ${schemaElement.name} cannot determine type`)
   let dataType = type
   const offsetStart = writer.offset
   const num_values = values.length
+  /** @type {Statistics | undefined} */
+  let statistics = undefined
+
+  // Compute statistics
+  if (stats) {
+    statistics = {
+      min_value: undefined,
+      max_value: undefined,
+      null_count: 0n,
+    }
+    let null_count = 0n
+    for (const value of values) {
+      if (value === null || value === undefined) {
+        null_count++
+        continue
+      }
+      if (statistics.min_value === undefined || value < statistics.min_value) {
+        statistics.min_value = value
+      }
+      if (statistics.max_value === undefined || value > statistics.max_value) {
+        statistics.max_value = value
+      }
+    }
+    statistics.null_count = null_count
+  }
 
   // Write levels to temp buffer
   const levels = new Writer()
@@ -108,6 +134,7 @@ export function writeColumn(writer, schemaPath, values, compressed) {
     total_uncompressed_size: BigInt(writer.offset - offsetStart),
     data_page_offset,
     dictionary_page_offset,
+    statistics,
   }
 }
 

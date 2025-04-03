@@ -48,9 +48,9 @@ describe('parquetWrite', () => {
     bool[500] = true
     bool[9999] = false
     const file = parquetWrite({ columnData: [{ name: 'bool', data: bool }] })
-    expect(file.byteLength).toBe(148)
+    expect(file.byteLength).toBe(160)
     const metadata = parquetMetadata(file)
-    expect(metadata.metadata_length).toBe(86)
+    expect(metadata.metadata_length).toBe(98)
     const result = await parquetReadObjects({ file })
     expect(result.length).toBe(10000)
     expect(result[0]).toEqual({ bool: null })
@@ -64,27 +64,34 @@ describe('parquetWrite', () => {
   it('efficiently serializes long string', () => {
     const str = 'a'.repeat(10000)
     const file = parquetWrite({ columnData: [{ name: 'string', data: [str] }] })
-    expect(file.byteLength).toBe(606)
+    expect(file.byteLength).toBe(646)
   })
 
   it('less efficiently serializes string without compression', () => {
     const str = 'a'.repeat(10000)
     const columnData = [{ name: 'string', data: [str] }]
     const file = parquetWrite({ columnData, compressed: false })
-    expect(file.byteLength).toBe(10135)
+    expect(file.byteLength).toBe(10175)
   })
 
   it('efficiently serializes column with few distinct values', async () => {
     const data = Array(100000)
       .fill('aaaa', 0, 50000)
       .fill('bbbb', 50000, 100000)
-    const file = parquetWrite({ columnData: [{ name: 'string', data }] })
+    const file = parquetWrite({ columnData: [{ name: 'string', data }], statistics: false })
     expect(file.byteLength).toBe(178)
     // round trip
     const result = await parquetReadObjects({ file })
     expect(result.length).toBe(100000)
     expect(result[0]).toEqual({ string: 'aaaa' })
     expect(result[50000]).toEqual({ string: 'bbbb' })
+  })
+
+  it('writes statistics when enabled', () => {
+    const withStats = parquetWrite({ columnData: basicData, statistics: true })
+    const noStats = parquetWrite({ columnData: basicData, statistics: false })
+    expect(withStats.byteLength).toBe(669)
+    expect(noStats.byteLength).toBe(575)
   })
 
   it('serializes list types', async () => {

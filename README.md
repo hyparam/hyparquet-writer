@@ -26,9 +26,10 @@ const arrayBuffer = parquetWrite({
 
 ## Options
 
- - `compression`: Boolean defaults to `true`. Set to `false` to disable snappy compression.
- - `rowGroupSize`: Integer number of rows to include in each row group.
- - `kvMetadata`: Extra key-value metadata to store in the parquet footer.
+ - `compression`: use snappy compression (default true)
+ - `statistics`: write column statistics (default true)
+ - `rowGroupSize`: number of rows in each row group (default 100000)
+ - `kvMetadata`: extra key-value metadata
 
 ## References
 

@@ -1,5 +1,6 @@
 import { CompressionCodec, ConvertedType, Encoding, FieldRepetitionType, PageType, ParquetType } from 'hyparquet/src/constants.js'
 import { serializeTCompactProtocol } from './thrift.js'
+import { unconvertMetadata } from './unconvert.js'
 
 /**
  * @import {FileMetaData} from 'hyparquet'
@@ -24,7 +25,7 @@ export function writeMetadata(writer, metadata) {
     })),
     field_3: metadata.num_rows,
     field_4: metadata.row_groups.map(rg => ({
-      field_1: rg.columns.map(c => ({
+      field_1: rg.columns.map((c, columnIndex) => ({
         field_1: c.file_path,
         field_2: c.file_offset,
         field_3: c.meta_data && {
@@ -39,7 +40,16 @@ export function writeMetadata(writer, metadata) {
           field_9: c.meta_data.data_page_offset,
           field_10: c.meta_data.index_page_offset,
           field_11: c.meta_data.dictionary_page_offset,
-          field_12: c.meta_data.statistics,
+          field_12: c.meta_data.statistics && {
+            field_1: unconvertMetadata(c.meta_data.statistics.max, metadata.schema[columnIndex + 1]),
+            field_2: unconvertMetadata(c.meta_data.statistics.min, metadata.schema[columnIndex + 1]),
+            field_3: c.meta_data.statistics.null_count,
+            field_4: c.meta_data.statistics.distinct_count,
+            field_5: unconvertMetadata(c.meta_data.statistics.max_value, metadata.schema[columnIndex + 1]),
+            field_6: unconvertMetadata(c.meta_data.statistics.min_value, metadata.schema[columnIndex + 1]),
+            field_7: c.meta_data.statistics.is_max_value_exact,
+            field_8: c.meta_data.statistics.is_min_value_exact,
+          },
           field_13: c.meta_data.encoding_stats && c.meta_data.encoding_stats.map(es => ({
             field_1: PageType.indexOf(es.page_type),
             field_2: Encoding.indexOf(es.encoding),
