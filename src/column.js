@@ -1,5 +1,5 @@
 import { Encoding, PageType } from 'hyparquet/src/constants.js'
-import { unconvert } from './convert.js'
+import { unconvert } from './unconvert.js'
 import { writeRleBitPackedHybrid } from './encoding.js'
 import { writePlain } from './plain.js'
 import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
