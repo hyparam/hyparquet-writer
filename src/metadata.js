@@ -69,7 +69,7 @@ export function writeMetadata(writer, metadata) {
       })),
       field_5: rg.file_offset,
       field_6: rg.total_compressed_size,
-      field_7: rg.ordinal,
+      // field_7: rg.ordinal, // should be int16
     })),
     field_5: metadata.key_value_metadata && metadata.key_value_metadata.map(kv => ({
       field_1: kv.key,

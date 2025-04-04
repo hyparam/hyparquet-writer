@@ -40,7 +40,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "hyparquet": "1.10.3"
+    "hyparquet": "1.10.4"
   },
   "devDependencies": {
     "@babel/eslint-parser": "7.27.0",

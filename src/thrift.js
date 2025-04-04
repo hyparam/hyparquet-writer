@@ -21,6 +21,7 @@ const CompactType = {
  *
  * Expects keys named like "field_1", "field_2", etc. in ascending order.
  *
+ * @import {ThriftType} from 'hyparquet/src/types.js'
  * @import {Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {Record<string, any>} data
@@ -65,35 +66,15 @@ export function serializeTCompactProtocol(writer, data) {
  * @returns {number} CompactType
  */
 function getCompactTypeForValue(value) {
-  if (value === true) {
-    return CompactType.TRUE
-  }
-  if (value === false) {
-    return CompactType.FALSE
-  }
-  if (typeof value === 'number') {
-    // We'll store integer as I32, otherwise DOUBLE
-    return Number.isInteger(value) ? CompactType.I32 : CompactType.DOUBLE
-  }
-  if (typeof value === 'bigint') {
-    return CompactType.I64
-  }
-  if (typeof value === 'string') {
-    // Possibly treat 32-hex as a 16-byte UUID
-    if (/^[0-9a-fA-F]{32}$/.test(value)) {
-      return CompactType.UUID
-    }
-    return CompactType.BINARY
-  }
-  if (value instanceof Uint8Array) {
-    return CompactType.BINARY
-  }
-  if (Array.isArray(value)) {
-    return CompactType.LIST
-  }
-  if (value && typeof value === 'object') {
-    return CompactType.STRUCT
-  }
+  if (value === true) return CompactType.TRUE
+  if (value === false) return CompactType.FALSE
+  if (Number.isInteger(value)) return CompactType.I32
+  if (typeof value === 'number') return CompactType.DOUBLE
+  if (typeof value === 'bigint') return CompactType.I64
+  if (typeof value === 'string') return CompactType.BINARY
+  if (value instanceof Uint8Array) return CompactType.BINARY
+  if (Array.isArray(value)) return CompactType.LIST
+  if (value && typeof value === 'object') return CompactType.STRUCT
   throw new Error(`Cannot determine thrift compact type for: ${value}`)
 }
 
@@ -102,52 +83,36 @@ function getCompactTypeForValue(value) {
  *
  * @param {Writer} writer
  * @param {number} type
- * @param {any} value
+ * @param {ThriftType} value
  */
 function writeElement(writer, type, value) {
-  switch (type) {
-  case CompactType.TRUE:
-  case CompactType.FALSE:
-    return // true/false is stored in the type
-  case CompactType.BYTE:
+  // true/false is stored in the type
+  if (type === CompactType.TRUE) return
+  if (type === CompactType.FALSE) return
+  if (type === CompactType.BYTE && typeof value === 'number') {
     writer.appendUint8(value)
-    return
-  case CompactType.I16:
-  case CompactType.I32: {
-    // ZigZag -> varint
-    // For 32-bit int: zigzag = (n << 1) ^ (n >> 31)
+  } else if (type === CompactType.I32 && typeof value === 'number') {
     const zigzag = value << 1 ^ value >> 31
     writer.appendVarInt(zigzag)
-    return
-  }
-  case CompactType.I64: {
+  } else if (type === CompactType.I64 && typeof value === 'bigint') {
     // For 64-bit (bigint) we do (value << 1n) ^ (value >> 63n) in zigzag
-    const n = BigInt(value)
-    const zigzag = n << 1n ^ n >> 63n
+    const zigzag = value << 1n ^ value >> 63n
     writer.appendVarBigInt(zigzag)
-    return
-  }
-  case CompactType.DOUBLE:
+  } else if (type === CompactType.DOUBLE && typeof value === 'number') {
     writer.appendFloat64(value)
-    return
-  case CompactType.BINARY: {
+  } else if (type === CompactType.BINARY && typeof value === 'string') {
     // store length as a varint, then raw bytes
-    let bytes
-    if (typeof value === 'string') {
-      bytes = new TextEncoder().encode(value)
-    } else {
-      // e.g. Uint8Array
-      bytes = value
-    }
+    const bytes = new TextEncoder().encode(value)
     writer.appendVarInt(bytes.length)
-    writer.appendBuffer(bytes)
-    return
-  }
-  case CompactType.LIST: {
+    writer.appendBytes(bytes)
+  } else if (type === CompactType.BINARY && value instanceof Uint8Array) {
+    // store length as a varint, then raw bytes
+    writer.appendVarInt(value.byteLength)
+    writer.appendBytes(value)
+  } else if (type === CompactType.LIST && Array.isArray(value)) {
     // Must store (size << 4) | elementType
     // We'll guess the element type from the first element
-    const arr = value
-    const size = arr.length
+    const size = value.length
     if (size === 0) {
       // (0 << 4) | type for an empty list – pick BYTE arbitrarily
       writer.appendUint8(0 << 4 | CompactType.BYTE)
@@ -155,7 +120,7 @@ function writeElement(writer, type, value) {
     }
 
     // TODO: Check for heterogeneous lists?
-    const elemType = getCompactTypeForValue(arr[0])
+    const elemType = getCompactTypeForValue(value[0])
 
     const sizeNibble = size > 14 ? 15 : size
     writer.appendUint8(sizeNibble << 4 | elemType)
@@ -166,18 +131,16 @@ function writeElement(writer, type, value) {
     // Special trick for booleans in a list
     if (elemType === CompactType.TRUE || elemType === CompactType.FALSE) {
       // Write each boolean as a single 0 or 1 byte
-      for (const v of arr) {
+      for (const v of value) {
         writer.appendUint8(v ? 1 : 0)
       }
     } else {
       // Otherwise write them out normally
-      for (const v of arr) {
+      for (const v of value) {
         writeElement(writer, elemType, v)
       }
     }
-    return
-  }
-  case CompactType.STRUCT: {
+  } else if (type === CompactType.STRUCT && typeof value === 'object') {
     // Recursively write sub-fields as "field_N: val", end with STOP
     let lastFid = 0
     for (const [k, v] of Object.entries(value)) {
@@ -198,21 +161,7 @@ function writeElement(writer, type, value) {
     }
     // Write STOP
     writer.appendUint8(CompactType.STOP)
-    return
-  }
-  case CompactType.UUID: {
-    // Expect a 32-hex string. Write 16 bytes
-    if (typeof value !== 'string' || value.length !== 32) {
-      throw new Error(`Expected 32-hex string for UUID, got ${value}`)
-    }
-    for (let i = 0; i < 16; i++) {
-      const byte = parseInt(value.slice(i * 2, i * 2 + 2), 16)
-      writer.appendUint8(byte)
-    }
-    return
-  }
-
-  default:
-    throw new Error(`Unhandled type in writeElement: ${type}`)
+  } else {
+    throw new Error(`unhandled type in writeElement: ${type} for value ${value}`)
   }
 }

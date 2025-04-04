@@ -24,8 +24,8 @@ describe('serializeTCompactProtocol', () => {
       field_5: 0x7fffffff, // I32
       field_6: BigInt('0x7fffffffffffffff'), // I64
       field_7: 123.456, // DOUBLE
-      // BINARY (string as Uint8Array):
-      field_8: new TextEncoder().encode('Hello, Thrift!'),
+      field_8: 'Hello, Thrift!',
+      field_9: new TextEncoder().encode('Hello, Thrift!'),
     }
 
     const writer = new Writer()
@@ -41,8 +41,9 @@ describe('serializeTCompactProtocol', () => {
     expect(result.field_6).toBe(BigInt('0x7fffffffffffffff'))
     expect(result.field_7).toBeCloseTo(123.456)
     // Decode the binary back into a string
-    const decodedString = new TextDecoder().decode(result.field_8)
-    expect(decodedString).toBe('Hello, Thrift!')
+    const decoder = new TextDecoder()
+    expect(decoder.decode(result.field_8)).toBe('Hello, Thrift!')
+    expect(decoder.decode(result.field_9)).toBe('Hello, Thrift!')
   })
 
   it('serializes a nested STRUCT and LIST of booleans', () => {
@@ -67,20 +68,6 @@ describe('serializeTCompactProtocol', () => {
     expect(result.field_1.field_2.field_1).toBe(true)
     expect(result.field_1.field_2.field_2).toBe(false)
     expect(result.field_2).toEqual([true, false, true, false])
-  })
-
-  it('serializes a UUID correctly', () => {
-    // 32 hex chars => 16 bytes
-    const uuidHex = '00112233445566778899aabbccddeeff'
-    const data = { field_1: uuidHex }
-
-    const writer = new Writer()
-    serializeTCompactProtocol(writer, data)
-    const buf = writer.buffer.slice(0, writer.offset)
-    const result = roundTripDeserialize(buf)
-
-    // Should come back as the same string
-    expect(result.field_1).toBe(uuidHex)
   })
 
   it('handles empty object (only STOP)', () => {
