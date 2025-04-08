@@ -11,6 +11,10 @@ export default [
       globals: {
         'TextDecoder': false,
         'TextEncoder': false,
+        // for benchmark:
+        'console': false,
+        'fetch': false,
+        'performance': false,
       },
     },
 

@@ -104,9 +104,16 @@ function writePlainDouble(writer, values) {
  */
 function writePlainByteArray(writer, values) {
   for (const value of values) {
-    if (!(value instanceof Uint8Array)) throw new Error('parquet expected Uint8Array value')
-    writer.appendUint32(value.length)
-    writer.appendBytes(value)
+    let bytes = value
+    if (typeof bytes === 'string') {
+      // convert string to Uint8Array
+      bytes = new TextEncoder().encode(value)
+    }
+    if (!(bytes instanceof Uint8Array)) {
+      throw new Error('parquet byte array expected Uint8Array value')
+    }
+    writer.appendUint32(bytes.length)
+    writer.appendBytes(bytes)
   }
 }
 
