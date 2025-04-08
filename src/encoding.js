@@ -1,7 +1,8 @@
-import { Writer } from './writer.js'
+import { ByteWriter } from './bytewriter.js'
 
 /**
  * @import {DecodedArray} from 'hyparquet'
+ * @import {Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {DecodedArray} values
  * @returns {number} bytes written
@@ -12,9 +13,9 @@ export function writeRleBitPackedHybrid(writer, values) {
   const bitWidth = Math.ceil(Math.log2(Math.max(...values) + 1))
 
   // try both RLE and bit-packed and choose the best
-  const rle = new Writer()
+  const rle = new ByteWriter()
   writeRle(rle, values, bitWidth)
-  const bitPacked = new Writer()
+  const bitPacked = new ByteWriter()
   writeBitPacked(bitPacked, values, bitWidth)
 
   if (rle.offset < bitPacked.offset) {

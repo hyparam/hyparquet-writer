@@ -14,7 +14,7 @@ const globalHashTables = new Array(MAX_HASH_TABLE_BITS + 1)
  * Compress snappy data.
  * Writes Snappy-compressed bytes into a writer.
  *
- * @import {Writer} from '../src/writer.js'
+ * @import {Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {Uint8Array} input - uncompressed data
  */

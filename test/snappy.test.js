@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { snappyCompress } from '../src/snappy.js'
-import { Writer } from '../src/writer.js'
+import { ByteWriter } from '../src/bytewriter.js'
 import { snappyUncompress } from 'hyparquet'
 
 describe('snappy compress', () => {
@@ -42,7 +42,7 @@ describe('snappy compress', () => {
       uncompressed: new Uint8Array([5]),
     },
   ])('compresses valid input %p', ({ compressed, uncompressed }) => {
-    const writer = new Writer()
+    const writer = new ByteWriter()
     const encoder = new TextEncoder()
     const input = typeof uncompressed === 'string' ? encoder.encode(uncompressed) : new Uint8Array(uncompressed)
     snappyCompress(writer, input)

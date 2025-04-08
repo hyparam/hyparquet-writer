@@ -1,28 +1,29 @@
 import { writeColumn } from './column.js'
-import { Writer } from './writer.js'
 import { writeMetadata } from './metadata.js'
 
 /**
  * Create a new ParquetWriter.
  *
- * @import {ColumnChunk, FileMetaData, RowGroup, SchemaElement, SchemaTree} from 'hyparquet'
+ * @import {ColumnChunk, FileMetaData, RowGroup, SchemaElement} from 'hyparquet'
  * @import {KeyValue} from 'hyparquet/src/types.js'
- * @import {ColumnData} from './types.js'
+ * @import {ColumnData, Writer} from '../src/types.js'
  * @param {object} options
+ * @param {Writer} options.writer
  * @param {SchemaElement[]} options.schema
  * @param {boolean} [options.compressed]
  * @param {boolean} [options.statistics]
  * @param {KeyValue[]} [options.kvMetadata]
  */
-export function ParquetWriter({ schema, compressed = true, statistics = true, kvMetadata }) {
-  /** @type {RowGroup[]} */
-  this.row_groups = []
+export function ParquetWriter({ writer, schema, compressed = true, statistics = true, kvMetadata }) {
+  this.writer = writer
   this.schema = schema
   this.compressed = compressed
   this.statistics = statistics
   this.kvMetadata = kvMetadata
+
+  /** @type {RowGroup[]} */
+  this.row_groups = []
   this.num_rows = BigInt(0)
-  this.writer = new Writer()
 
   // write header PAR1
   this.writer.appendUint32(0x31524150)
@@ -72,9 +73,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) 
 }
 
 /**
- * Finish writing the file and return the buffer.
- *
- * @returns {ArrayBuffer}
+ * Finish writing the file.
  */
 ParquetWriter.prototype.finish = function() {
   // write metadata
@@ -94,6 +93,5 @@ ParquetWriter.prototype.finish = function() {
 
   // write footer PAR1
   this.writer.appendUint32(0x31524150)
-
-  return this.writer.getBuffer()
+  this.writer.finish()
 }

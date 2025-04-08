@@ -1,6 +1,6 @@
 import { parquetMetadata } from 'hyparquet'
 import { describe, expect, it } from 'vitest'
-import { Writer } from '../src/writer.js'
+import { ByteWriter } from '../src/bytewriter.js'
 import { writeMetadata } from '../src/metadata.js'
 
 /**
@@ -145,7 +145,7 @@ export const exampleMetadata = {
 
 describe('writeMetadata', () => {
   it('writes metadata and parses in hyparquet', () => {
-    const writer = new Writer()
+    const writer = new ByteWriter()
 
     // Write header PAR1
     writer.appendUint32(0x31524150)

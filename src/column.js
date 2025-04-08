@@ -5,10 +5,11 @@ import { writePlain } from './plain.js'
 import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
 import { snappyCompress } from './snappy.js'
 import { serializeTCompactProtocol } from './thrift.js'
-import { Writer } from './writer.js'
+import { ByteWriter } from './bytewriter.js'
 
 /**
  * @import {ColumnMetaData, DecodedArray, PageHeader, ParquetType, SchemaElement, Statistics} from 'hyparquet'
+ * @import {Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {SchemaElement[]} schemaPath
  * @param {DecodedArray} values
@@ -50,7 +51,7 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
   }
 
   // Write levels to temp buffer
-  const levels = new Writer()
+  const levels = new ByteWriter()
   const { definition_levels_byte_length, repetition_levels_byte_length, num_nulls } = writeLevels(levels, schemaPath, values)
 
   // dictionary encoding
@@ -81,7 +82,7 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
   }
 
   // write page data to temp buffer
-  const page = new Writer()
+  const page = new ByteWriter()
   /** @type {import('hyparquet').Encoding} */
   const encoding = dictionary ? 'RLE_DICTIONARY' : 'PLAIN'
   if (dictionary) {
@@ -95,7 +96,7 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
   // compress page data
   let compressedPage = page
   if (compressed) {
-    compressedPage = new Writer()
+    compressedPage = new ByteWriter()
     snappyCompress(compressedPage, new Uint8Array(page.getBuffer()))
   }
 
@@ -187,13 +188,13 @@ function useDictionary(values, type) {
  * @param {boolean} compressed
  */
 function writeDictionaryPage(writer, dictionary, type, compressed) {
-  const dictionaryPage = new Writer()
+  const dictionaryPage = new ByteWriter()
   writePlain(dictionaryPage, dictionary, type)
 
   // compress dictionary page data
   let compressedDictionaryPage = dictionaryPage
   if (compressed) {
-    compressedDictionaryPage = new Writer()
+    compressedDictionaryPage = new ByteWriter()
     snappyCompress(compressedDictionaryPage, new Uint8Array(dictionaryPage.getBuffer()))
   }
 

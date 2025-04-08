@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Writer } from '../src/writer.js'
+import { ByteWriter } from '../src/bytewriter.js'
 import { writeRleBitPackedHybrid } from '../src/encoding.js'
 import { readRleBitPackedHybrid } from 'hyparquet/src/encoding.js'
 
@@ -13,7 +13,7 @@ function roundTripDeserialize(values) {
   const bitWidth = Math.ceil(Math.log2(Math.max(...values) + 1))
 
   // Serialize the values using writeRleBitPackedHybrid
-  const writer = new Writer()
+  const writer = new ByteWriter()
   writeRleBitPackedHybrid(writer, values)
   const buffer = writer.getBuffer()
   const reader = { view: new DataView(buffer), offset: 0 }

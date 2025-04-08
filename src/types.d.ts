@@ -9,6 +9,9 @@ export interface ColumnData {
 export interface Writer {
   buffer: ArrayBuffer
   offset: number
+  view: DataView
+  ensure(size: number): void
+  finish(): void
   getBuffer(): ArrayBuffer
   appendUint8(value: number): void
   appendUint32(value: number): void

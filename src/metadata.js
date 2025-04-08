@@ -4,7 +4,7 @@ import { unconvertMetadata } from './unconvert.js'
 
 /**
  * @import {FileMetaData} from 'hyparquet'
- * @import {Writer} from './writer.js'
+ * @import {Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {FileMetaData} metadata
  */

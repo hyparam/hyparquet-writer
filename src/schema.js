@@ -95,3 +95,32 @@ export function getMaxDefinitionLevel(schemaPath) {
   }
   return maxLevel
 }
+
+/**
+ * Convert column data to schema.
+ *
+ * @import {ColumnData} from '../src/types.js'
+ * @param {ColumnData[]} columnData
+ * @returns {SchemaElement[]}
+ */
+export function schemaFromColumnData(columnData) {
+  /** @type {SchemaElement[]} */
+  const schema = [{
+    name: 'root',
+    num_children: columnData.length,
+  }]
+  let num_rows = 0
+  for (const { name, data, type } of columnData) {
+    // check if all columns have the same length
+    if (num_rows === 0) {
+      num_rows = data.length
+    } else if (num_rows !== data.length) {
+      throw new Error('columns must have the same length')
+    }
+    // auto-detect type
+    const schemaElement = getSchemaElementForValues(name, data, type)
+    if (!schemaElement.type) throw new Error(`column ${name} cannot determine type`)
+    schema.push(schemaElement)
+  }
+  return schema
+}

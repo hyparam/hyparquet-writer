@@ -1,7 +1,7 @@
 import { deserializeTCompactProtocol } from 'hyparquet/src/thrift.js'
 import { describe, expect, it } from 'vitest'
 import { serializeTCompactProtocol } from '../src/thrift.js'
-import { Writer } from '../src/writer.js'
+import { ByteWriter } from '../src/bytewriter.js'
 
 /**
  * Utility to decode a Thrift-serialized buffer and return the parsed object.
@@ -28,7 +28,7 @@ describe('serializeTCompactProtocol', () => {
       field_9: new TextEncoder().encode('Hello, Thrift!'),
     }
 
-    const writer = new Writer()
+    const writer = new ByteWriter()
     serializeTCompactProtocol(writer, data)
     const buf = writer.buffer.slice(0, writer.offset)
     const result = roundTripDeserialize(buf)
@@ -59,7 +59,7 @@ describe('serializeTCompactProtocol', () => {
       field_2: [true, false, true, false],
     }
 
-    const writer = new Writer()
+    const writer = new ByteWriter()
     serializeTCompactProtocol(writer, data)
     const buf = writer.buffer.slice(0, writer.offset)
     const result = roundTripDeserialize(buf)
@@ -72,7 +72,7 @@ describe('serializeTCompactProtocol', () => {
 
   it('handles empty object (only STOP)', () => {
     const data = {}
-    const writer = new Writer()
+    const writer = new ByteWriter()
     serializeTCompactProtocol(writer, data)
     const buf = writer.buffer.slice(0, writer.offset)
     const arr = new Uint8Array(buf)
@@ -89,7 +89,7 @@ describe('serializeTCompactProtocol', () => {
       field_2: 2,
       field_1: 1, // field_1 is out of order (less than field_2)
     }
-    const writer = new Writer()
+    const writer = new ByteWriter()
     expect(() => serializeTCompactProtocol(writer, invalidData)).toThrow()
   })
 })

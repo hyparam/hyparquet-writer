@@ -1,10 +1,11 @@
 
 /**
- * Self-expanding buffer view
+ * Generic buffered writer.
  *
- * @returns {import('../src/types.js').Writer}
+ * @import {Writer} from '../src/types.js'
+ * @returns {Writer}
  */
-export function Writer() {
+export function ByteWriter() {
   this.buffer = new ArrayBuffer(1024)
   this.offset = 0
   this.view = new DataView(this.buffer)
@@ -14,24 +15,29 @@ export function Writer() {
 /**
  * @param {number} size
  */
-Writer.prototype.ensure = function(size) {
+ByteWriter.prototype.ensure = function(size) {
+  // auto-expanding buffer
   if (this.offset + size > this.buffer.byteLength) {
     const newSize = Math.max(this.buffer.byteLength * 2, this.offset + size)
     const newBuffer = new ArrayBuffer(newSize)
+    // TODO: save buffers until later and merge once?
     new Uint8Array(newBuffer).set(new Uint8Array(this.buffer))
     this.buffer = newBuffer
     this.view = new DataView(this.buffer)
   }
 }
 
-Writer.prototype.getBuffer = function() {
+ByteWriter.prototype.finish = function() {
+}
+
+ByteWriter.prototype.getBuffer = function() {
   return this.buffer.slice(0, this.offset)
 }
 
 /**
  * @param {number} value
  */
-Writer.prototype.appendUint8 = function(value) {
+ByteWriter.prototype.appendUint8 = function(value) {
   this.ensure(this.offset + 1)
   this.view.setUint8(this.offset, value)
   this.offset++
@@ -40,7 +46,7 @@ Writer.prototype.appendUint8 = function(value) {
 /**
  * @param {number} value
  */
-Writer.prototype.appendUint32 = function(value) {
+ByteWriter.prototype.appendUint32 = function(value) {
   this.ensure(this.offset + 4)
   this.view.setUint32(this.offset, value, true)
   this.offset += 4
@@ -49,7 +55,7 @@ Writer.prototype.appendUint32 = function(value) {
 /**
  * @param {number} value
  */
-Writer.prototype.appendInt32 = function(value) {
+ByteWriter.prototype.appendInt32 = function(value) {
   this.ensure(this.offset + 4)
   this.view.setInt32(this.offset, value, true)
   this.offset += 4
@@ -58,7 +64,7 @@ Writer.prototype.appendInt32 = function(value) {
 /**
  * @param {bigint} value
  */
-Writer.prototype.appendInt64 = function(value) {
+ByteWriter.prototype.appendInt64 = function(value) {
   this.ensure(this.offset + 8)
   this.view.setBigInt64(this.offset, BigInt(value), true)
   this.offset += 8
@@ -67,7 +73,7 @@ Writer.prototype.appendInt64 = function(value) {
 /**
  * @param {number} value
  */
-Writer.prototype.appendFloat64 = function(value) {
+ByteWriter.prototype.appendFloat64 = function(value) {
   this.ensure(this.offset + 8)
   this.view.setFloat64(this.offset, value, true)
   this.offset += 8
@@ -76,14 +82,14 @@ Writer.prototype.appendFloat64 = function(value) {
 /**
  * @param {ArrayBuffer} value
  */
-Writer.prototype.appendBuffer = function(value) {
+ByteWriter.prototype.appendBuffer = function(value) {
   this.appendBytes(new Uint8Array(value))
 }
 
 /**
  * @param {Uint8Array} value
  */
-Writer.prototype.appendBytes = function(value) {
+ByteWriter.prototype.appendBytes = function(value) {
   this.ensure(this.offset + value.length)
   new Uint8Array(this.buffer, this.offset, value.length).set(value)
   this.offset += value.length
@@ -95,7 +101,7 @@ Writer.prototype.appendBytes = function(value) {
  *
  * @param {number} value
  */
-Writer.prototype.appendVarInt = function(value) {
+ByteWriter.prototype.appendVarInt = function(value) {
   while (true) {
     if ((value & ~0x7f) === 0) {
       // fits in 7 bits
@@ -114,7 +120,7 @@ Writer.prototype.appendVarInt = function(value) {
  *
  * @param {bigint} value
  */
-Writer.prototype.appendVarBigInt = function(value) {
+ByteWriter.prototype.appendVarBigInt = function(value) {
   while (true) {
     if ((value & ~0x7fn) === 0n) {
       // fits in 7 bits

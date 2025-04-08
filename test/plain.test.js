@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { Writer } from '../src/writer.js'
+import { ByteWriter } from '../src/bytewriter.js'
 import { writePlain } from '../src/plain.js'
 
 describe('writePlain', () => {
   it('writes BOOLEAN (multiple of 8 bits, plus leftover)', () => {
-    const writer = new Writer()
+    const writer = new ByteWriter()
     const booleans = [true, false, true, true, false, false, false, true, true]
     writePlain(writer, booleans, 'BOOLEAN')
 
@@ -14,7 +14,7 @@ describe('writePlain', () => {
   })
 
   it('writes INT32', () => {
-    const writer = new Writer()
+    const writer = new ByteWriter()
     const ints = [0, 1, 255, 256, 65535, -1, -2147483648, 2147483647]
     writePlain(writer, ints, 'INT32')
 
@@ -28,7 +28,7 @@ describe('writePlain', () => {
   })
 
   it('writes INT64', () => {
-    const writer = new Writer()
+    const writer = new ByteWriter()
     const bigints = [0n, 1n, 42n, BigInt(2 ** 53 - 1)]
     writePlain(writer, bigints, 'INT64')
 
@@ -42,7 +42,7 @@ describe('writePlain', () => {
   })
 
   it('writes DOUBLE', () => {
-    const writer = new Writer()
+    const writer = new ByteWriter()
     const doubles = [0, 3.14, -2.71, Infinity, -Infinity, NaN]
     writePlain(writer, doubles, 'DOUBLE')
 
@@ -60,7 +60,7 @@ describe('writePlain', () => {
   })
 
   it('writes BYTE_ARRAY', () => {
-    const writer = new Writer()
+    const writer = new ByteWriter()
     const strings = ['a', 'b', 'c', 'd']
     // strings must be pre-converted to Uint8Array
     const encoder = new TextEncoder()
@@ -81,7 +81,7 @@ describe('writePlain', () => {
   })
 
   it('throws error on unsupported type', () => {
-    const writer = new Writer()
+    const writer = new ByteWriter()
     expect(() => writePlain(writer, [1, 2, 3], 'INT96'))
       .toThrow(/parquet unsupported type/i)
   })
