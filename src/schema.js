@@ -13,10 +13,12 @@ export function getSchemaElementForValues(name, values, type) {
   if (values instanceof BigInt64Array) return { name, type: 'INT64', repetition_type: 'REQUIRED' }
   if (values instanceof Float32Array) return { name, type: 'FLOAT', repetition_type: 'REQUIRED' }
   if (values instanceof Float64Array) return { name, type: 'DOUBLE', repetition_type: 'REQUIRED' }
+
   /** @type {FieldRepetitionType} */
   let repetition_type = 'REQUIRED'
   /** @type {ConvertedType | undefined} */
   let converted_type = undefined
+
   for (const value of values) {
     if (value === null || value === undefined) {
       repetition_type = 'OPTIONAL'

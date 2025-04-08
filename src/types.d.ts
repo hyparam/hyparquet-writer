@@ -1,4 +1,14 @@
-import { DecodedArray, ParquetType } from "hyparquet"
+import type { DecodedArray, ParquetType } from 'hyparquet'
+import type { KeyValue } from 'hyparquet/src/types.js' // TODO export from hyparquet
+
+export interface ParquetWriteOptions {
+  writer: Writer
+  columnData: ColumnData[]
+  compressed?: boolean
+  statistics?: boolean
+  rowGroupSize?: number
+  kvMetadata?: KeyValue[]
+}
 
 export interface ColumnData {
   name: string

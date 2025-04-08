@@ -147,10 +147,11 @@ describe('writeMetadata', () => {
   it('writes metadata and parses in hyparquet', () => {
     const writer = new ByteWriter()
 
-    // Write header PAR1
+    // write header PAR1
     writer.appendUint32(0x31524150)
 
-    // Write metadata
+    // write metadata
+    /** @type {FileMetaData} */
     const withKvMetadata = {
       ...exampleMetadata,
       key_value_metadata: [
@@ -161,14 +162,13 @@ describe('writeMetadata', () => {
     }
     writeMetadata(writer, withKvMetadata)
 
-    // Write footer PAR1
+    // write footer PAR1
     writer.appendUint32(0x31524150)
 
     const file = writer.getBuffer()
-    const output = parquetMetadata(file)
+    const outputMetadata = parquetMetadata(file)
 
-    /** @type {FileMetaData} */
-    expect(output).toEqual(withKvMetadata)
+    expect(outputMetadata).toEqual(withKvMetadata)
   })
 
 })

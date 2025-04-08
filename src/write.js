@@ -1,23 +1,16 @@
+import { ByteWriter } from './bytewriter.js'
+import { fileWriter } from './filewriter.js'
 import { ParquetWriter } from './parquet-writer.js'
 import { schemaFromColumnData } from './schema.js'
-import { ByteWriter } from './bytewriter.js'
 
 /**
- * Write data as parquet to an ArrayBuffer
+ * Write data as parquet to a file or stream.
  *
- * @import {KeyValue} from 'hyparquet/src/types.js'
- * @import {ColumnData} from '../src/types.js'
- * @param {object} options
- * @param {ColumnData[]} options.columnData
- * @param {boolean} [options.compressed]
- * @param {boolean} [options.statistics]
- * @param {number} [options.rowGroupSize]
- * @param {KeyValue[]} [options.kvMetadata]
- * @returns {ArrayBuffer}
+ * @import {ParquetWriteOptions} from '../src/types.js'
+ * @param {ParquetWriteOptions} options
  */
-export function parquetWrite({ columnData, compressed = true, statistics = true, rowGroupSize = 100000, kvMetadata }) {
+export function parquetWrite({ writer, columnData, compressed = true, statistics = true, rowGroupSize = 100000, kvMetadata }) {
   const schema = schemaFromColumnData(columnData)
-  const writer = new ByteWriter()
   const pq = new ParquetWriter({
     writer,
     schema,
@@ -30,5 +23,27 @@ export function parquetWrite({ columnData, compressed = true, statistics = true,
     rowGroupSize,
   })
   pq.finish()
+}
+
+/**
+ * Write data as parquet to an ArrayBuffer.
+ *
+ * @param {Omit<ParquetWriteOptions, 'writer'>} options
+ * @returns {ArrayBuffer}
+ */
+export function parquetWriteBuffer(options) {
+  const writer = new ByteWriter()
+  parquetWrite({ ...options, writer })
   return writer.getBuffer()
+}
+
+/**
+ * Write data as parquet to an ArrayBuffer.
+ *
+ * @param {Omit<ParquetWriteOptions, 'writer'> & {filename: string}} options
+ */
+export function parquetWriteFile(options) {
+  const { filename, ...rest } = options
+  const writer = fileWriter(filename)
+  parquetWrite({ ...rest, writer })
 }

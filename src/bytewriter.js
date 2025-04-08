@@ -1,6 +1,7 @@
 
 /**
  * Generic buffered writer.
+ * Writes data to an auto-expanding ArrayBuffer.
  *
  * @import {Writer} from '../src/types.js'
  * @returns {Writer}

@@ -4,4 +4,5 @@ package-lock.json
 *.tgz
 .DS_Store
 /*.parquet
+/data
 /types

@@ -1,6 +1,6 @@
 import { parquetMetadata, parquetReadObjects } from 'hyparquet'
 import { describe, expect, it } from 'vitest'
-import { parquetWrite } from '../src/index.js'
+import { parquetWriteBuffer } from '../src/index.js'
 import { exampleMetadata } from './metadata.test.js'
 
 /**
@@ -11,22 +11,24 @@ import { exampleMetadata } from './metadata.test.js'
  * @returns {Promise<Record<string, any>>}
  */
 async function roundTripDeserialize(columnData) {
-  const file = parquetWrite({ columnData })
+  const file = parquetWriteBuffer({ columnData })
   return await parquetReadObjects({ file, utf8: false })
 }
 
-const basicData = [
+/** @type {ColumnData[]} */
+export const basicData = [
   { name: 'bool', data: [true, false, true, false] },
   { name: 'int', data: [0, 127, 0x7fff, 0x7fffffff] },
   { name: 'bigint', data: [0n, 127n, 0x7fffn, 0x7fffffffffffffffn] },
+  // { name: 'float', data: [0, 0.0001, 123.456, 1e100], type: 'FLOAT' }, // TODO
   { name: 'double', data: [0, 0.0001, 123.456, 1e100] },
   { name: 'string', data: ['a', 'b', 'c', 'd'] },
   { name: 'nullable', data: [true, false, null, null] },
 ]
 
-describe('parquetWrite', () => {
+describe('parquetWriteBuffer', () => {
   it('writes expected metadata', () => {
-    const file = parquetWrite({ columnData: basicData })
+    const file = parquetWriteBuffer({ columnData: basicData })
     const metadata = parquetMetadata(file)
     expect(metadata).toEqual(exampleMetadata)
   })
@@ -47,7 +49,7 @@ describe('parquetWrite', () => {
     bool[100] = false
     bool[500] = true
     bool[9999] = false
-    const file = parquetWrite({ columnData: [{ name: 'bool', data: bool }] })
+    const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data: bool }] })
     expect(file.byteLength).toBe(160)
     const metadata = parquetMetadata(file)
     expect(metadata.metadata_length).toBe(98)
@@ -63,14 +65,14 @@ describe('parquetWrite', () => {
 
   it('efficiently serializes long string', () => {
     const str = 'a'.repeat(10000)
-    const file = parquetWrite({ columnData: [{ name: 'string', data: [str] }] })
+    const file = parquetWriteBuffer({ columnData: [{ name: 'string', data: [str] }] })
     expect(file.byteLength).toBe(646)
   })
 
   it('less efficiently serializes string without compression', () => {
     const str = 'a'.repeat(10000)
     const columnData = [{ name: 'string', data: [str] }]
-    const file = parquetWrite({ columnData, compressed: false })
+    const file = parquetWriteBuffer({ columnData, compressed: false })
     expect(file.byteLength).toBe(10175)
   })
 
@@ -78,7 +80,7 @@ describe('parquetWrite', () => {
     const data = Array(100000)
       .fill('aaaa', 0, 50000)
       .fill('bbbb', 50000, 100000)
-    const file = parquetWrite({ columnData: [{ name: 'string', data }], statistics: false })
+    const file = parquetWriteBuffer({ columnData: [{ name: 'string', data }], statistics: false })
     expect(file.byteLength).toBe(178)
     // round trip
     const result = await parquetReadObjects({ file })
@@ -88,8 +90,8 @@ describe('parquetWrite', () => {
   })
 
   it('writes statistics when enabled', () => {
-    const withStats = parquetWrite({ columnData: basicData, statistics: true })
-    const noStats = parquetWrite({ columnData: basicData, statistics: false })
+    const withStats = parquetWriteBuffer({ columnData: basicData, statistics: true })
+    const noStats = parquetWriteBuffer({ columnData: basicData, statistics: false })
     expect(withStats.byteLength).toBe(669)
     expect(noStats.byteLength).toBe(575)
   })
@@ -181,7 +183,7 @@ describe('parquetWrite', () => {
 
   it('splits row groups', async () => {
     const data = Array(200).fill(13)
-    const file = parquetWrite({ columnData: [{ name: 'int', data }], rowGroupSize: 100 })
+    const file = parquetWriteBuffer({ columnData: [{ name: 'int', data }], rowGroupSize: 100 })
     const metadata = parquetMetadata(file)
     expect(metadata.row_groups.length).toBe(2)
     expect(metadata.row_groups[0].num_rows).toBe(100n)
@@ -196,31 +198,31 @@ describe('parquetWrite', () => {
   })
 
   it('throws for wrong type specified', () => {
-    expect(() => parquetWrite({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'BOOLEAN' }] }))
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'BOOLEAN' }] }))
       .toThrow('parquet cannot write mixed types')
   })
 
   it('throws for empty column with no type specified', () => {
-    expect(() => parquetWrite({ columnData: [{ name: 'empty', data: [] }] }))
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'empty', data: [] }] }))
       .toThrow('column empty cannot determine type')
-    expect(() => parquetWrite({ columnData: [{ name: 'empty', data: [null, null, null, null] }] }))
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'empty', data: [null, null, null, null] }] }))
       .toThrow('column empty cannot determine type')
   })
 
   it('throws for mixed types', () => {
-    expect(() => parquetWrite({ columnData: [{ name: 'mixed', data: [1, 2, 3, 'boom'] }] }))
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'mixed', data: [1, 2, 3, 'boom'] }] }))
       .toThrow('mixed types not supported')
   })
 
   it('throws error when columns have mismatched lengths', () => {
-    expect(() => parquetWrite({ columnData: [
+    expect(() => parquetWriteBuffer({ columnData: [
       { name: 'col1', data: [1, 2, 3] },
       { name: 'col2', data: [4, 5] },
     ] })).toThrow('columns must have the same length')
   })
 
   it('throws error for unsupported data types', () => {
-    expect(() => parquetWrite({ columnData: [{ name: 'func', data: [() => {}] }] }))
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'func', data: [() => {}] }] }))
       .toThrow('cannot determine parquet type for: () => {}')
   })
 })
