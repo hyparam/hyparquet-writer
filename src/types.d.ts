@@ -27,6 +27,7 @@ export interface Writer {
   appendUint32(value: number): void
   appendInt32(value: number): void
   appendInt64(value: bigint): void
+  appendFloat32(value: number): void
   appendFloat64(value: number): void
   appendBuffer(buffer: ArrayBuffer): void
   appendBytes(value: Uint8Array): void

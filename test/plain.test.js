@@ -41,6 +41,24 @@ describe('writePlain', () => {
     }
   })
 
+  it('writes FLOAT', () => {
+    const writer = new ByteWriter()
+    const floats = [0, 300.5, -2.7100000381469727, Infinity, -Infinity, NaN]
+    writePlain(writer, floats, 'FLOAT')
+
+    // 4 bytes per float
+    expect(writer.offset).toBe(4 * floats.length)
+
+    for (let i = 0; i < floats.length; i++) {
+      const val = writer.view.getFloat32(i * 4, true)
+      if (Number.isNaN(floats[i])) {
+        expect(Number.isNaN(val)).toBe(true)
+      } else {
+        expect(val).toBe(floats[i])
+      }
+    }
+  })
+
   it('writes DOUBLE', () => {
     const writer = new ByteWriter()
     const doubles = [0, 3.14, -2.71, Infinity, -Infinity, NaN]

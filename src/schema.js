@@ -55,9 +55,14 @@ export function getSchemaElementForValues(name, values, type) {
         type = valueType
       } else if (type === 'INT32' && valueType === 'DOUBLE') {
         type = 'DOUBLE'
+      } else if (type === 'FLOAT' && valueType === 'INT32') {
+        valueType = 'FLOAT'
+      } else if (type === 'FLOAT' && valueType === 'DOUBLE') {
+        valueType = 'FLOAT'
       } else if (type === 'DOUBLE' && valueType === 'INT32') {
-        // keep
-      } else if (type !== valueType) {
+        valueType = 'DOUBLE'
+      }
+      if (type !== valueType) {
         throw new Error(`parquet cannot write mixed types: ${type} and ${valueType}`)
       }
     }

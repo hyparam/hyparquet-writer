@@ -34,10 +34,10 @@ describe('parquetWrite with FileWriter', () => {
     // check parquet data
     const result = await parquetReadObjects({ file, metadata })
     expect(result).toEqual([
-      { bool: true, int: 0, bigint: 0n, double: 0, string: 'a', nullable: true },
-      { bool: false, int: 127, bigint: 127n, double: 0.0001, string: 'b', nullable: false },
-      { bool: true, int: 0x7fff, bigint: 0x7fffn, double: 123.456, string: 'c', nullable: null },
-      { bool: false, int: 0x7fffffff, bigint: 0x7fffffffffffffffn, double: 1e100, string: 'd', nullable: null },
+      { bool: true, int: 0, bigint: 0n, float: 0, double: 0, string: 'a', nullable: true },
+      { bool: false, int: 127, bigint: 127n, float: 0.00009999999747378752, double: 0.0001, string: 'b', nullable: false },
+      { bool: true, int: 0x7fff, bigint: 0x7fffn, float: 123.45600128173828, double: 123.456, string: 'c', nullable: null },
+      { bool: false, int: 0x7fffffff, bigint: 0x7fffffffffffffffn, float: Infinity, double: 1e100, string: 'd', nullable: null },
     ])
   })
 })

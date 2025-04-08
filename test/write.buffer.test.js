@@ -20,7 +20,7 @@ export const basicData = [
   { name: 'bool', data: [true, false, true, false] },
   { name: 'int', data: [0, 127, 0x7fff, 0x7fffffff] },
   { name: 'bigint', data: [0n, 127n, 0x7fffn, 0x7fffffffffffffffn] },
-  // { name: 'float', data: [0, 0.0001, 123.456, 1e100], type: 'FLOAT' }, // TODO
+  { name: 'float', data: [0, 0.0001, 123.456, 1e100], type: 'FLOAT' },
   { name: 'double', data: [0, 0.0001, 123.456, 1e100] },
   { name: 'string', data: ['a', 'b', 'c', 'd'] },
   { name: 'nullable', data: [true, false, null, null] },
@@ -36,10 +36,10 @@ describe('parquetWriteBuffer', () => {
   it('serializes basic types', async () => {
     const result = await roundTripDeserialize(basicData)
     expect(result).toEqual([
-      { bool: true, int: 0, bigint: 0n, double: 0, string: 'a', nullable: true },
-      { bool: false, int: 127, bigint: 127n, double: 0.0001, string: 'b', nullable: false },
-      { bool: true, int: 0x7fff, bigint: 0x7fffn, double: 123.456, string: 'c', nullable: null },
-      { bool: false, int: 0x7fffffff, bigint: 0x7fffffffffffffffn, double: 1e100, string: 'd', nullable: null },
+      { bool: true, int: 0, bigint: 0n, float: 0, double: 0, string: 'a', nullable: true },
+      { bool: false, int: 127, bigint: 127n, float: 0.00009999999747378752, double: 0.0001, string: 'b', nullable: false },
+      { bool: true, int: 0x7fff, bigint: 0x7fffn, float: 123.45600128173828, double: 123.456, string: 'c', nullable: null },
+      { bool: false, int: 0x7fffffff, bigint: 0x7fffffffffffffffn, float: Infinity, double: 1e100, string: 'd', nullable: null },
     ])
   })
 
@@ -92,8 +92,8 @@ describe('parquetWriteBuffer', () => {
   it('writes statistics when enabled', () => {
     const withStats = parquetWriteBuffer({ columnData: basicData, statistics: true })
     const noStats = parquetWriteBuffer({ columnData: basicData, statistics: false })
-    expect(withStats.byteLength).toBe(669)
-    expect(noStats.byteLength).toBe(575)
+    expect(withStats.byteLength).toBe(773)
+    expect(noStats.byteLength).toBe(663)
   })
 
   it('serializes list types', async () => {

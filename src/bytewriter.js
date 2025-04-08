@@ -74,6 +74,15 @@ ByteWriter.prototype.appendInt64 = function(value) {
 /**
  * @param {number} value
  */
+ByteWriter.prototype.appendFloat32 = function(value) {
+  this.ensure(this.offset + 8)
+  this.view.setFloat32(this.offset, value, true)
+  this.offset += 4
+}
+
+/**
+ * @param {number} value
+ */
 ByteWriter.prototype.appendFloat64 = function(value) {
   this.ensure(this.offset + 8)
   this.view.setFloat64(this.offset, value, true)

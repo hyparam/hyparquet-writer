@@ -13,6 +13,8 @@ export function writePlain(writer, values, type) {
     writePlainInt32(writer, values)
   } else if (type === 'INT64') {
     writePlainInt64(writer, values)
+  } else if (type === 'FLOAT') {
+    writePlainFloat(writer, values)
   } else if (type === 'DOUBLE') {
     writePlainDouble(writer, values)
   } else if (type === 'BYTE_ARRAY') {
@@ -66,6 +68,16 @@ function writePlainInt32(writer, values) {
 function writePlainInt64(writer, values) {
   for (const value of values) {
     writer.appendInt64(value)
+  }
+}
+
+/**
+ * @param {Writer} writer
+ * @param {DecodedArray} values
+ */
+function writePlainFloat(writer, values) {
+  for (const value of values) {
+    writer.appendFloat32(value)
   }
 }
 

@@ -11,10 +11,11 @@ export const exampleMetadata = {
   version: 2,
   created_by: 'hyparquet',
   schema: [
-    { name: 'root', num_children: 6 },
+    { name: 'root', num_children: 7 },
     { name: 'bool', type: 'BOOLEAN', repetition_type: 'REQUIRED' },
     { name: 'int', type: 'INT32', repetition_type: 'REQUIRED' },
     { name: 'bigint', type: 'INT64', repetition_type: 'REQUIRED' },
+    { name: 'float', type: 'FLOAT', repetition_type: 'REQUIRED' },
     { name: 'double', type: 'DOUBLE', repetition_type: 'REQUIRED' },
     { name: 'string', type: 'BYTE_ARRAY', repetition_type: 'REQUIRED', converted_type: 'UTF8' },
     { name: 'nullable', type: 'BOOLEAN', repetition_type: 'OPTIONAL' },
@@ -80,8 +81,27 @@ export const exampleMetadata = {
         },
       },
       {
-        file_path: 'double',
+        file_path: 'float',
         file_offset: 110n,
+        meta_data: {
+          type: 'FLOAT',
+          encodings: ['PLAIN'],
+          path_in_schema: ['float'],
+          codec: 'SNAPPY',
+          num_values: 4n,
+          total_uncompressed_size: 39n,
+          total_compressed_size: 39n,
+          data_page_offset: 110n,
+          statistics: {
+            null_count: 0n,
+            min_value: 0,
+            max_value: Infinity,
+          },
+        },
+      },
+      {
+        file_path: 'double',
+        file_offset: 149n,
         meta_data: {
           type: 'DOUBLE',
           encodings: ['PLAIN'],
@@ -90,7 +110,7 @@ export const exampleMetadata = {
           num_values: 4n,
           total_uncompressed_size: 51n,
           total_compressed_size: 51n,
-          data_page_offset: 110n,
+          data_page_offset: 149n,
           statistics: {
             null_count: 0n,
             min_value: 0,
@@ -100,7 +120,7 @@ export const exampleMetadata = {
       },
       {
         file_path: 'string',
-        file_offset: 161n,
+        file_offset: 200n,
         meta_data: {
           type: 'BYTE_ARRAY',
           encodings: ['PLAIN'],
@@ -109,7 +129,7 @@ export const exampleMetadata = {
           num_values: 4n,
           total_uncompressed_size: 42n,
           total_compressed_size: 42n,
-          data_page_offset: 161n,
+          data_page_offset: 200n,
           statistics: {
             null_count: 0n,
             min_value: 'a',
@@ -119,7 +139,7 @@ export const exampleMetadata = {
       },
       {
         file_path: 'nullable',
-        file_offset: 203n,
+        file_offset: 242n,
         meta_data: {
           type: 'BOOLEAN',
           encodings: ['PLAIN'],
@@ -128,7 +148,7 @@ export const exampleMetadata = {
           num_values: 4n,
           total_uncompressed_size: 26n,
           total_compressed_size: 26n,
-          data_page_offset: 203n,
+          data_page_offset: 242n,
           statistics: {
             null_count: 2n,
             min_value: false,
@@ -137,10 +157,10 @@ export const exampleMetadata = {
         },
       },
     ],
-    total_byte_size: 225n,
+    total_byte_size: 264n,
     num_rows: 4n,
   }],
-  metadata_length: 432,
+  metadata_length: 497,
 }
 
 describe('writeMetadata', () => {
@@ -158,7 +178,7 @@ describe('writeMetadata', () => {
         { key: 'key1', value: 'value1' },
         { key: 'key2', value: 'value2' },
       ],
-      metadata_length: 464,
+      metadata_length: 529,
     }
     writeMetadata(writer, withKvMetadata)
 
