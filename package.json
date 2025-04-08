@@ -1,12 +1,14 @@
 {
   "name": "hyparquet-writer",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Parquet file writer for JavaScript",
   "author": "Hyperparam",
   "homepage": "https://hyperparam.app",
   "keywords": [
+    "hyperparam",
     "hyparquet",
     "parquet",
+    "snappy",
     "thrift"
   ],
   "license": "MIT",
