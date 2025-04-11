@@ -20,7 +20,7 @@ export function writePlain(writer, values, type) {
   } else if (type === 'BYTE_ARRAY') {
     writePlainByteArray(writer, values)
   } else if (type === 'FIXED_LEN_BYTE_ARRAY') {
-    writePlainByteArray(writer, values)
+    writePlainByteArrayFixed(writer, values)
   } else {
     throw new Error(`parquet unsupported type: ${type}`)
   }
@@ -106,6 +106,17 @@ function writePlainByteArray(writer, values) {
   for (const value of values) {
     if (!(value instanceof Uint8Array)) throw new Error('parquet expected Uint8Array value')
     writer.appendUint32(value.length)
+    writer.appendBytes(value)
+  }
+}
+
+/**
+ * @param {Writer} writer
+ * @param {DecodedArray} values
+ */
+function writePlainByteArrayFixed(writer, values) {
+  for (const value of values) {
+    if (!(value instanceof Uint8Array)) throw new Error('parquet expected Uint8Array value')
     writer.appendBytes(value)
   }
 }

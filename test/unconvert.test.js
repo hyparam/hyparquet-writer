@@ -166,21 +166,41 @@ describe('unconvertDecimal', () => {
     { input: 1234567890123456789n, expected: new Uint8Array([0x11, 0x22, 0x10, 0xf4, 0x7d, 0xe9, 0x81, 0x15]) },
     { input: -1234567890123456789n, expected: new Uint8Array([0xee, 0xdd, 0xef, 0x0b, 0x82, 0x16, 0x7e, 0xeb]) },
   ]
+  /** @type {SchemaElement} */
+  const element = {
+    name: 'col',
+    type: 'BYTE_ARRAY',
+  }
 
   it.for(examples)('should convert %p', ({ input, expected }) => {
     expect(parseDecimal(expected)).toEqual(input)
   })
 
   it.for(examples)('should unconvert %p', ({ input, expected }) => {
-    expect(unconvertDecimal(input)).toEqual(expected)
+    expect(unconvertDecimal(element, input)).toEqual(expected)
   })
 
   it.for(examples)('should roundtrip %p', ({ input }) => {
-    expect(parseDecimal(unconvertDecimal(input))).toEqual(input)
+    const byteArray = unconvertDecimal(element, input)
+    if (!(byteArray instanceof Uint8Array)) throw new Error('expected Uint8Array')
+    expect(parseDecimal(byteArray)).toEqual(input)
   })
 
   it.for(examples)('should reverse roundtrip %p', ({ expected }) => {
-    expect(unconvertDecimal(parseDecimal(expected))).toEqual(expected)
+    expect(unconvertDecimal(element, parseDecimal(expected))).toEqual(expected)
+  })
+
+  it('convert to INT32', () => {
+    expect(unconvertDecimal({ name: 'col', type: 'INT32' }, 1234n)).toEqual(1234)
+  })
+
+  it('convert to INT64', () => {
+    expect(unconvertDecimal({ name: 'col', type: 'INT64' }, 1234n)).toEqual(1234n)
+  })
+
+  it('throws if fixed length is not specified', () => {
+    expect(() => unconvertDecimal({ name: 'col', type: 'FIXED_LEN_BYTE_ARRAY' }, 1234n))
+      .toThrow('fixed length byte array type_length is required')
   })
 })
 
