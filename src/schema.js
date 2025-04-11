@@ -1,23 +1,55 @@
+/**
+ * Convert column data to schema.
+ *
+ * @param {ColumnData[]} columnData
+ * @returns {SchemaElement[]}
+ */
+export function schemaFromColumnData(columnData) {
+  /** @type {SchemaElement[]} */
+  const schema = [{
+    name: 'root',
+    num_children: columnData.length,
+  }]
+  let num_rows = 0
+
+  for (const column of columnData) {
+    // check if all columns have the same length
+    num_rows = num_rows || column.data.length
+    if (num_rows !== column.data.length) {
+      throw new Error('columns must have the same length')
+    }
+
+    // auto-detect type if not provided
+    /** @type {SchemaElement} */
+    const schemaElement = column.type ? column : autoSchemaElement(column.name, column.data)
+    if (!schemaElement.type) throw new Error(`column ${column.name} cannot determine type`)
+    schema.push(schemaElement)
+  }
+
+  return schema
+}
 
 /**
  * Deduce a ParquetType from JS values
  *
  * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement} from 'hyparquet'
+ * @import {ColumnData} from '../src/types.js'
  * @param {string} name
  * @param {DecodedArray} values
- * @param {ParquetType | undefined} type
  * @returns {SchemaElement}
  */
-export function getSchemaElementForValues(name, values, type) {
-  if (values instanceof Int32Array) return { name, type: 'INT32', repetition_type: 'REQUIRED' }
-  if (values instanceof BigInt64Array) return { name, type: 'INT64', repetition_type: 'REQUIRED' }
-  if (values instanceof Float32Array) return { name, type: 'FLOAT', repetition_type: 'REQUIRED' }
-  if (values instanceof Float64Array) return { name, type: 'DOUBLE', repetition_type: 'REQUIRED' }
-
+function autoSchemaElement(name, values) {
+  /** @type {ParquetType | undefined} */
+  let type
   /** @type {FieldRepetitionType} */
   let repetition_type = 'REQUIRED'
   /** @type {ConvertedType | undefined} */
   let converted_type = undefined
+
+  if (values instanceof Int32Array) return { name, type: 'INT32', repetition_type }
+  if (values instanceof BigInt64Array) return { name, type: 'INT64', repetition_type }
+  if (values instanceof Float32Array) return { name, type: 'FLOAT', repetition_type }
+  if (values instanceof Float64Array) return { name, type: 'DOUBLE', repetition_type }
 
   for (const value of values) {
     if (value === null || value === undefined) {
@@ -55,10 +87,6 @@ export function getSchemaElementForValues(name, values, type) {
         type = valueType
       } else if (type === 'INT32' && valueType === 'DOUBLE') {
         type = 'DOUBLE'
-      } else if (type === 'FLOAT' && valueType === 'INT32') {
-        valueType = 'FLOAT'
-      } else if (type === 'FLOAT' && valueType === 'DOUBLE') {
-        valueType = 'FLOAT'
       } else if (type === 'DOUBLE' && valueType === 'INT32') {
         valueType = 'DOUBLE'
       }
@@ -101,33 +129,4 @@ export function getMaxDefinitionLevel(schemaPath) {
     }
   }
   return maxLevel
-}
-
-/**
- * Convert column data to schema.
- *
- * @import {ColumnData} from '../src/types.js'
- * @param {ColumnData[]} columnData
- * @returns {SchemaElement[]}
- */
-export function schemaFromColumnData(columnData) {
-  /** @type {SchemaElement[]} */
-  const schema = [{
-    name: 'root',
-    num_children: columnData.length,
-  }]
-  let num_rows = 0
-  for (const { name, data, type } of columnData) {
-    // check if all columns have the same length
-    if (num_rows === 0) {
-      num_rows = data.length
-    } else if (num_rows !== data.length) {
-      throw new Error('columns must have the same length')
-    }
-    // auto-detect type
-    const schemaElement = getSchemaElementForValues(name, data, type)
-    if (!schemaElement.type) throw new Error(`column ${name} cannot determine type`)
-    schema.push(schemaElement)
-  }
-  return schema
 }

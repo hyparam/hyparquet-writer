@@ -29,25 +29,22 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
 
   // Compute statistics
   if (stats) {
-    statistics = {
-      min_value: undefined,
-      max_value: undefined,
-      null_count: 0n,
-    }
+    let min_value = undefined
+    let max_value = undefined
     let null_count = 0n
     for (const value of values) {
       if (value === null || value === undefined) {
         null_count++
         continue
       }
-      if (statistics.min_value === undefined || value < statistics.min_value) {
-        statistics.min_value = value
+      if (min_value === undefined || value < min_value) {
+        min_value = value
       }
-      if (statistics.max_value === undefined || value > statistics.max_value) {
-        statistics.max_value = value
+      if (max_value === undefined || value > max_value) {
+        max_value = value
       }
     }
-    statistics.null_count = null_count
+    statistics = { min_value, max_value, null_count }
   }
 
   // Write levels to temp buffer

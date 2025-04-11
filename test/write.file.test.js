@@ -8,7 +8,7 @@ import { basicData } from './write.buffer.test.js'
 const filedir = 'data/'
 const filename = 'data/write.file.parquet'
 
-describe('parquetWrite with FileWriter', () => {
+describe('parquetWriteFile', () => {
   beforeEach(() => {
     // ensure data directory exists
     if (!fs.existsSync(filedir)) {

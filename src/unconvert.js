@@ -9,8 +9,15 @@
  */
 export function unconvert(schemaElement, values) {
   const ctype = schemaElement.converted_type
+  // TODO: DECIMAL
   if (ctype === 'DATE') {
     return values.map(v => v.getTime())
+  }
+  if (ctype === 'TIMESTAMP_MILLIS') {
+    return Array.from(values).map(v => BigInt(v.getTime()))
+  }
+  if (ctype === 'TIMESTAMP_MICROS') {
+    return Array.from(values).map(v => BigInt(v.getTime() * 1000))
   }
   if (ctype === 'JSON') {
     if (!Array.isArray(values)) throw new Error('JSON must be an array')

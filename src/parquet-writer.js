@@ -4,8 +4,7 @@ import { writeMetadata } from './metadata.js'
 /**
  * ParquetWriter class allows incremental writing of parquet files.
  *
- * @import {ColumnChunk, FileMetaData, RowGroup, SchemaElement} from 'hyparquet'
- * @import {KeyValue} from 'hyparquet/src/types.js' // TODO export from hyparquet
+ * @import {ColumnChunk, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
  * @import {ColumnData, Writer} from '../src/types.js'
  * @param {object} options
  * @param {Writer} options.writer

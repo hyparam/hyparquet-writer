@@ -5,8 +5,11 @@
   "author": "Hyperparam",
   "homepage": "https://hyperparam.app",
   "keywords": [
+    "ai",
+    "data",
     "hyperparam",
     "hyparquet",
+    "ml",
     "parquet",
     "snappy",
     "thrift"
@@ -42,7 +45,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "hyparquet": "1.11.0"
+    "hyparquet": "1.11.1"
   },
   "devDependencies": {
     "@babel/eslint-parser": "7.27.0",

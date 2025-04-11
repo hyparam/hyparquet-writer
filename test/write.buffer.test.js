@@ -20,7 +20,7 @@ export const basicData = [
   { name: 'bool', data: [true, false, true, false] },
   { name: 'int', data: [0, 127, 0x7fff, 0x7fffffff] },
   { name: 'bigint', data: [0n, 127n, 0x7fffn, 0x7fffffffffffffffn] },
-  { name: 'float', data: [0, 0.0001, 123.456, 1e100], type: 'FLOAT' },
+  { name: 'float', data: [0, 0.0001, 123.456, 1e100], type: 'FLOAT', repetition_type: 'REQUIRED' },
   { name: 'double', data: [0, 0.0001, 123.456, 1e100] },
   { name: 'string', data: ['a', 'b', 'c', 'd'] },
   { name: 'nullable', data: [true, false, null, null] },
@@ -199,7 +199,7 @@ describe('parquetWriteBuffer', () => {
 
   it('throws for wrong type specified', () => {
     expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'BOOLEAN' }] }))
-      .toThrow('parquet cannot write mixed types')
+      .toThrow('parquet expected boolean value')
   })
 
   it('throws for empty column with no type specified', () => {

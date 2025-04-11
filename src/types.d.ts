@@ -1,5 +1,4 @@
-import type { DecodedArray, ParquetType } from 'hyparquet'
-import type { KeyValue } from 'hyparquet/src/types.js' // TODO export from hyparquet
+import type { ConvertedType, DecodedArray, FieldRepetitionType, KeyValue, LogicalType, ParquetType } from 'hyparquet'
 
 export interface ParquetWriteOptions {
   writer: Writer
@@ -13,7 +12,15 @@ export interface ParquetWriteOptions {
 export interface ColumnData {
   name: string
   data: DecodedArray
+  // fields from SchemaElement:
   type?: ParquetType
+  type_length?: number
+  repetition_type?: FieldRepetitionType
+  converted_type?: ConvertedType
+  scale?: number
+  precision?: number
+  field_id?: number
+  logical_type?: LogicalType
 }
 
 export interface Writer {
