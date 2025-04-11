@@ -19,11 +19,14 @@ export function schemaFromColumnData(columnData) {
       throw new Error('columns must have the same length')
     }
 
-    // auto-detect type if not provided
-    /** @type {SchemaElement} */
-    const schemaElement = column.type ? column : autoSchemaElement(column.name, column.data)
-    if (!schemaElement.type) throw new Error(`column ${column.name} cannot determine type`)
-    schema.push(schemaElement)
+    const { data, ...schemaElement } = column
+    if (column.type) {
+      // use provided type
+      schema.push(schemaElement)
+    } else {
+      // auto-detect type
+      schema.push(autoSchemaElement(column.name, data))
+    }
   }
 
   return schema

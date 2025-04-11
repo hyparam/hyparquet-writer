@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { unconvert, unconvertMetadata } from '../src/unconvert.js'
+import { unconvert, unconvertDecimal, unconvertMetadata } from '../src/unconvert.js'
 import { convertMetadata } from 'hyparquet/src/metadata.js'
 
 /**
@@ -155,3 +155,51 @@ describe('unconvertMetadata', () => {
       .toThrow('unsupported type for statistics: INT64 with value 123')
   })
 })
+
+describe('unconvertDecimal', () => {
+  const examples = [
+    { input: 0n, expected: new Uint8Array([]) },
+    { input: 1n, expected: new Uint8Array([0x01]) },
+    { input: -1n, expected: new Uint8Array([0xff]) },
+    { input: 1234n, expected: new Uint8Array([0x04, 0xd2]) },
+    { input: -1234n, expected: new Uint8Array([0xfb, 0x2e]) },
+    { input: 1234567890123456789n, expected: new Uint8Array([0x11, 0x22, 0x10, 0xf4, 0x7d, 0xe9, 0x81, 0x15]) },
+    { input: -1234567890123456789n, expected: new Uint8Array([0xee, 0xdd, 0xef, 0x0b, 0x82, 0x16, 0x7e, 0xeb]) },
+  ]
+
+  it.for(examples)('should convert %p', ({ input, expected }) => {
+    expect(parseDecimal(expected)).toEqual(input)
+  })
+
+  it.for(examples)('should unconvert %p', ({ input, expected }) => {
+    expect(unconvertDecimal(input)).toEqual(expected)
+  })
+
+  it.for(examples)('should roundtrip %p', ({ input }) => {
+    expect(parseDecimal(unconvertDecimal(input))).toEqual(input)
+  })
+
+  it.for(examples)('should reverse roundtrip %p', ({ expected }) => {
+    expect(unconvertDecimal(parseDecimal(expected))).toEqual(expected)
+  })
+})
+
+/**
+ * BigInt parseDecimal
+ * @param {Uint8Array} bytes
+ * @returns {bigint}
+ */
+function parseDecimal(bytes) {
+  let value = 0n
+  for (const byte of bytes) {
+    value = value * 256n + BigInt(byte)
+  }
+
+  // handle signed
+  const bits = BigInt(bytes.length) * 8n
+  if (bits && value >= 2n ** (bits - 1n)) {
+    value -= 2n ** bits
+  }
+
+  return value
+}
