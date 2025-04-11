@@ -9,7 +9,7 @@ import { ByteWriter } from './bytewriter.js'
 
 /**
  * @import {ColumnMetaData, DecodedArray, PageHeader, ParquetType, SchemaElement, Statistics} from 'hyparquet'
- * @import {Writer} from '../src/types.js'
+ * @import {ThriftObject, Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {SchemaElement[]} schemaPath
  * @param {DecodedArray} values
@@ -141,6 +141,7 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
  * @param {PageHeader} header
  */
 function writePageHeader(writer, header) {
+  /** @type {ThriftObject} */
   const compact = {
     field_1: PageType.indexOf(header.type),
     field_2: header.uncompressed_page_size,

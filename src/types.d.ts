@@ -41,3 +41,6 @@ export interface Writer {
   appendVarInt(value: number): void
   appendVarBigInt(value: bigint): void
 }
+
+export type ThriftObject = { [ key: `field_${number}` ]: ThriftType }
+export type ThriftType = boolean | number | bigint | string | Uint8Array | ThriftType[] | ThriftObject | undefined

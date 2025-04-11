@@ -3,12 +3,13 @@ import { serializeTCompactProtocol } from './thrift.js'
 import { unconvertMetadata } from './unconvert.js'
 
 /**
- * @import {FileMetaData} from 'hyparquet'
- * @import {Writer} from '../src/types.js'
+ * @import {FileMetaData, LogicalType, TimeUnit} from 'hyparquet'
+ * @import {ThriftObject, Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {FileMetaData} metadata
  */
 export function writeMetadata(writer, metadata) {
+  /** @type {ThriftObject} */
   const compact = {
     field_1: metadata.version,
     field_2: metadata.schema && metadata.schema.map(element => ({
@@ -21,7 +22,7 @@ export function writeMetadata(writer, metadata) {
       field_7: element.scale,
       field_8: element.precision,
       field_9: element.field_id,
-      field_10: element.logical_type,
+      field_10: logicalType(element.logical_type),
     })),
     field_3: metadata.num_rows,
     field_4: metadata.row_groups.map(rg => ({
@@ -36,7 +37,10 @@ export function writeMetadata(writer, metadata) {
           field_5: c.meta_data.num_values,
           field_6: c.meta_data.total_uncompressed_size,
           field_7: c.meta_data.total_compressed_size,
-          field_8: c.meta_data.key_value_metadata,
+          field_8: c.meta_data.key_value_metadata && c.meta_data.key_value_metadata.map(kv => ({
+            field_1: kv.key,
+            field_2: kv.value,
+          })),
           field_9: c.meta_data.data_page_offset,
           field_10: c.meta_data.index_page_offset,
           field_11: c.meta_data.dictionary_page_offset,
@@ -67,7 +71,7 @@ export function writeMetadata(writer, metadata) {
         field_5: c.offset_index_length,
         field_6: c.column_index_offset,
         field_7: c.column_index_length,
-        field_8: c.crypto_metadata,
+        // field_8: c.crypto_metadata,
         field_9: c.encrypted_column_metadata,
       })),
       field_2: rg.total_byte_size,
@@ -92,4 +96,53 @@ export function writeMetadata(writer, metadata) {
   serializeTCompactProtocol(writer, compact)
   const metadataLength = writer.offset - metadataStart
   writer.appendUint32(metadataLength)
+}
+
+/**
+ * @param {LogicalType | undefined} type
+ * @returns {ThriftObject | undefined}
+ */
+function logicalType(type) {
+  if (type === undefined) return undefined
+  if (type.type === 'STRING') return { field_1: {} }
+  if (type.type === 'MAP') return { field_2: {} }
+  if (type.type === 'LIST') return { field_3: {} }
+  if (type.type === 'ENUM') return { field_4: {} }
+  if (type.type === 'DECIMAL') return { field_5: {
+    field_1: type.scale,
+    field_2: type.precision,
+  } }
+  if (type.type === 'DATE') return { field_6: {} }
+  if (type.type === 'TIME') return { field_7: {
+    field_1: type.isAdjustedToUTC,
+    field_2: timeUnit(type.unit),
+  } }
+  if (type.type === 'TIMESTAMP') return { field_8: {
+    field_1: type.isAdjustedToUTC,
+    field_2: timeUnit(type.unit),
+  } }
+  if (type.type === 'INTEGER') return { field_10: {
+    field_1: type.bitWidth,
+    field_2: type.isSigned,
+  } }
+  if (type.type === 'NULL') return { field_11: {} }
+  if (type.type === 'JSON') return { field_12: {} }
+  if (type.type === 'BSON') return { field_13: {} }
+  if (type.type === 'UUID') return { field_14: {} }
+  if (type.type === 'FLOAT16') return { field_15: {} }
+  if (type.type === 'VARIANT') return { field_16: {} }
+  if (type.type === 'GEOMETRY') return { field_17: {} }
+  if (type.type === 'GEOGRAPHY') return { field_18: {} }
+  throw new Error(`unknown logical type: ${type.type}`)
+}
+
+/**
+ * @param {TimeUnit} unit
+ * @returns {ThriftObject}
+ */
+function timeUnit(unit) {
+  if (unit === 'MILLIS') return { field_1: {} }
+  if (unit === 'MICROS') return { field_2: {} }
+  if (unit === 'NANOS') return { field_3: {} }
+  throw new Error(`unknown time unit: ${unit}`)
 }
