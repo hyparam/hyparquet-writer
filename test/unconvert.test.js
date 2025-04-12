@@ -11,11 +11,7 @@ describe('unconvert', () => {
     const schema = { name: 'test', converted_type: 'DATE' }
     const input = [new Date('2020-01-01T00:00:00Z'), new Date('2021-01-01T00:00:00Z')]
     const result = unconvert(schema, input)
-
-    expect(result).toEqual([
-      new Date('2020-01-01T00:00:00Z').getTime(),
-      new Date('2021-01-01T00:00:00Z').getTime(),
-    ])
+    expect(result).toEqual([18262, 18628])
   })
 
   it('should convert JSON objects to strings when converted_type = JSON', () => {

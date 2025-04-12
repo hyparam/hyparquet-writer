@@ -102,8 +102,8 @@ export function writeMetadata(writer, metadata) {
  * @param {LogicalType | undefined} type
  * @returns {ThriftObject | undefined}
  */
-function logicalType(type) {
-  if (type === undefined) return undefined
+export function logicalType(type) {
+  if (!type) return
   if (type.type === 'STRING') return { field_1: {} }
   if (type.type === 'MAP') return { field_2: {} }
   if (type.type === 'LIST') return { field_3: {} }
@@ -133,7 +133,6 @@ function logicalType(type) {
   if (type.type === 'VARIANT') return { field_16: {} }
   if (type.type === 'GEOMETRY') return { field_17: {} }
   if (type.type === 'GEOGRAPHY') return { field_18: {} }
-  throw new Error(`unknown logical type: ${type.type}`)
 }
 
 /**
@@ -141,8 +140,7 @@ function logicalType(type) {
  * @returns {ThriftObject}
  */
 function timeUnit(unit) {
-  if (unit === 'MILLIS') return { field_1: {} }
-  if (unit === 'MICROS') return { field_2: {} }
   if (unit === 'NANOS') return { field_3: {} }
-  throw new Error(`unknown time unit: ${unit}`)
+  if (unit === 'MICROS') return { field_2: {} }
+  return { field_1: {} }
 }
