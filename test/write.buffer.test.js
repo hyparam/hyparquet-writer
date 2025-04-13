@@ -62,7 +62,7 @@ describe('parquetWriteBuffer', () => {
     const str = 'a'.repeat(10000)
     const columnData = [{ name: 'string', data: [str] }]
     const file = parquetWriteBuffer({ columnData, compressed: false })
-    expect(file.byteLength).toBe(10175)
+    expect(file.byteLength).toBe(10176)
   })
 
   it('efficiently serializes column with few distinct values', async () => {
