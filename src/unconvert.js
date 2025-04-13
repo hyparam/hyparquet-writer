@@ -3,7 +3,7 @@ const dayMillis = 86400000 // 1 day in milliseconds
 /**
  * Convert from rich to primitive types.
  *
- * @import {DecodedArray, SchemaElement} from 'hyparquet'
+ * @import {DecodedArray, SchemaElement, Statistics} from 'hyparquet'
  * @param {SchemaElement} element
  * @param {DecodedArray} values
  * @returns {DecodedArray}
@@ -48,7 +48,7 @@ export function unconvert(element, values) {
  * @param {SchemaElement} element
  * @returns {Uint8Array | undefined}
  */
-export function unconvertMetadata(value, element) {
+export function unconvertMinMax(value, element) {
   if (value === undefined || value === null) return undefined
   const { type, converted_type } = element
   if (type === 'BOOLEAN') return new Uint8Array([value ? 1 : 0])
@@ -88,6 +88,24 @@ export function unconvertMetadata(value, element) {
     return new Uint8Array(buffer)
   }
   throw new Error(`unsupported type for statistics: ${type} with value ${value}`)
+}
+
+/**
+ * @param {Statistics} stats
+ * @param {SchemaElement} element
+ * @returns {import('../src/types.js').ThriftObject}
+ */
+export function unconvertStatistics(stats, element) {
+  return {
+    field_1: unconvertMinMax(stats.max, element),
+    field_2: unconvertMinMax(stats.min, element),
+    field_3: stats.null_count,
+    field_4: stats.distinct_count,
+    field_5: unconvertMinMax(stats.max_value, element),
+    field_6: unconvertMinMax(stats.min_value, element),
+    field_7: stats.is_max_value_exact,
+    field_8: stats.is_min_value_exact,
+  }
 }
 
 /**

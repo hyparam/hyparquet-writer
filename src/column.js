@@ -1,15 +1,11 @@
-import { Encoding, PageType } from 'hyparquet/src/constants.js'
 import { unconvert } from './unconvert.js'
 import { writeRleBitPackedHybrid } from './encoding.js'
 import { writePlain } from './plain.js'
-import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
 import { snappyCompress } from './snappy.js'
-import { serializeTCompactProtocol } from './thrift.js'
 import { ByteWriter } from './bytewriter.js'
+import { writeLevels, writePageHeader } from './datapage.js'
 
 /**
- * @import {ColumnMetaData, DecodedArray, PageHeader, ParquetType, SchemaElement, Statistics} from 'hyparquet'
- * @import {ThriftObject, Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {SchemaElement[]} schemaPath
  * @param {DecodedArray} values
@@ -21,40 +17,21 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
   const schemaElement = schemaPath[schemaPath.length - 1]
   const { type } = schemaElement
   if (!type) throw new Error(`column ${schemaElement.name} cannot determine type`)
-  let dataType = type
   const offsetStart = writer.offset
   const num_values = values.length
-  /** @type {Statistics | undefined} */
-  let statistics = undefined
 
   // Compute statistics
-  if (stats) {
-    let min_value = undefined
-    let max_value = undefined
-    let null_count = 0n
-    for (const value of values) {
-      if (value === null || value === undefined) {
-        null_count++
-        continue
-      }
-      if (min_value === undefined || value < min_value) {
-        min_value = value
-      }
-      if (max_value === undefined || value > max_value) {
-        max_value = value
-      }
-    }
-    statistics = { min_value, max_value, null_count }
-  }
+  const statistics = stats ? getStatistics(values) : undefined
 
   // Write levels to temp buffer
   const levels = new ByteWriter()
-  const { definition_levels_byte_length, repetition_levels_byte_length, num_nulls } = writeLevels(levels, schemaPath, values)
+  const { definition_levels_byte_length, repetition_levels_byte_length, num_nulls }
+    = writeLevels(levels, schemaPath, values)
 
   // dictionary encoding
   let dictionary_page_offset = undefined
   /** @type {DecodedArray | undefined} */
-  let dictionary = useDictionary(values, dataType)
+  const dictionary = useDictionary(values, type)
   if (dictionary) {
     dictionary_page_offset = BigInt(writer.offset)
 
@@ -64,14 +41,10 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
       indexes[i] = dictionary.indexOf(values[i])
     }
     values = indexes
-    dataType = 'INT32'
 
-    // unconvert dictionary and filter out nulls
-    dictionary = unconvert(schemaElement, dictionary)
-      .filter(v => v !== null && v !== undefined)
-
-    // write dictionary page data
-    writeDictionaryPage(writer, dictionary, type, compressed)
+    // write unconverted dictionary page
+    const unconverted = unconvert(schemaElement, dictionary)
+    writeDictionaryPage(writer, unconverted, type, compressed)
   } else {
     // unconvert type and filter out nulls
     values = unconvert(schemaElement, values)
@@ -137,33 +110,6 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
 }
 
 /**
- * @param {Writer} writer
- * @param {PageHeader} header
- */
-function writePageHeader(writer, header) {
-  /** @type {ThriftObject} */
-  const compact = {
-    field_1: PageType.indexOf(header.type),
-    field_2: header.uncompressed_page_size,
-    field_3: header.compressed_page_size,
-    field_7: header.dictionary_page_header && {
-      field_1: header.dictionary_page_header.num_values,
-      field_2: Encoding.indexOf(header.dictionary_page_header.encoding),
-    },
-    field_8: header.data_page_header_v2 && {
-      field_1: header.data_page_header_v2.num_values,
-      field_2: header.data_page_header_v2.num_nulls,
-      field_3: header.data_page_header_v2.num_rows,
-      field_4: Encoding.indexOf(header.data_page_header_v2.encoding),
-      field_5: header.data_page_header_v2.definition_levels_byte_length,
-      field_6: header.data_page_header_v2.repetition_levels_byte_length,
-      field_7: header.data_page_header_v2.is_compressed ? undefined : false, // default true
-    },
-  }
-  serializeTCompactProtocol(writer, compact)
-}
-
-/**
  * @param {DecodedArray} values
  * @param {ParquetType} type
  * @returns {any[] | undefined}
@@ -171,6 +117,8 @@ function writePageHeader(writer, header) {
 function useDictionary(values, type) {
   if (type === 'BOOLEAN') return
   const unique = new Set(values)
+  unique.delete(undefined)
+  unique.delete(null)
   if (values.length > 10 && values.length / unique.size > 0.1) {
     if (unique.size < values.length) {
       // TODO: sort by frequency
@@ -212,35 +160,26 @@ function writeDictionaryPage(writer, dictionary, type, compressed) {
 }
 
 /**
- * @param {Writer} writer
- * @param {SchemaElement[]} schemaPath
+ * @import {ColumnMetaData, DecodedArray, PageHeader, ParquetType, SchemaElement, Statistics} from 'hyparquet'
+ * @import {Writer} from '../src/types.js'
  * @param {DecodedArray} values
- * @returns {{ definition_levels_byte_length: number, repetition_levels_byte_length: number, num_nulls: number}}
+ * @returns {Statistics}
  */
-function writeLevels(writer, schemaPath, values) {
-  let num_nulls = 0
-
-  // TODO: repetition levels
-  const maxRepetitionLevel = getMaxRepetitionLevel(schemaPath)
-  let repetition_levels_byte_length = 0
-  if (maxRepetitionLevel) {
-    repetition_levels_byte_length = writeRleBitPackedHybrid(writer, [])
-  }
-
-  // definition levels
-  const maxDefinitionLevel = getMaxDefinitionLevel(schemaPath)
-  let definition_levels_byte_length = 0
-  if (maxDefinitionLevel) {
-    const definitionLevels = []
-    for (const value of values) {
-      if (value === null || value === undefined) {
-        definitionLevels.push(maxDefinitionLevel - 1)
-        num_nulls++
-      } else {
-        definitionLevels.push(maxDefinitionLevel)
-      }
+function getStatistics(values) {
+  let min_value = undefined
+  let max_value = undefined
+  let null_count = 0n
+  for (const value of values) {
+    if (value === null || value === undefined) {
+      null_count++
+      continue
     }
-    definition_levels_byte_length = writeRleBitPackedHybrid(writer, definitionLevels)
+    if (min_value === undefined || value < min_value) {
+      min_value = value
+    }
+    if (max_value === undefined || value > max_value) {
+      max_value = value
+    }
   }
-  return { definition_levels_byte_length, repetition_levels_byte_length, num_nulls }
+  return { min_value, max_value, null_count }
 }
