@@ -1,9 +1,8 @@
 import fs from 'fs'
 import { asyncBufferFromFile, parquetMetadataAsync, parquetReadObjects } from 'hyparquet'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { exampleMetadata } from './metadata.test.js'
 import { parquetWriteFile } from '../src/index.js'
-import { basicData } from './write.buffer.test.js'
+import { exampleData, exampleMetadata } from './example.js'
 
 const filedir = 'data/'
 const filename = 'data/write.file.parquet'
@@ -24,7 +23,7 @@ describe('parquetWriteFile', () => {
   })
 
   it('writes parquet file', async () => {
-    parquetWriteFile({ filename, columnData: basicData })
+    parquetWriteFile({ filename, columnData: exampleData })
 
     // check parquet metadata
     const file = await asyncBufferFromFile(filename)

@@ -1,7 +1,7 @@
 import { parquetMetadata, parquetReadObjects } from 'hyparquet'
 import { describe, expect, it } from 'vitest'
 import { parquetWriteBuffer } from '../src/index.js'
-import { exampleMetadata } from './metadata.test.js'
+import { exampleData, exampleMetadata } from './example.js'
 
 /**
  * Utility to encode a parquet file and then read it back into a JS object.
@@ -15,26 +15,15 @@ async function roundTripDeserialize(columnData) {
   return await parquetReadObjects({ file, utf8: false })
 }
 
-/** @type {ColumnData[]} */
-export const basicData = [
-  { name: 'bool', data: [true, false, true, false] },
-  { name: 'int', data: [0, 127, 0x7fff, 0x7fffffff] },
-  { name: 'bigint', data: [0n, 127n, 0x7fffn, 0x7fffffffffffffffn] },
-  { name: 'float', data: [0, 0.0001, 123.456, 1e100], type: 'FLOAT', repetition_type: 'REQUIRED' },
-  { name: 'double', data: [0, 0.0001, 123.456, 1e100] },
-  { name: 'string', data: ['a', 'b', 'c', 'd'] },
-  { name: 'nullable', data: [true, false, null, null] },
-]
-
 describe('parquetWriteBuffer', () => {
   it('writes expected metadata', () => {
-    const file = parquetWriteBuffer({ columnData: basicData })
+    const file = parquetWriteBuffer({ columnData: exampleData })
     const metadata = parquetMetadata(file)
     expect(metadata).toEqual(exampleMetadata)
   })
 
   it('serializes basic types', async () => {
-    const result = await roundTripDeserialize(basicData)
+    const result = await roundTripDeserialize(exampleData)
     expect(result).toEqual([
       { bool: true, int: 0, bigint: 0n, float: 0, double: 0, string: 'a', nullable: true },
       { bool: false, int: 127, bigint: 127n, float: 0.00009999999747378752, double: 0.0001, string: 'b', nullable: false },
@@ -90,8 +79,8 @@ describe('parquetWriteBuffer', () => {
   })
 
   it('writes statistics when enabled', () => {
-    const withStats = parquetWriteBuffer({ columnData: basicData, statistics: true })
-    const noStats = parquetWriteBuffer({ columnData: basicData, statistics: false })
+    const withStats = parquetWriteBuffer({ columnData: exampleData, statistics: true })
+    const noStats = parquetWriteBuffer({ columnData: exampleData, statistics: false })
     expect(withStats.byteLength).toBe(773)
     expect(noStats.byteLength).toBe(663)
   })
