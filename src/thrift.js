@@ -1,20 +1,4 @@
-// TCompactProtocol types
-const CompactType = {
-  STOP: 0,
-  TRUE: 1,
-  FALSE: 2,
-  BYTE: 3,
-  I16: 4,
-  I32: 5,
-  I64: 6,
-  DOUBLE: 7,
-  BINARY: 8,
-  LIST: 9,
-  SET: 10,
-  MAP: 11,
-  STRUCT: 12,
-  UUID: 13,
-}
+import { CompactType } from 'hyparquet/src/thrift.js'
 
 /**
  * Serialize a JS object in TCompactProtocol format.
@@ -28,26 +12,24 @@ const CompactType = {
  */
 export function serializeTCompactProtocol(writer, data) {
   let lastFid = 0
-  // Write each field
+  // write each field
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) continue
 
-    // We expect key = "field_N" so we can extract N as the field ID
+    // we expect key = "field_N" so we can extract N as the field ID
     const fid = parseInt(key.replace(/^field_/, ''), 10)
     if (Number.isNaN(fid)) {
-      throw new Error(`Invalid field name: ${key}. Expected "field_###" format.`)
+      throw new Error(`thrift invalid field name: ${key}. Expected "field_###".`)
     }
 
-    // Figure out which compact type to use
+    // write the field-begin header
     const type = getCompactTypeForValue(value)
-
-    // Write the field-begin header: (delta << 4) | type
     const delta = fid - lastFid
     if (delta <= 0) {
-      throw new Error(`Non-monotonic field ID. fid=${fid}, lastFid=${lastFid}`)
+      throw new Error(`thrift non-monotonic field ID: fid=${fid}, lastFid=${lastFid}`)
     }
     // High nibble = delta, low nibble = type
-    writer.appendUint8(delta << 4 | type & 0x0f)
+    writer.appendUint8(delta << 4 | type)
 
     // Write the field content itself
     writeElement(writer, type, value)

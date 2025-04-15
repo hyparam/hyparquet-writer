@@ -1,6 +1,6 @@
 {
   "name": "hyparquet-writer",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Parquet file writer for JavaScript",
   "author": "Hyperparam",
   "homepage": "https://hyperparam.app",
