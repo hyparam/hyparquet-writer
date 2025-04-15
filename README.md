@@ -24,7 +24,7 @@ import { parquetWriteBuffer } from 'hyparquet-writer'
 
 const arrayBuffer = parquetWriteBuffer({
   columnData: [
-    { name: 'name', data: ['Alice', 'Bob', 'Charlie'], type: 'STRING' },
+    { name: 'name', data: ['Alice', 'Bob', 'Charlie'], type: 'BYTE_ARRAY' },
     { name: 'age', data: [25, 30, 35], type: 'INT32' },
   ],
 })
@@ -38,6 +38,9 @@ Note: if `type` is not provided, the type will be guessed from the data. The sup
 - `FLOAT`
 - `DOUBLE`
 - `BYTE_ARRAY`
+- `FIXED_LEN_BYTE_ARRAY`
+
+Strings are represented in parquet as type `BYTE_ARRAY`.
 
 ### Node.js Write to Local Parquet File
 
@@ -49,7 +52,7 @@ const { parquetWriteFile } = await import('hyparquet-writer')
 parquetWriteFile({
   filename: 'example.parquet',
   columnData: [
-    { name: 'name', data: ['Alice', 'Bob', 'Charlie'], type: 'STRING' },
+    { name: 'name', data: ['Alice', 'Bob', 'Charlie'], type: 'BYTE_ARRAY' },
     { name: 'age', data: [25, 30, 35], type: 'INT32' },
   ],
 })
@@ -62,7 +65,7 @@ Note: hyparquet-writer is published as an ES module, so dynamic `import()` may b
 Options can be passed to `parquetWrite` to adjust parquet file writing behavior:
 
  - `writer`: a generic writer object
- - `compression`: use snappy compression (default true)
+ - `compressed`: use snappy compression (default true)
  - `statistics`: write column statistics (default true)
  - `rowGroupSize`: number of rows in each row group (default 100000)
  - `kvMetadata`: extra key-value metadata to be stored in the parquet footer
@@ -74,18 +77,43 @@ const writer = new ByteWriter()
 const arrayBuffer = parquetWrite({
   writer,
   columnData: [
-    { name: 'name', data: ['Alice', 'Bob', 'Charlie'], type: 'STRING' },
+    { name: 'name', data: ['Alice', 'Bob', 'Charlie'], type: 'BYTE_ARRAY' },
     { name: 'age', data: [25, 30, 35], type: 'INT32' },
   ],
-  compression: false,
+  compressed: false,
   statistics: false,
   rowGroupSize: 1000,
-  kvMetadata: {
-    'key1': 'value1',
-    'key2': 'value2',
-  },
+  kvMetadata: [
+    { key: 'key1', value: 'value1' },
+    { key: 'key2', value: 'value2' },
+  ],
 })
 ```
+
+### Converted Types
+
+You can provide additional type hints by providing a `converted_type` to the `columnData` elements:
+
+```javascript
+parquetWrite({
+  columnData: [
+    {
+      name: 'dates',
+      data: [new Date(1000000), new Date(2000000)],
+      type: 'INT64',
+      converted_type: 'TIMESTAMP_MILLIS',
+    },
+    {
+      name: 'json',
+      data: [{ foo: 'bar' }, { baz: 3 }, 'imastring'],
+      type: 'BYTE_ARRAY',
+      converted_type: 'JSON',
+    },
+  ]
+})
+```
+
+Most converted types will be auto-detected if you just provide data with no types. However, it is still recommended that you provide type information when possible. (zero rows would throw an exception, floats might be typed as int, etc)
 
 ## References
 

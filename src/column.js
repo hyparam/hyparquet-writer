@@ -18,6 +18,8 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
   if (!type) throw new Error(`column ${schemaElement.name} cannot determine type`)
   const offsetStart = writer.offset
   const num_values = values.length
+  /** @type {Encoding[]} */
+  const encodings = []
 
   // Compute statistics
   const statistics = stats ? getStatistics(values) : undefined
@@ -45,20 +47,19 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
     // write data page with dictionary indexes
     data_page_offset = BigInt(writer.offset)
     writeDataPageV2(writer, indexes, type, schemaPath, 'RLE_DICTIONARY', compressed)
+    encodings.push('RLE_DICTIONARY')
   } else {
     // unconvert values from rich types to simple
     values = unconvert(schemaElement, values)
 
     // write data page
     writeDataPageV2(writer, values, type, schemaPath, 'PLAIN', compressed)
+    encodings.push('PLAIN')
   }
-
-  /** @type {import('hyparquet').Encoding} */
-  const encoding = dictionary ? 'RLE_DICTIONARY' : 'PLAIN'
 
   return {
     type,
-    encodings: [encoding],
+    encodings,
     path_in_schema: schemaPath.slice(1).map(s => s.name),
     codec: compressed ? 'SNAPPY' : 'UNCOMPRESSED',
     num_values: BigInt(num_values),
@@ -106,8 +107,7 @@ function writeDictionaryPage(writer, dictionary, type, compressed) {
   }
 
   // write dictionary page header
-  /** @type {PageHeader} */
-  const dictionaryHeader = {
+  writePageHeader(writer, {
     type: 'DICTIONARY_PAGE',
     uncompressed_page_size: dictionaryPage.offset,
     compressed_page_size: compressedDictionaryPage.offset,
@@ -115,13 +115,12 @@ function writeDictionaryPage(writer, dictionary, type, compressed) {
       num_values: dictionary.length,
       encoding: 'PLAIN',
     },
-  }
-  writePageHeader(writer, dictionaryHeader)
+  })
   writer.appendBuffer(compressedDictionaryPage.getBuffer())
 }
 
 /**
- * @import {ColumnMetaData, DecodedArray, PageHeader, ParquetType, SchemaElement, Statistics} from 'hyparquet'
+ * @import {ColumnMetaData, DecodedArray, Encoding, ParquetType, SchemaElement, Statistics} from 'hyparquet'
  * @import {Writer} from '../src/types.js'
  * @param {DecodedArray} values
  * @returns {Statistics}

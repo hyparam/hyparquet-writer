@@ -44,8 +44,7 @@ export function writeDataPageV2(writer, values, type, schemaPath, encoding, comp
   }
 
   // write page header
-  /** @type {PageHeader} */
-  const header = {
+  writePageHeader(writer, {
     type: 'DATA_PAGE_V2',
     uncompressed_page_size: levels.offset + page.offset,
     compressed_page_size: levels.offset + compressedPage.offset,
@@ -58,8 +57,7 @@ export function writeDataPageV2(writer, values, type, schemaPath, encoding, comp
       repetition_levels_byte_length,
       is_compressed: compressed,
     },
-  }
-  writePageHeader(writer, header)
+  })
 
   // write levels
   writer.appendBuffer(levels.getBuffer())
@@ -69,7 +67,6 @@ export function writeDataPageV2(writer, values, type, schemaPath, encoding, comp
 }
 
 /**
- * @import {DecodedArray, PageHeader, ParquetType, SchemaElement} from 'hyparquet'
  * @param {Writer} writer
  * @param {PageHeader} header
  */
@@ -105,6 +102,7 @@ export function writePageHeader(writer, header) {
 }
 
 /**
+ * @import {DecodedArray, PageHeader, ParquetType, SchemaElement} from 'hyparquet'
  * @param {Writer} writer
  * @param {SchemaElement[]} schemaPath
  * @param {DecodedArray} values

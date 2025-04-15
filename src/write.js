@@ -9,7 +9,14 @@ import { schemaFromColumnData } from './schema.js'
  * @import {ParquetWriteOptions} from '../src/types.js'
  * @param {ParquetWriteOptions} options
  */
-export function parquetWrite({ writer, columnData, compressed = true, statistics = true, rowGroupSize = 100000, kvMetadata }) {
+export function parquetWrite({
+  writer,
+  columnData,
+  compressed = true,
+  statistics = true,
+  rowGroupSize = 100000,
+  kvMetadata,
+}) {
   const schema = schemaFromColumnData(columnData)
   const pq = new ParquetWriter({
     writer,
