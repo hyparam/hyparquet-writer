@@ -10,7 +10,11 @@ import { ByteWriter } from './bytewriter.js'
 export function writeRleBitPackedHybrid(writer, values) {
   const offsetStart = writer.offset
   // find max bitwidth
-  const bitWidth = Math.ceil(Math.log2(Math.max(...values) + 1))
+  let max = 0
+  for (const v of values) {
+    if (v > max) max = v
+  }
+  const bitWidth = Math.ceil(Math.log2(max + 1))
 
   // try both RLE and bit-packed and choose the best
   const rle = new ByteWriter()
