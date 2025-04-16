@@ -83,8 +83,10 @@ export function writeMetadata(writer, metadata) {
     field_6: metadata.created_by,
   }
 
+  // write metadata as thrift
   const metadataStart = writer.offset
   serializeTCompactProtocol(writer, compact)
+  // write metadata length
   const metadataLength = writer.offset - metadataStart
   writer.appendUint32(metadataLength)
 }

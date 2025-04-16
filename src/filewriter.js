@@ -17,10 +17,10 @@ export function fileWriter(filename) {
   fs.writeFileSync(filename, '', { flag: 'w' })
 
   function flush() {
-    const chunk = writer.buffer.slice(0, writer.offset)
+    const chunk = writer.buffer.slice(0, writer.index)
     // TODO: async
     fs.writeFileSync(filename, new Uint8Array(chunk), { flag: 'a' })
-    writer.offset = 0
+    writer.index = 0
   }
 
   /**
@@ -28,11 +28,11 @@ export function fileWriter(filename) {
    * @param {number} size
    */
   writer.ensure = function(size) {
-    if (writer.offset > chunkSize) {
+    if (writer.index > chunkSize) {
       flush()
     }
-    if (writer.offset + size > writer.buffer.byteLength) {
-      const newSize = Math.max(writer.buffer.byteLength * 2, writer.offset + size)
+    if (writer.index + size > writer.buffer.byteLength) {
+      const newSize = Math.max(writer.buffer.byteLength * 2, writer.index + size)
       const newBuffer = new ArrayBuffer(newSize)
       new Uint8Array(newBuffer).set(new Uint8Array(writer.buffer))
       writer.buffer = newBuffer

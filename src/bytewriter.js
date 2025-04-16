@@ -8,8 +8,9 @@
  */
 export function ByteWriter() {
   this.buffer = new ArrayBuffer(1024)
-  this.offset = 0
   this.view = new DataView(this.buffer)
+  this.offset = 0 // bytes written
+  this.index = 0 // index in buffer
   return this
 }
 
@@ -18,8 +19,8 @@ export function ByteWriter() {
  */
 ByteWriter.prototype.ensure = function(size) {
   // auto-expanding buffer
-  if (this.offset + size > this.buffer.byteLength) {
-    const newSize = Math.max(this.buffer.byteLength * 2, this.offset + size)
+  if (this.index + size > this.buffer.byteLength) {
+    const newSize = Math.max(this.buffer.byteLength * 2, this.index + size)
     const newBuffer = new ArrayBuffer(newSize)
     // TODO: save buffers until later and merge once?
     new Uint8Array(newBuffer).set(new Uint8Array(this.buffer))
@@ -32,61 +33,67 @@ ByteWriter.prototype.finish = function() {
 }
 
 ByteWriter.prototype.getBuffer = function() {
-  return this.buffer.slice(0, this.offset)
+  return this.buffer.slice(0, this.index)
 }
 
 /**
  * @param {number} value
  */
 ByteWriter.prototype.appendUint8 = function(value) {
-  this.ensure(this.offset + 1)
-  this.view.setUint8(this.offset, value)
+  this.ensure(this.index + 1)
+  this.view.setUint8(this.index, value)
   this.offset++
+  this.index++
 }
 
 /**
  * @param {number} value
  */
 ByteWriter.prototype.appendUint32 = function(value) {
-  this.ensure(this.offset + 4)
-  this.view.setUint32(this.offset, value, true)
+  this.ensure(this.index + 4)
+  this.view.setUint32(this.index, value, true)
   this.offset += 4
+  this.index += 4
 }
 
 /**
  * @param {number} value
  */
 ByteWriter.prototype.appendInt32 = function(value) {
-  this.ensure(this.offset + 4)
-  this.view.setInt32(this.offset, value, true)
+  this.ensure(this.index + 4)
+  this.view.setInt32(this.index, value, true)
   this.offset += 4
+  this.index += 4
 }
 
 /**
  * @param {bigint} value
  */
 ByteWriter.prototype.appendInt64 = function(value) {
-  this.ensure(this.offset + 8)
-  this.view.setBigInt64(this.offset, BigInt(value), true)
+  this.ensure(this.index + 8)
+  this.view.setBigInt64(this.index, BigInt(value), true)
   this.offset += 8
+  this.index += 8
 }
 
 /**
  * @param {number} value
  */
 ByteWriter.prototype.appendFloat32 = function(value) {
-  this.ensure(this.offset + 8)
-  this.view.setFloat32(this.offset, value, true)
+  this.ensure(this.index + 8)
+  this.view.setFloat32(this.index, value, true)
   this.offset += 4
+  this.index += 4
 }
 
 /**
  * @param {number} value
  */
 ByteWriter.prototype.appendFloat64 = function(value) {
-  this.ensure(this.offset + 8)
-  this.view.setFloat64(this.offset, value, true)
+  this.ensure(this.index + 8)
+  this.view.setFloat64(this.index, value, true)
   this.offset += 8
+  this.index += 8
 }
 
 /**
@@ -100,9 +107,10 @@ ByteWriter.prototype.appendBuffer = function(value) {
  * @param {Uint8Array} value
  */
 ByteWriter.prototype.appendBytes = function(value) {
-  this.ensure(this.offset + value.length)
-  new Uint8Array(this.buffer, this.offset, value.length).set(value)
+  this.ensure(this.index + value.length)
+  new Uint8Array(this.buffer, this.index, value.length).set(value)
   this.offset += value.length
+  this.index += value.length
 }
 
 /**

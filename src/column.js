@@ -64,7 +64,7 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
     codec: compressed ? 'SNAPPY' : 'UNCOMPRESSED',
     num_values: BigInt(num_values),
     total_compressed_size: BigInt(writer.offset - offsetStart),
-    total_uncompressed_size: BigInt(writer.offset - offsetStart),
+    total_uncompressed_size: BigInt(writer.offset - offsetStart), // TODO
     data_page_offset,
     dictionary_page_offset,
     statistics,

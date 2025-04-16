@@ -25,8 +25,9 @@ export interface ColumnData {
 
 export interface Writer {
   buffer: ArrayBuffer
-  offset: number
   view: DataView
+  offset: number
+
   ensure(size: number): void
   finish(): void
   getBuffer(): ArrayBuffer
