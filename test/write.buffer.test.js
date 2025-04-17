@@ -39,9 +39,9 @@ describe('parquetWriteBuffer', () => {
     bool[500] = true
     bool[9999] = false
     const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data: bool }] })
-    expect(file.byteLength).toBe(160)
+    expect(file.byteLength).toBe(154)
     const metadata = parquetMetadata(file)
-    expect(metadata.metadata_length).toBe(98)
+    expect(metadata.metadata_length).toBe(92)
     const result = await parquetReadObjects({ file })
     expect(result.length).toBe(10000)
     expect(result[0]).toEqual({ bool: null })
@@ -55,14 +55,14 @@ describe('parquetWriteBuffer', () => {
   it('efficiently serializes long string', () => {
     const str = 'a'.repeat(10000)
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data: [str] }] })
-    expect(file.byteLength).toBe(646)
+    expect(file.byteLength).toBe(638)
   })
 
   it('less efficiently serializes string without compression', () => {
     const str = 'a'.repeat(10000)
     const columnData = [{ name: 'string', data: [str] }]
     const file = parquetWriteBuffer({ columnData, compressed: false })
-    expect(file.byteLength).toBe(10176)
+    expect(file.byteLength).toBe(10168)
   })
 
   it('efficiently serializes column with few distinct values', async () => {
@@ -70,7 +70,7 @@ describe('parquetWriteBuffer', () => {
       .fill('aaaa', 0, 50000)
       .fill('bbbb', 50000, 100000)
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data }], statistics: false })
-    expect(file.byteLength).toBe(178)
+    expect(file.byteLength).toBe(170)
     // round trip
     const result = await parquetReadObjects({ file })
     expect(result.length).toBe(100000)
@@ -81,8 +81,8 @@ describe('parquetWriteBuffer', () => {
   it('writes statistics when enabled', () => {
     const withStats = parquetWriteBuffer({ columnData: exampleData, statistics: true })
     const noStats = parquetWriteBuffer({ columnData: exampleData, statistics: false })
-    expect(withStats.byteLength).toBe(773)
-    expect(noStats.byteLength).toBe(663)
+    expect(withStats.byteLength).toBe(721)
+    expect(noStats.byteLength).toBe(611)
   })
 
   it('serializes list types', async () => {

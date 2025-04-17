@@ -48,7 +48,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) 
 
     // write columns
     for (let j = 0; j < columnData.length; j++) {
-      const { name, data } = columnData[j]
+      const { data } = columnData[j]
       const schemaPath = [this.schema[0], this.schema[j + 1]]
       const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
       const file_offset = BigInt(this.writer.offset)
@@ -56,7 +56,6 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) 
 
       // save column chunk metadata
       columns.push({
-        file_path: name,
         file_offset,
         meta_data,
       })

@@ -31,7 +31,6 @@ export const exampleMetadata = {
   row_groups: [{
     columns: [
       {
-        file_path: 'bool',
         file_offset: 4n,
         meta_data: {
           type: 'BOOLEAN',
@@ -50,7 +49,6 @@ export const exampleMetadata = {
         },
       },
       {
-        file_path: 'int',
         file_offset: 28n,
         meta_data: {
           type: 'INT32',
@@ -69,7 +67,6 @@ export const exampleMetadata = {
         },
       },
       {
-        file_path: 'bigint',
         file_offset: 67n,
         meta_data: {
           type: 'INT64',
@@ -88,7 +85,6 @@ export const exampleMetadata = {
         },
       },
       {
-        file_path: 'float',
         file_offset: 110n,
         meta_data: {
           type: 'FLOAT',
@@ -107,7 +103,6 @@ export const exampleMetadata = {
         },
       },
       {
-        file_path: 'double',
         file_offset: 149n,
         meta_data: {
           type: 'DOUBLE',
@@ -126,7 +121,6 @@ export const exampleMetadata = {
         },
       },
       {
-        file_path: 'string',
         file_offset: 200n,
         meta_data: {
           type: 'BYTE_ARRAY',
@@ -145,7 +139,6 @@ export const exampleMetadata = {
         },
       },
       {
-        file_path: 'nullable',
         file_offset: 242n,
         meta_data: {
           type: 'BOOLEAN',
@@ -167,5 +160,5 @@ export const exampleMetadata = {
     total_byte_size: 264n,
     num_rows: 4n,
   }],
-  metadata_length: 497,
+  metadata_length: 445,
 }

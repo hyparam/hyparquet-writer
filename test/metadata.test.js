@@ -24,7 +24,7 @@ describe('writeMetadata', () => {
         { key: 'key1', value: 'value1' },
         { key: 'key2', value: 'value2' },
       ],
-      metadata_length: 529,
+      metadata_length: 477,
     }
     writeMetadata(writer, withKvMetadata)
 
