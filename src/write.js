@@ -1,5 +1,4 @@
 import { ByteWriter } from './bytewriter.js'
-import { fileWriter } from './filewriter.js'
 import { ParquetWriter } from './parquet-writer.js'
 import { schemaFromColumnData } from './schema.js'
 
@@ -42,15 +41,4 @@ export function parquetWriteBuffer(options) {
   const writer = new ByteWriter()
   parquetWrite({ ...options, writer })
   return writer.getBuffer()
-}
-
-/**
- * Write data as parquet to an ArrayBuffer.
- *
- * @param {Omit<ParquetWriteOptions, 'writer'> & {filename: string}} options
- */
-export function parquetWriteFile(options) {
-  const { filename, ...rest } = options
-  const writer = fileWriter(filename)
-  parquetWrite({ ...rest, writer })
 }

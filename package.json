@@ -25,15 +25,21 @@
     "types"
   ],
   "type": "module",
-  "types": "src/index.d.ts",
+  "types": "types/index.d.ts",
   "exports": {
     ".": {
-      "import": "./src/index.js",
-      "types": "./types/index.d.ts"
+      "node": {
+        "types": "./types/node.d.ts",
+        "import": "./src/node.js"
+      },
+      "default": {
+        "types": "./types/index.d.ts",
+        "import": "./src/index.js"
+      }
     },
     "./src/*.js": {
-      "import": "./src/*.js",
-      "types": "./types/*.d.ts"
+      "types": "./types/*.d.ts",
+      "import": "./src/*.js"
     }
   },
   "scripts": {
