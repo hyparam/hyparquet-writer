@@ -25,7 +25,7 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
   const statistics = stats ? getStatistics(values) : undefined
 
   // dictionary encoding
-  let dictionary_page_offset = undefined
+  let dictionary_page_offset
   let data_page_offset = BigInt(writer.offset)
   /** @type {DecodedArray | undefined} */
   const dictionary = useDictionary(values, type)
@@ -81,11 +81,9 @@ function useDictionary(values, type) {
   const unique = new Set(values)
   unique.delete(undefined)
   unique.delete(null)
-  if (values.length > 10 && values.length / unique.size > 0.1) {
-    if (unique.size < values.length) {
-      // TODO: sort by frequency
-      return Array.from(unique)
-    }
+  if (values.length / unique.size > 2) {
+    // TODO: sort by frequency
+    return Array.from(unique)
   }
 }
 
