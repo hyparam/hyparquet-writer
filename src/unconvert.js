@@ -11,8 +11,7 @@ const dayMillis = 86400000 // 1 day in milliseconds
 export function unconvert(element, values) {
   const ctype = element.converted_type
   if (ctype === 'DECIMAL') {
-    const scale = element.scale || 0
-    const factor = 10 ** scale
+    const factor = 10 ** (element.scale || 0)
     return values.map(v => {
       if (v === null || v === undefined) return v
       if (typeof v !== 'number') throw new Error('DECIMAL must be a number')
@@ -52,6 +51,22 @@ export function unconvertMinMax(value, element) {
   if (value === undefined || value === null) return undefined
   const { type, converted_type } = element
   if (type === 'BOOLEAN') return new Uint8Array([value ? 1 : 0])
+  if (converted_type === 'DECIMAL') {
+    if (typeof value !== 'number') throw new Error('DECIMAL must be a number')
+    const factor = 10 ** (element.scale || 0)
+    const out = unconvertDecimal(element, BigInt(Math.round(value * factor)))
+    if (out instanceof Uint8Array) return out
+    if (typeof out === 'number') {
+      const buffer = new ArrayBuffer(4)
+      new DataView(buffer).setFloat32(0, out, true)
+      return new Uint8Array(buffer)
+    }
+    if (typeof out === 'bigint') {
+      const buffer = new ArrayBuffer(8)
+      new DataView(buffer).setBigInt64(0, out, true)
+      return new Uint8Array(buffer)
+    }
+  }
   if (type === 'BYTE_ARRAY' || type === 'FIXED_LEN_BYTE_ARRAY') {
     // truncate byte arrays to 16 bytes for statistics
     if (value instanceof Uint8Array) return value.slice(0, 16)
@@ -78,7 +93,7 @@ export function unconvertMinMax(value, element) {
     return new Uint8Array(buffer)
   }
   if (type === 'INT32' && converted_type === 'DATE' && value instanceof Date) {
-    const buffer = new ArrayBuffer(8)
+    const buffer = new ArrayBuffer(4)
     new DataView(buffer).setInt32(0, Math.floor(value.getTime() / dayMillis), true)
     return new Uint8Array(buffer)
   }
