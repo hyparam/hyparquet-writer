@@ -1,7 +1,7 @@
 import { createWriteStream, promises as fs } from 'fs'
 import { pipeline } from 'stream/promises'
 import { asyncBufferFromFile, parquetMetadataAsync, parquetReadObjects, parquetSchema } from 'hyparquet'
-import { parquetWriteFile } from './src/write.js'
+import { parquetWriteFile } from './src/node.js'
 
 const url = 'https://s3.hyperparam.app/tpch-lineitem-v2.parquet'
 const filename = 'data/tpch-lineitem-v2.parquet'
@@ -28,7 +28,7 @@ const metadata = await parquetMetadataAsync(file)
 const rows = await parquetReadObjects({
   file,
   metadata,
-  columns: ['l_comment'],
+  // columns: ['l_comment'],
   rowStart: 0,
   rowEnd: 100_000,
 })
@@ -42,7 +42,7 @@ const columnData = schema.children.map(({ element }) => ({
   // type: element.type,
   ...element,
   data: [],
-})).filter(({ name }) => name === 'l_comment')
+})) // .filter(({ name }) => name === 'l_comment')
 for (const row of rows) {
   for (const { name, data } of columnData) {
     data.push(row[name])

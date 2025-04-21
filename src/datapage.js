@@ -28,10 +28,12 @@ export function writeDataPageV2(writer, values, type, schemaPath, encoding, comp
   // write page data to temp buffer
   const page = new ByteWriter()
   if (encoding === 'RLE_DICTIONARY') {
-    const maxValue = Math.max(...nonnull)
+    // find max bitwidth
+    let maxValue = 0
+    for (const v of values) if (v > maxValue) maxValue = v
     const bitWidth = Math.ceil(Math.log2(maxValue + 1))
-    page.appendUint8(bitWidth)
-    writeRleBitPackedHybrid(page, nonnull)
+    page.appendUint8(bitWidth) // prepend bitWidth
+    writeRleBitPackedHybrid(page, nonnull, bitWidth)
   } else {
     writePlain(page, nonnull, type)
   }
@@ -115,7 +117,7 @@ function writeLevels(writer, schemaPath, values) {
   const maxRepetitionLevel = getMaxRepetitionLevel(schemaPath)
   let repetition_levels_byte_length = 0
   if (maxRepetitionLevel) {
-    repetition_levels_byte_length = writeRleBitPackedHybrid(writer, [])
+    repetition_levels_byte_length = writeRleBitPackedHybrid(writer, [], 0)
   }
 
   // definition levels
@@ -131,7 +133,8 @@ function writeLevels(writer, schemaPath, values) {
         definitionLevels.push(maxDefinitionLevel)
       }
     }
-    definition_levels_byte_length = writeRleBitPackedHybrid(writer, definitionLevels)
+    const bitWidth = Math.ceil(Math.log2(maxDefinitionLevel + 1))
+    definition_levels_byte_length = writeRleBitPackedHybrid(writer, definitionLevels, bitWidth)
   }
   return { definition_levels_byte_length, repetition_levels_byte_length, num_nulls }
 }

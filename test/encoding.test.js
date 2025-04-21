@@ -14,7 +14,7 @@ function roundTripDeserialize(values) {
 
   // Serialize the values using writeRleBitPackedHybrid
   const writer = new ByteWriter()
-  writeRleBitPackedHybrid(writer, values)
+  writeRleBitPackedHybrid(writer, values, bitWidth)
   const buffer = writer.getBuffer()
   const reader = { view: new DataView(buffer), offset: 0 }
 
