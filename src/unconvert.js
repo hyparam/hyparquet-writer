@@ -9,7 +9,7 @@ const dayMillis = 86400000 // 1 day in milliseconds
  * @returns {DecodedArray}
  */
 export function unconvert(element, values) {
-  const ctype = element.converted_type
+  const { converted_type: ctype, logical_type: ltype } = element
   if (ctype === 'DECIMAL') {
     const factor = 10 ** (element.scale || 0)
     return values.map(v => {
@@ -31,6 +31,9 @@ export function unconvert(element, values) {
     if (!Array.isArray(values)) throw new Error('JSON must be an array')
     const encoder = new TextEncoder()
     return values.map(v => encoder.encode(JSON.stringify(v)))
+  }
+  if (ltype?.type === 'FLOAT16') {
+    return Array.from(values).map(unconvertFloat16)
   }
   if (ctype === 'UTF8') {
     if (!Array.isArray(values)) throw new Error('strings must be an array')
@@ -148,12 +151,71 @@ export function unconvertDecimal({ type, type_length }, value) {
     } else {
       // for nonnegative: stop when top byte has signBit = 0 AND shifted value == 0n
       // for negative: stop when top byte has signBit = 1 AND shifted value == -1n
-      const signBit = byte & 0x80
-      if (!signBit && value === 0n || signBit && value === -1n) {
+      const sign = byte & 0x80
+      if (!sign && value === 0n || sign && value === -1n) {
         break
       }
     }
   }
 
   return new Uint8Array(bytes)
+}
+
+/**
+ * @param {number | undefined} value
+ * @returns {Uint8Array | undefined}
+ */
+export function unconvertFloat16(value) {
+  if (value === undefined || value === null) return
+  if (Number.isNaN(value)) return new Uint8Array([0x00, 0x7e])
+
+  const sign = value < 0 || Object.is(value, -0) ? 1 : 0
+  const abs = Math.abs(value)
+
+  // infinities
+  if (!isFinite(abs)) return new Uint8Array([0x00, sign << 7 | 0x7c])
+
+  // ±0
+  if (abs === 0) return new Uint8Array([0x00, sign << 7])
+
+  // write as f32 to get raw bits
+  const buf = new ArrayBuffer(4)
+  new Float32Array(buf)[0] = abs
+  const bits32 = new Uint32Array(buf)[0]
+
+  let exp32 = bits32 >>> 23 & 0xff
+  let mant32 = bits32 & 0x7fffff
+
+  // convert 32‑bit exponent to unbiased, then to 16‑bit
+  exp32 -= 127
+
+  // handle numbers too small for a normal 16‑bit exponent
+  if (exp32 < -14) {
+    // sub‑normal: shift mantissa so that result = mant * 2^-14
+    const shift = -14 - exp32
+    mant32 = (mant32 | 0x800000) >> shift + 13
+
+    // round‑to‑nearest‑even
+    if (mant32 & 1) mant32 += 1
+
+    const bits16 = sign << 15 | mant32
+    return new Uint8Array([bits16 & 0xff, bits16 >> 8])
+  }
+
+  // overflow
+  if (exp32 > 15) return new Uint8Array([0x00, sign << 7 | 0x7c])
+
+  // normal number
+  let exp16 = exp32 + 15
+  mant32 = mant32 + 0x1000 // add rounding bit
+
+  // handle mantissa overflow after rounding
+  if (mant32 & 0x800000) {
+    mant32 = 0
+    if (++exp16 === 31) // became infinity
+      return new Uint8Array([0x00, sign << 7 | 0x7c])
+  }
+
+  const bits16 = sign << 15 | exp16 << 10 | mant32 >> 13
+  return new Uint8Array([bits16 & 0xff, bits16 >> 8])
 }

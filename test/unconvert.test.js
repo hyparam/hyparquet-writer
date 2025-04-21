@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { unconvert, unconvertDecimal, unconvertMinMax } from '../src/unconvert.js'
+import { unconvert, unconvertDecimal, unconvertFloat16, unconvertMinMax } from '../src/unconvert.js'
 import { convertMetadata } from 'hyparquet/src/metadata.js'
+import { parseFloat16 } from 'hyparquet/src/convert.js'
 
 /**
  * @import {SchemaElement} from 'hyparquet'
@@ -197,6 +198,43 @@ describe('unconvertDecimal', () => {
   it('throws if fixed length is not specified', () => {
     expect(() => unconvertDecimal({ name: 'col', type: 'FIXED_LEN_BYTE_ARRAY' }, 1234n))
       .toThrow('fixed length byte array type_length is required')
+  })
+})
+
+describe('unconvertFloat16', () => {
+  it('should convert number to Float16 array', () => {
+    expect(unconvertFloat16(undefined)).toBeUndefined()
+    expect(unconvertFloat16(0)).toEqual(new Uint8Array([0x00, 0x00]))
+    expect(unconvertFloat16(-0)).toEqual(new Uint8Array([0x00, 0x80]))
+    expect(unconvertFloat16(NaN)).toEqual(new Uint8Array([0x00, 0x7e]))
+    expect(unconvertFloat16(Infinity)).toEqual(new Uint8Array([0x00, 0x7c]))
+    expect(unconvertFloat16(-Infinity)).toEqual(new Uint8Array([0x00, 0xfc]))
+    expect(unconvertFloat16(0.5)).toEqual(new Uint8Array([0x00, 0x38]))
+    expect(unconvertFloat16(-0.5)).toEqual(new Uint8Array([0x00, 0xb8]))
+    expect(unconvertFloat16(1)).toEqual(new Uint8Array([0x00, 0x3c]))
+    expect(unconvertFloat16(-1)).toEqual(new Uint8Array([0x00, 0xbc]))
+    expect(unconvertFloat16(0.000244140625)).toEqual(new Uint8Array([0x00, 0x0c]))
+    // largest normal
+    expect(unconvertFloat16(65504)).toEqual(new Uint8Array([0xff, 0x7b]))
+    expect(unconvertFloat16(65505)).toEqual(new Uint8Array([0xff, 0x7b]))
+    // subnormal
+    expect(unconvertFloat16(Math.pow(2, -24))).toEqual(new Uint8Array([0x02, 0x00]))
+    // mantissa overflow
+    expect(unconvertFloat16(2047.9999)).toEqual(new Uint8Array([0x00, 0x68]))
+  })
+
+  it('should round-trip Float16', () => {
+    expect(parseFloat16(unconvertFloat16(0))).toEqual(0)
+    expect(parseFloat16(unconvertFloat16(-0))).toEqual(-0)
+    expect(parseFloat16(unconvertFloat16(NaN))).toEqual(NaN)
+    expect(parseFloat16(unconvertFloat16(Infinity))).toEqual(Infinity)
+    expect(parseFloat16(unconvertFloat16(-Infinity))).toEqual(-Infinity)
+    expect(parseFloat16(unconvertFloat16(0.5))).toEqual(0.5)
+    expect(parseFloat16(unconvertFloat16(-0.5))).toEqual(-0.5)
+    expect(parseFloat16(unconvertFloat16(1))).toEqual(1)
+    expect(parseFloat16(unconvertFloat16(-1))).toEqual(-1)
+    expect(parseFloat16(unconvertFloat16(65504))).toEqual(65504)
+    expect(parseFloat16(unconvertFloat16(0.000244140625))).toEqual(0.000244140625)
   })
 })
 
