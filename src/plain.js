@@ -60,7 +60,7 @@ function writePlainBoolean(writer, values) {
  */
 function writePlainInt32(writer, values) {
   for (const value of values) {
-    if (typeof value !== 'number') throw new Error('parquet expected number value')
+    if (!Number.isSafeInteger(value)) throw new Error('parquet expected integer value')
     writer.appendInt32(value)
   }
 }
@@ -110,7 +110,7 @@ function writePlainByteArray(writer, values) {
       bytes = new TextEncoder().encode(value)
     }
     if (!(bytes instanceof Uint8Array)) {
-      throw new Error('parquet byte array expected Uint8Array value')
+      throw new Error('parquet expected Uint8Array value')
     }
     writer.appendUint32(bytes.length)
     writer.appendBytes(bytes)

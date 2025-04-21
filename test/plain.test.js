@@ -80,10 +80,7 @@ describe('writePlain', () => {
   it('writes BYTE_ARRAY', () => {
     const writer = new ByteWriter()
     const strings = ['a', 'b', 'c', 'd']
-    // strings must be pre-converted to Uint8Array
-    const encoder = new TextEncoder()
-    const bytes = strings.map(s => encoder.encode(s))
-    writePlain(writer, bytes, 'BYTE_ARRAY')
+    writePlain(writer, strings, 'BYTE_ARRAY')
 
     let offset = 0
     for (const s of strings) {
@@ -98,9 +95,43 @@ describe('writePlain', () => {
     }
   })
 
+  it('writes FIXED_LENGTH_BYTE_ARRAY', () => {
+    const writer = new ByteWriter()
+    const encoder = new TextEncoder()
+    const strings = ['abcd', 'efgh', 'ijkl']
+      .map(s => encoder.encode(s))
+    writePlain(writer, strings, 'FIXED_LEN_BYTE_ARRAY')
+
+    let offset = 0
+    for (const s of strings) {
+      for (let i = 0; i < s.length; i++) {
+        expect(writer.view.getUint8(offset)).toBe(s[i])
+        offset += 1
+      }
+    }
+  })
+
   it('throws error on unsupported type', () => {
     const writer = new ByteWriter()
     expect(() => writePlain(writer, [1, 2, 3], 'INT96'))
       .toThrow(/parquet unsupported type/i)
+  })
+
+  it('throws error on type mismatch', () => {
+    const writer = new ByteWriter()
+    expect(() => writePlain(writer, [1, 2, 3], 'BOOLEAN'))
+      .toThrow('parquet expected boolean value')
+    expect(() => writePlain(writer, [1, 2, 3.5], 'INT32'))
+      .toThrow('parquet expected integer value')
+    expect(() => writePlain(writer, [1n, 2n, 3], 'INT64'))
+      .toThrow('parquet expected bigint value')
+    expect(() => writePlain(writer, [1, 2, 3n], 'FLOAT'))
+      .toThrow('parquet expected number value')
+    expect(() => writePlain(writer, [1, 2, 3n], 'DOUBLE'))
+      .toThrow('parquet expected number value')
+    expect(() => writePlain(writer, [1, 2, 3], 'BYTE_ARRAY'))
+      .toThrow('parquet expected Uint8Array value')
+    expect(() => writePlain(writer, [1, 2, 3], 'FIXED_LEN_BYTE_ARRAY'))
+      .toThrow('parquet expected Uint8Array value')
   })
 })

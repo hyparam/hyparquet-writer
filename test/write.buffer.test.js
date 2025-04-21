@@ -32,6 +32,12 @@ describe('parquetWriteBuffer', () => {
     ])
   })
 
+  it('serializes a string without converted_type', () => {
+    const data = ['string1', 'string2', 'string3']
+    const file = parquetWriteBuffer({ columnData: [{ name: 'string', data, type: 'BYTE_ARRAY' }] })
+    expect(file.byteLength).toBe(162)
+  })
+
   it('efficiently serializes sparse booleans', async () => {
     const bool = Array(10000).fill(null)
     bool[10] = true
@@ -187,8 +193,20 @@ describe('parquetWriteBuffer', () => {
   })
 
   it('throws for wrong type specified', () => {
-    expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'BOOLEAN' }] }))
-      .toThrow('parquet expected boolean value')
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'INT64' }] }))
+      .toThrow('parquet expected bigint value')
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1n, 2n, 3n], type: 'INT32' }] }))
+      .toThrow('parquet expected integer value')
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1, 2, 3n], type: 'INT32' }] }))
+      .toThrow('parquet expected integer value')
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1, 2, 3.5], type: 'INT32' }] }))
+      .toThrow('parquet expected integer value')
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1n, 2n, 3n], type: 'FLOAT' }] }))
+      .toThrow('parquet expected number value')
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1n, 2n, 3n], type: 'DOUBLE' }] }))
+      .toThrow('parquet expected number value')
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'BYTE_ARRAY' }] }))
+      .toThrow('parquet expected Uint8Array value')
   })
 
   it('throws for empty column with no type specified', () => {

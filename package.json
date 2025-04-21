@@ -44,7 +44,7 @@
   },
   "scripts": {
     "build:types": "tsc -p ./tsconfig.build.json",
-    "coverage": "vitest run --coverage",
+    "coverage": "vitest run --coverage --coverage.include=src",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "prepare": "npm run build:types",
