@@ -10,8 +10,8 @@ export const exampleData = [
 ]
 
 /**
- * @import {FileMetaData, LogicalType} from 'hyparquet'
- * @import {ColumnData, ThriftObject} from '../src/types.js'
+ * @import {FileMetaData} from 'hyparquet'
+ * @import {ColumnData} from '../src/types.js'
  * @type {FileMetaData}
  */
 export const exampleMetadata = {

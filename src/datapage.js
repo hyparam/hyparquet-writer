@@ -27,7 +27,11 @@ export function writeDataPageV2(writer, values, type, schemaPath, encoding, comp
 
   // write page data to temp buffer
   const page = new ByteWriter()
-  if (encoding === 'RLE_DICTIONARY') {
+  if (encoding === 'RLE') {
+    if (type !== 'BOOLEAN') throw new Error('RLE encoding only supported for BOOLEAN type')
+    page.appendUint32(nonnull.length) // prepend length
+    writeRleBitPackedHybrid(page, nonnull, 1)
+  } else if (encoding === 'PLAIN_DICTIONARY' || encoding === 'RLE_DICTIONARY') {
     // find max bitwidth
     let maxValue = 0
     for (const v of values) if (v > maxValue) maxValue = v

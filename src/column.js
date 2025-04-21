@@ -53,8 +53,9 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
     values = unconvert(schemaElement, values)
 
     // write data page
-    writeDataPageV2(writer, values, type, schemaPath, 'PLAIN', compressed)
-    encodings.push('PLAIN')
+    const encoding = type === 'BOOLEAN' && values.length > 16 ? 'RLE' : 'PLAIN'
+    writeDataPageV2(writer, values, type, schemaPath, encoding, compressed)
+    encodings.push(encoding)
   }
 
   return {

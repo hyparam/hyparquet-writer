@@ -38,14 +38,24 @@ describe('parquetWriteBuffer', () => {
     expect(file.byteLength).toBe(162)
   })
 
+  it('serializes booleans as RLE', async () => {
+    const data = Array(100).fill(true)
+    const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data }] })
+    expect(file.byteLength).toBe(131)
+    const metadata = parquetMetadata(file)
+    expect(metadata.row_groups[0].columns[0].meta_data?.encodings).toEqual(['RLE'])
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual(data.map(bool => ({ bool })))
+  })
+
   it('efficiently serializes sparse booleans', async () => {
-    const bool = Array(10000).fill(null)
-    bool[10] = true
-    bool[100] = false
-    bool[500] = true
-    bool[9999] = false
-    const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data: bool }] })
-    expect(file.byteLength).toBe(154)
+    const data = Array(10000).fill(null)
+    data[10] = true
+    data[100] = false
+    data[500] = true
+    data[9999] = false
+    const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data }] })
+    expect(file.byteLength).toBe(159)
     const metadata = parquetMetadata(file)
     expect(metadata.metadata_length).toBe(92)
     const result = await parquetReadObjects({ file })
