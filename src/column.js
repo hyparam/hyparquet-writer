@@ -14,7 +14,7 @@ import { writeDataPageV2, writePageHeader } from './datapage.js'
  */
 export function writeColumn(writer, schemaPath, values, compressed, stats) {
   const schemaElement = schemaPath[schemaPath.length - 1]
-  const { type } = schemaElement
+  const { type, type_length } = schemaElement
   if (!type) throw new Error(`column ${schemaElement.name} cannot determine type`)
   const offsetStart = writer.offset
   const num_values = values.length
@@ -42,7 +42,7 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
 
     // write unconverted dictionary page
     const unconverted = unconvert(schemaElement, dictionary)
-    writeDictionaryPage(writer, unconverted, type, compressed)
+    writeDictionaryPage(writer, unconverted, type, type_length, compressed)
 
     // write data page with dictionary indexes
     data_page_offset = BigInt(writer.offset)
@@ -92,11 +92,12 @@ function useDictionary(values, type) {
  * @param {Writer} writer
  * @param {DecodedArray} dictionary
  * @param {ParquetType} type
+ * @param {number | undefined} fixedLength
  * @param {boolean} compressed
  */
-function writeDictionaryPage(writer, dictionary, type, compressed) {
+function writeDictionaryPage(writer, dictionary, type, fixedLength, compressed) {
   const dictionaryPage = new ByteWriter()
-  writePlain(dictionaryPage, dictionary, type)
+  writePlain(dictionaryPage, dictionary, type, fixedLength)
 
   // compress dictionary page data
   let compressedDictionaryPage = dictionaryPage

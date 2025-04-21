@@ -16,7 +16,7 @@ import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
  * @param {boolean} compressed
  */
 export function writeDataPageV2(writer, values, type, schemaPath, encoding, compressed) {
-  const num_values = values.length
+  const fixedLength = schemaPath.at(-1)?.type_length
 
   // write levels to temp buffer
   const levels = new ByteWriter()
@@ -39,7 +39,7 @@ export function writeDataPageV2(writer, values, type, schemaPath, encoding, comp
     page.appendUint8(bitWidth) // prepend bitWidth
     writeRleBitPackedHybrid(page, nonnull, bitWidth)
   } else {
-    writePlain(page, nonnull, type)
+    writePlain(page, nonnull, type, fixedLength)
   }
 
   // compress page data
@@ -55,9 +55,9 @@ export function writeDataPageV2(writer, values, type, schemaPath, encoding, comp
     uncompressed_page_size: levels.offset + page.offset,
     compressed_page_size: levels.offset + compressedPage.offset,
     data_page_header_v2: {
-      num_values,
+      num_values: values.length,
       num_nulls,
-      num_rows: num_values,
+      num_rows: values.length,
       encoding,
       definition_levels_byte_length,
       repetition_levels_byte_length,

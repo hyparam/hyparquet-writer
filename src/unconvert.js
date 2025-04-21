@@ -9,7 +9,7 @@ const dayMillis = 86400000 // 1 day in milliseconds
  * @returns {DecodedArray}
  */
 export function unconvert(element, values) {
-  const { converted_type: ctype, logical_type: ltype } = element
+  const { type, converted_type: ctype, logical_type: ltype } = element
   if (ctype === 'DECIMAL') {
     const factor = 10 ** (element.scale || 0)
     return values.map(v => {
@@ -32,15 +32,45 @@ export function unconvert(element, values) {
     const encoder = new TextEncoder()
     return values.map(v => encoder.encode(JSON.stringify(v)))
   }
-  if (ltype?.type === 'FLOAT16') {
-    return Array.from(values).map(unconvertFloat16)
-  }
   if (ctype === 'UTF8') {
     if (!Array.isArray(values)) throw new Error('strings must be an array')
     const encoder = new TextEncoder()
     return values.map(v => encoder.encode(v))
   }
+  if (ltype?.type === 'FLOAT16') {
+    if (type !== 'FIXED_LEN_BYTE_ARRAY') throw new Error('FLOAT16 must be FIXED_LEN_BYTE_ARRAY type')
+    if (element.type_length !== 2) throw new Error('FLOAT16 expected type_length to be 2 bytes')
+    return Array.from(values).map(unconvertFloat16)
+  }
+  if (ltype?.type === 'UUID') {
+    if (!Array.isArray(values)) throw new Error('UUID must be an array')
+    if (type !== 'FIXED_LEN_BYTE_ARRAY') throw new Error('UUID must be FIXED_LEN_BYTE_ARRAY type')
+    if (element.type_length !== 16) throw new Error('UUID expected type_length to be 16 bytes')
+    return values.map(unconvertUuid)
+  }
   return values
+}
+
+/**
+ * @param {Uint8Array | string | undefined} value
+ * @returns {Uint8Array | undefined}
+ */
+function unconvertUuid(value) {
+  if (value === undefined || value === null) return
+  if (value instanceof Uint8Array) return value
+  if (typeof value === 'string') {
+    const uuidRegex = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i
+    if (!uuidRegex.test(value)) {
+      throw new Error('UUID must be a valid UUID string')
+    }
+    value = value.replace(/-/g, '').toLowerCase()
+    const bytes = new Uint8Array(16)
+    for (let i = 0; i < 16; i++) {
+      bytes[i] = parseInt(value.slice(i * 2, i * 2 + 2), 16)
+    }
+    return bytes
+  }
+  throw new Error('UUID must be a string or Uint8Array')
 }
 
 /**

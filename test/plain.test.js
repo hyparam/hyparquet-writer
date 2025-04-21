@@ -6,7 +6,7 @@ describe('writePlain', () => {
   it('writes BOOLEAN (multiple of 8 bits, plus leftover)', () => {
     const writer = new ByteWriter()
     const booleans = [true, false, true, true, false, false, false, true, true]
-    writePlain(writer, booleans, 'BOOLEAN')
+    writePlain(writer, booleans, 'BOOLEAN', undefined)
 
     expect(writer.offset).toBe(2)
     expect(writer.view.getUint8(0)).toBe(0b10001101)
@@ -16,7 +16,7 @@ describe('writePlain', () => {
   it('writes INT32', () => {
     const writer = new ByteWriter()
     const ints = [0, 1, 255, 256, 65535, -1, -2147483648, 2147483647]
-    writePlain(writer, ints, 'INT32')
+    writePlain(writer, ints, 'INT32', undefined)
 
     // 4 bytes per int
     expect(writer.offset).toBe(4 * ints.length)
@@ -30,7 +30,7 @@ describe('writePlain', () => {
   it('writes INT64', () => {
     const writer = new ByteWriter()
     const bigints = [0n, 1n, 42n, BigInt(2 ** 53 - 1)]
-    writePlain(writer, bigints, 'INT64')
+    writePlain(writer, bigints, 'INT64', undefined)
 
     // 8 bytes per int64
     expect(writer.offset).toBe(8 * bigints.length)
@@ -44,7 +44,7 @@ describe('writePlain', () => {
   it('writes FLOAT', () => {
     const writer = new ByteWriter()
     const floats = [0, 300.5, -2.7100000381469727, Infinity, -Infinity, NaN]
-    writePlain(writer, floats, 'FLOAT')
+    writePlain(writer, floats, 'FLOAT', undefined)
 
     // 4 bytes per float
     expect(writer.offset).toBe(4 * floats.length)
@@ -62,7 +62,7 @@ describe('writePlain', () => {
   it('writes DOUBLE', () => {
     const writer = new ByteWriter()
     const doubles = [0, 3.14, -2.71, Infinity, -Infinity, NaN]
-    writePlain(writer, doubles, 'DOUBLE')
+    writePlain(writer, doubles, 'DOUBLE', undefined)
 
     // 8 bytes per double
     expect(writer.offset).toBe(8 * doubles.length)
@@ -80,7 +80,7 @@ describe('writePlain', () => {
   it('writes BYTE_ARRAY', () => {
     const writer = new ByteWriter()
     const strings = ['a', 'b', 'c', 'd']
-    writePlain(writer, strings, 'BYTE_ARRAY')
+    writePlain(writer, strings, 'BYTE_ARRAY', undefined)
 
     let offset = 0
     for (const s of strings) {
@@ -100,7 +100,7 @@ describe('writePlain', () => {
     const encoder = new TextEncoder()
     const strings = ['abcd', 'efgh', 'ijkl']
       .map(s => encoder.encode(s))
-    writePlain(writer, strings, 'FIXED_LEN_BYTE_ARRAY')
+    writePlain(writer, strings, 'FIXED_LEN_BYTE_ARRAY', 4)
 
     let offset = 0
     for (const s of strings) {
@@ -113,25 +113,27 @@ describe('writePlain', () => {
 
   it('throws error on unsupported type', () => {
     const writer = new ByteWriter()
-    expect(() => writePlain(writer, [1, 2, 3], 'INT96'))
+    expect(() => writePlain(writer, [1, 2, 3], 'INT96', undefined))
       .toThrow(/parquet unsupported type/i)
   })
 
   it('throws error on type mismatch', () => {
     const writer = new ByteWriter()
-    expect(() => writePlain(writer, [1, 2, 3], 'BOOLEAN'))
+    expect(() => writePlain(writer, [1, 2, 3], 'BOOLEAN', undefined))
       .toThrow('parquet expected boolean value')
-    expect(() => writePlain(writer, [1, 2, 3.5], 'INT32'))
+    expect(() => writePlain(writer, [1, 2, 3.5], 'INT32', undefined))
       .toThrow('parquet expected integer value')
-    expect(() => writePlain(writer, [1n, 2n, 3], 'INT64'))
+    expect(() => writePlain(writer, [1n, 2n, 3], 'INT64', undefined))
       .toThrow('parquet expected bigint value')
-    expect(() => writePlain(writer, [1, 2, 3n], 'FLOAT'))
+    expect(() => writePlain(writer, [1, 2, 3n], 'FLOAT', undefined))
       .toThrow('parquet expected number value')
-    expect(() => writePlain(writer, [1, 2, 3n], 'DOUBLE'))
+    expect(() => writePlain(writer, [1, 2, 3n], 'DOUBLE', undefined))
       .toThrow('parquet expected number value')
-    expect(() => writePlain(writer, [1, 2, 3], 'BYTE_ARRAY'))
+    expect(() => writePlain(writer, [1, 2, 3], 'BYTE_ARRAY', undefined))
       .toThrow('parquet expected Uint8Array value')
-    expect(() => writePlain(writer, [1, 2, 3], 'FIXED_LEN_BYTE_ARRAY'))
+    expect(() => writePlain(writer, [1, 2, 3], 'FIXED_LEN_BYTE_ARRAY', undefined))
+      .toThrow('parquet FIXED_LEN_BYTE_ARRAY expected type_length')
+    expect(() => writePlain(writer, [1, 2, 3], 'FIXED_LEN_BYTE_ARRAY', 16))
       .toThrow('parquet expected Uint8Array value')
   })
 })
