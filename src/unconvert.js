@@ -35,7 +35,7 @@ export function unconvert(element, values) {
   if (ctype === 'UTF8') {
     if (!Array.isArray(values)) throw new Error('strings must be an array')
     const encoder = new TextEncoder()
-    return values.map(v => encoder.encode(v))
+    return values.map(v => typeof v === 'string' ? encoder.encode(v) : v)
   }
   if (ltype?.type === 'FLOAT16') {
     if (type !== 'FIXED_LEN_BYTE_ARRAY') throw new Error('FLOAT16 must be FIXED_LEN_BYTE_ARRAY type')

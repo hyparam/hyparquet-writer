@@ -10,13 +10,15 @@ import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
  * @import {Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {DecodedArray} values
- * @param {ParquetType} type
  * @param {SchemaElement[]} schemaPath
  * @param {import('hyparquet').Encoding} encoding
  * @param {boolean} compressed
  */
-export function writeDataPageV2(writer, values, type, schemaPath, encoding, compressed) {
-  const fixedLength = schemaPath.at(-1)?.type_length
+export function writeDataPageV2(writer, values, schemaPath, encoding, compressed) {
+  const { name, type, type_length, repetition_type } = schemaPath[schemaPath.length - 1]
+
+  if (!type) throw new Error(`column ${name} cannot determine type`)
+  if (repetition_type === 'REPEATED') throw new Error(`column ${name} repeated types not supported`)
 
   // write levels to temp buffer
   const levels = new ByteWriter()
@@ -39,7 +41,7 @@ export function writeDataPageV2(writer, values, type, schemaPath, encoding, comp
     page.appendUint8(bitWidth) // prepend bitWidth
     writeRleBitPackedHybrid(page, nonnull, bitWidth)
   } else {
-    writePlain(page, nonnull, type, fixedLength)
+    writePlain(page, nonnull, type, type_length)
   }
 
   // compress page data
@@ -108,7 +110,7 @@ export function writePageHeader(writer, header) {
 }
 
 /**
- * @import {DecodedArray, PageHeader, ParquetType, SchemaElement} from 'hyparquet'
+ * @import {DecodedArray, PageHeader, SchemaElement} from 'hyparquet'
  * @param {Writer} writer
  * @param {SchemaElement[]} schemaPath
  * @param {DecodedArray} values

@@ -13,9 +13,9 @@ import { writeDataPageV2, writePageHeader } from './datapage.js'
  * @returns {ColumnMetaData}
  */
 export function writeColumn(writer, schemaPath, values, compressed, stats) {
-  const schemaElement = schemaPath[schemaPath.length - 1]
-  const { type, type_length } = schemaElement
-  if (!type) throw new Error(`column ${schemaElement.name} cannot determine type`)
+  const element = schemaPath[schemaPath.length - 1]
+  const { type, type_length } = element
+  if (!type) throw new Error(`column ${element.name} cannot determine type`)
   const offsetStart = writer.offset
   const num_values = values.length
   /** @type {Encoding[]} */
@@ -41,20 +41,20 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
     }
 
     // write unconverted dictionary page
-    const unconverted = unconvert(schemaElement, dictionary)
+    const unconverted = unconvert(element, dictionary)
     writeDictionaryPage(writer, unconverted, type, type_length, compressed)
 
     // write data page with dictionary indexes
     data_page_offset = BigInt(writer.offset)
-    writeDataPageV2(writer, indexes, type, schemaPath, 'RLE_DICTIONARY', compressed)
+    writeDataPageV2(writer, indexes, schemaPath, 'RLE_DICTIONARY', compressed)
     encodings.push('RLE_DICTIONARY')
   } else {
     // unconvert values from rich types to simple
-    values = unconvert(schemaElement, values)
+    values = unconvert(element, values)
 
     // write data page
     const encoding = type === 'BOOLEAN' && values.length > 16 ? 'RLE' : 'PLAIN'
-    writeDataPageV2(writer, values, type, schemaPath, encoding, compressed)
+    writeDataPageV2(writer, values, schemaPath, encoding, compressed)
     encodings.push(encoding)
   }
 
