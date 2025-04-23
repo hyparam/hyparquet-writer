@@ -3,7 +3,7 @@ export const exampleData = [
   { name: 'bool', data: [true, false, true, false] },
   { name: 'int', data: [0, 127, 0x7fff, 0x7fffffff] },
   { name: 'bigint', data: [0n, 127n, 0x7fffn, 0x7fffffffffffffffn] },
-  { name: 'float', data: [0, 0.0001, 123.456, 1e100], type: 'FLOAT', repetition_type: 'REQUIRED' },
+  { name: 'float', data: [0, 0.0001, 123.456, 1e100], type: 'FLOAT', nullable: false },
   { name: 'double', data: [0, 0.0001, 123.456, 1e100] },
   { name: 'string', data: ['a', 'b', 'c', 'd'] },
   { name: 'nullable', data: [true, false, null, null] },

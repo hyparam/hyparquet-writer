@@ -24,13 +24,13 @@ import { parquetWriteBuffer } from 'hyparquet-writer'
 
 const arrayBuffer = parquetWriteBuffer({
   columnData: [
-    { name: 'name', data: ['Alice', 'Bob', 'Charlie'], type: 'BYTE_ARRAY' },
+    { name: 'name', data: ['Alice', 'Bob', 'Charlie'], type: 'STRING' },
     { name: 'age', data: [25, 30, 35], type: 'INT32' },
   ],
 })
 ```
 
-Note: if `type` is not provided, the type will be guessed from the data. The supported parquet types are:
+Note: if `type` is not provided, the type will be guessed from the data. The supported types are a superset of the parquet types:
 
 - `BOOLEAN`
 - `INT32`
@@ -38,9 +38,13 @@ Note: if `type` is not provided, the type will be guessed from the data. The sup
 - `FLOAT`
 - `DOUBLE`
 - `BYTE_ARRAY`
-- `FIXED_LEN_BYTE_ARRAY`
+- `STRING`
+- `JSON`
+- `TIMESTAMP`
+- `UUID`
+- `FLOAT16`
 
-Strings are represented in parquet as type `BYTE_ARRAY`.
+More types are supported but require defining the `schema` explicitly. See the [advanced usage](#advanced-usage) section for more details.
 
 ### Node.js Write to Local Parquet File
 
@@ -52,7 +56,7 @@ const { parquetWriteFile } = await import('hyparquet-writer')
 parquetWriteFile({
   filename: 'example.parquet',
   columnData: [
-    { name: 'name', data: ['Alice', 'Bob', 'Charlie'], type: 'BYTE_ARRAY' },
+    { name: 'name', data: ['Alice', 'Bob', 'Charlie'], type: 'STRING' },
     { name: 'age', data: [25, 30, 35], type: 'INT32' },
   ],
 })
@@ -65,6 +69,7 @@ Note: hyparquet-writer is published as an ES module, so dynamic `import()` may b
 Options can be passed to `parquetWrite` to adjust parquet file writing behavior:
 
  - `writer`: a generic writer object
+ - `schema`: parquet schema object (optional)
  - `compressed`: use snappy compression (default true)
  - `statistics`: write column statistics (default true)
  - `rowGroupSize`: number of rows in each row group (default 100000)
@@ -74,11 +79,17 @@ Options can be passed to `parquetWrite` to adjust parquet file writing behavior:
 import { ByteWriter, parquetWrite } from 'hyparquet-writer'
 
 const writer = new ByteWriter()
-const arrayBuffer = parquetWrite({
+parquetWrite({
   writer,
   columnData: [
-    { name: 'name', data: ['Alice', 'Bob', 'Charlie'], type: 'BYTE_ARRAY' },
-    { name: 'age', data: [25, 30, 35], type: 'INT32' },
+    { name: 'name', data: ['Alice', 'Bob', 'Charlie'] },
+    { name: 'age', data: [25, 30, 35] },
+    { name: 'dob', data: [new Date(1000000), new Date(2000000), new Date(3000000)] },
+  ],
+  schema: [
+    { name: 'name', type: 'BYTE_ARRAY', converted_type: 'UTF8' },
+    { name: 'age', type: 'FIXED_LEN_BYTE_ARRAY', type_length: 4, converted_type: 'DECIMAL', scale: 2, precision: 4 },
+    { name: 'dob', type: 'INT32', converted_type: 'DATE' },
   ],
   compressed: false,
   statistics: false,
@@ -88,9 +99,26 @@ const arrayBuffer = parquetWrite({
     { key: 'key2', value: 'value2' },
   ],
 })
+const arrayBuffer = writer.getBuffer()
 ```
 
-### Converted Types
+### Types
+
+Parquet requires an explicit schema to be defined. You can provide schema information in three ways:
+
+1. **Type**: You can provide a `type` in the `columnData` elements, the type will be used as the schema type.
+2. **Schema**: You can provide a `schema` parameter that explicitly defines the parquet schema. The schema should be an array of `SchemaElement` objects (see [parquet-format](https://github.com/apache/parquet-format)), each containing the following properties:
+   - `name`: column name
+   - `type`: parquet type
+   - `num_children`: number children in parquet nested schema (optional)
+   - `converted_type`: parquet converted type (optional)
+   - `logical_type`: parquet logical type (optional)
+   - `repetition_type`: parquet repetition type (optional)
+   - `type_length`: length for `FIXED_LENGTH_BYTE_ARRAY` type (optional)
+   - `scale`: the scale factor for `DECIMAL` converted types (optional)
+   - `precision`: the precision for `DECIMAL` converted types (optional)
+   - `field_id`: the field id for the column (optional)
+3. **Auto-detect**: If you provide no type or schema, the type will be auto-detected from the data. However, it is recommended that you provide type information when possible. (zero rows would throw an exception, floats might be typed as int, etc)
 
 You can provide additional type hints by providing a `converted_type` to the `columnData` elements:
 

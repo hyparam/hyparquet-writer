@@ -12,20 +12,19 @@ export function schemaFromColumnData(columnData) {
   }]
   let num_rows = 0
 
-  for (const column of columnData) {
+  for (const { name, data, type, nullable } of columnData) {
     // check if all columns have the same length
-    num_rows = num_rows || column.data.length
-    if (num_rows !== column.data.length) {
+    num_rows = num_rows || data.length
+    if (num_rows !== data.length) {
       throw new Error('columns must have the same length')
     }
 
-    const { data, ...schemaElement } = column
-    if (column.type) {
+    if (type) {
       // use provided type
-      schema.push(schemaElement)
+      schema.push(basicTypeToSchemaElement(name, type, nullable))
     } else {
       // auto-detect type
-      schema.push(autoSchemaElement(column.name, data))
+      schema.push(autoSchemaElement(name, data))
     }
   }
 
@@ -33,10 +32,36 @@ export function schemaFromColumnData(columnData) {
 }
 
 /**
+ * @param {string} name
+ * @param {BasicType} type
+ * @param {boolean} [nullable]
+ * @returns {SchemaElement}
+ */
+function basicTypeToSchemaElement(name, type, nullable) {
+  const repetition_type = nullable === false ? 'REQUIRED' : 'OPTIONAL'
+  if (type === 'STRING') {
+    return { name, type: 'BYTE_ARRAY', converted_type: 'UTF8', repetition_type }
+  }
+  if (type === 'JSON') {
+    return { name, type: 'BYTE_ARRAY', converted_type: 'JSON', repetition_type }
+  }
+  if (type === 'TIMESTAMP') {
+    return { name, type: 'INT64', converted_type: 'TIMESTAMP_MILLIS', repetition_type }
+  }
+  if (type === 'UUID') {
+    return { name, type: 'FIXED_LEN_BYTE_ARRAY', type_length: 16, logical_type: { type: 'UUID' }, repetition_type }
+  }
+  if (type === 'FLOAT16') {
+    return { name, type: 'FIXED_LEN_BYTE_ARRAY', type_length: 2, logical_type: { type: 'FLOAT16' }, repetition_type }
+  }
+  return { name, type, repetition_type }
+}
+
+/**
  * Deduce a ParquetType from JS values
  *
  * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement} from 'hyparquet'
- * @import {ColumnData} from '../src/types.js'
+ * @import {BasicType, ColumnData} from '../src/types.js'
  * @param {string} name
  * @param {DecodedArray} values
  * @returns {SchemaElement}

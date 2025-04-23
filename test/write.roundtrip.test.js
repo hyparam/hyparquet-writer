@@ -13,9 +13,9 @@ describe('parquetWrite round-trip', () => {
       const rows = await parquetReadObjects({ file })
 
       // transpose the row data
-      const schema = parquetSchema(metadata)
-      const columnData = schema.children.map(({ element }) => ({
-        ...element,
+      const schemaTree = parquetSchema(metadata)
+      const columnData = schemaTree.children.map(({ element }) => ({
+        name: element.name,
         data: /** @type {any[]} */ ([]),
       }))
       for (const row of rows) {
@@ -24,7 +24,7 @@ describe('parquetWrite round-trip', () => {
         }
       }
 
-      const buffer = parquetWriteBuffer({ columnData })
+      const buffer = parquetWriteBuffer({ columnData, schema: metadata.schema })
       const output = await parquetReadObjects({ file: buffer })
 
       expect(output.length).toBe(rows.length)
