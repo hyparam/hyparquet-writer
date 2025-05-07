@@ -22,7 +22,8 @@
   "main": "src/index.js",
   "files": [
     "src",
-    "types"
+    "types",
+    "index.cjs"
   ],
   "type": "module",
   "types": "types/index.d.ts",
@@ -31,12 +32,12 @@
       "node": {
         "types": "./types/node.d.ts",
         "import": "./src/node.js",
-        "require": "./src/node.cjs"
+        "require": "./index.cjs"
       },
       "default": {
         "types": "./types/index.d.ts",
         "import": "./src/index.js",
-        "require": "./src/index.cjs"
+        "require": "./index.cjs"
       }
     },
     "./src/*.js": {
