@@ -30,11 +30,13 @@
     ".": {
       "node": {
         "types": "./types/node.d.ts",
-        "import": "./src/node.js"
+        "import": "./src/node.js",
+        "require": "./src/node.cjs"
       },
       "default": {
         "types": "./types/index.d.ts",
-        "import": "./src/index.js"
+        "import": "./src/index.js",
+        "require": "./src/index.cjs"
       }
     },
     "./src/*.js": {
