@@ -24,7 +24,11 @@ describe('parquet schema', () => {
 
   it('accepts basic type hints', () => {
     const file = parquetWriteBuffer({ columnData: [
-      { name: 'numbers', data: [1, 2, 3], type: 'FLOAT' },
+      {
+        name: 'timestamps',
+        data: [new Date(1000000), new Date(2000000), new Date(3000000)],
+        type: 'TIMESTAMP',
+      },
     ] })
     const metadata = parquetMetadata(file)
     expect(metadata.schema).toEqual([
@@ -33,9 +37,10 @@ describe('parquet schema', () => {
         num_children: 1,
       },
       {
-        name: 'numbers',
+        converted_type: 'TIMESTAMP_MILLIS',
+        name: 'timestamps',
         repetition_type: 'OPTIONAL',
-        type: 'FLOAT',
+        type: 'INT64',
       },
     ])
   })
@@ -47,28 +52,13 @@ describe('parquet schema', () => {
     const metadata = parquetMetadata(file)
     expect(metadata.schema).toEqual([
       {
-        converted_type: undefined,
-        field_id: undefined,
-        logical_type: undefined,
         name: 'root',
         num_children: 1,
-        precision: undefined,
-        repetition_type: undefined,
-        scale: undefined,
-        type: undefined,
-        type_length: undefined,
       },
       {
-        converted_type: undefined,
-        field_id: undefined,
-        logical_type: undefined,
         name: 'numbers',
-        num_children: undefined,
-        precision: undefined,
         repetition_type: 'REQUIRED',
-        scale: undefined,
         type: 'FLOAT',
-        type_length: undefined,
       },
     ])
   })
