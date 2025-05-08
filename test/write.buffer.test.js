@@ -8,10 +8,11 @@ import { exampleData, exampleMetadata } from './example.js'
  *
  * @import {ColumnData} from '../src/types.js'
  * @param {ColumnData[]} columnData
+ * @param {import('hyparquet').SchemaElement[]} [schema]
  * @returns {Promise<Record<string, any>>}
  */
-async function roundTripDeserialize(columnData) {
-  const file = parquetWriteBuffer({ columnData })
+async function roundTripDeserialize(columnData, schema) {
+  const file = parquetWriteBuffer({ columnData, schema })
   return await parquetReadObjects({ file, utf8: false })
 }
 
@@ -140,30 +141,35 @@ describe('parquetWriteBuffer', () => {
     ])
   })
 
-  // it('serializes time types', async () => {
-  //   const result = await roundTripDeserialize([
-  //     {
-  //       name: 'time32',
-  //       data: [100000, 200000, 300000],
-  //       logical_type: { type: 'TIME', isAdjustedToUTC: false, unit: 'MILLIS' },
-  //     },
-  //     {
-  //       name: 'time64',
-  //       data: [100000000n, 200000000n, 300000000n],
-  //       logical_type: { type: 'TIME', isAdjustedToUTC: false, unit: 'MICROS' },
-  //     },
-  //     {
-  //       name: 'interval',
-  //       data: [1000000000n, 2000000000n, 3000000000n],
-  //       logical_type: { type: 'INTERVAL' },
-  //     },
-  //   ])
-  //   expect(result).toEqual([
-  //     { time32: 100000, time64: 100000000n, interval: 1000000000n },
-  //     { time32: 200000, time64: 200000000n, interval: 2000000000n },
-  //     { time32: 300000, time64: 300000000n, interval: 3000000000n },
-  //   ])
-  // })
+  it('serializes time types', async () => {
+    const result = await roundTripDeserialize(
+      [
+        {
+          name: 'time32',
+          data: [100000, 200000, 300000],
+        },
+        {
+          name: 'time64',
+          data: [100000000n, 200000000n, 300000000n],
+        },
+        {
+          name: 'interval',
+          data: [1000000000n, 2000000000n, 3000000000n],
+        },
+      ],
+      [
+        { name: 'root', num_children: 3 },
+        { name: 'time32', repetition_type: 'OPTIONAL', type: 'INT32', logical_type: { type: 'TIME', isAdjustedToUTC: false, unit: 'MILLIS' } },
+        { name: 'time64', repetition_type: 'OPTIONAL', type: 'INT64', logical_type: { type: 'TIME', isAdjustedToUTC: false, unit: 'MICROS' } },
+        { name: 'interval', repetition_type: 'OPTIONAL', type: 'INT64', logical_type: { type: 'INTERVAL' } },
+      ]
+    )
+    expect(result).toEqual([
+      { time32: 100000, time64: 100000000n, interval: 1000000000n },
+      { time32: 200000, time64: 200000000n, interval: 2000000000n },
+      { time32: 300000, time64: 300000000n, interval: 3000000000n },
+    ])
+  })
 
   it('serializes byte array types', async () => {
     const result = await roundTripDeserialize([{

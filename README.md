@@ -133,6 +133,7 @@ import { parquetWrite, schemaFromColumnData } from 'hyparquet-writer'
 
 const columnData = [
   { name: 'unsigned_int', data: [1000000, 2000000] },
+  { name: 'signed_int', data: [1000000, 2000000] },
 ]
 parquetWrite({
   columnData,
