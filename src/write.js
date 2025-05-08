@@ -21,6 +21,8 @@ export function parquetWrite({
     schema = schemaFromColumnData(columnData)
   } else if (columnData.some(({ type }) => type)) {
     throw new Error('cannot provide both schema and columnData type')
+  } else {
+    // TODO: validate schema
   }
   const pq = new ParquetWriter({
     writer,

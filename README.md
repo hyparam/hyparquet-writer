@@ -86,6 +86,7 @@ parquetWrite({
     { name: 'age', data: [25, 30, 35] },
     { name: 'dob', data: [new Date(1000000), new Date(2000000), new Date(3000000)] },
   ],
+  // explicit schema:
   schema: [
     { name: 'root', num_children: 3 },
     { name: 'name', type: 'BYTE_ARRAY', converted_type: 'UTF8' },
@@ -121,28 +122,29 @@ Parquet requires an explicit schema to be defined. You can provide schema inform
    - `field_id`: the field id for the column (optional)
 3. **Auto-detect**: If you provide no type or schema, the type will be auto-detected from the data. However, it is recommended that you provide type information when possible. (zero rows would throw an exception, floats might be typed as int, etc)
 
-You can provide additional type hints by providing a `converted_type` to the `columnData` elements:
+Most converted types will be auto-detected if you just provide data with no types. However, it is still recommended that you provide type information when possible. (zero rows would throw an exception, floats might be typed as int, etc)
+
+#### Schema Overrides
+
+You can use mostly automatic schema detection, but override the schema for specific columns. This is useful if most of the column types can be automatically determined, but you want to use a specific schema element for one particular element.
 
 ```javascript
+import { parquetWrite, schemaFromColumnData } from 'hyparquet-writer'
+
+const columnData = [
+  { name: 'unsigned_int', data: [1000000, 2000000] },
+]
 parquetWrite({
-  columnData: [
-    {
-      name: 'dates',
-      data: [new Date(1000000), new Date(2000000)],
-      type: 'INT64',
-      converted_type: 'TIMESTAMP_MILLIS',
+  columnData,
+  // override schema for uint column
+  schema: schemaFromColumnData(columnData, {
+    unsigned_int: {
+      type: 'INT32',
+      converted_type: 'UINT_32',
     },
-    {
-      name: 'json',
-      data: [{ foo: 'bar' }, { baz: 3 }, 'imastring'],
-      type: 'BYTE_ARRAY',
-      converted_type: 'JSON',
-    },
-  ]
+  }),
 })
 ```
-
-Most converted types will be auto-detected if you just provide data with no types. However, it is still recommended that you provide type information when possible. (zero rows would throw an exception, floats might be typed as int, etc)
 
 ## References
 

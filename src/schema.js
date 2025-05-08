@@ -1,10 +1,12 @@
 /**
- * Convert column data to schema.
+ * Infer a schema from column data.
+ * Accepts optional schemaOverrides to override the type of columns by name.
  *
  * @param {ColumnData[]} columnData
+ * @param {Record<string,SchemaElement>} [schemaOverrides]
  * @returns {SchemaElement[]}
  */
-export function schemaFromColumnData(columnData) {
+export function schemaFromColumnData(columnData, schemaOverrides) {
   /** @type {SchemaElement[]} */
   const schema = [{
     name: 'root',
@@ -19,7 +21,14 @@ export function schemaFromColumnData(columnData) {
       throw new Error('columns must have the same length')
     }
 
-    if (type) {
+    if (schemaOverrides?.[name]) {
+      // use schema override
+      const override = schemaOverrides[name]
+      if (override.name !== name) throw new Error('schema override name does not match column name')
+      if (override.num_children) throw new Error('schema override cannot have children')
+      if (override.repetition_type === 'REPEATED') throw new Error('schema override cannot be repeated')
+      schema.push(override)
+    } else if (type) {
       // use provided type
       schema.push(basicTypeToSchemaElement(name, type, nullable))
     } else {
@@ -32,6 +41,8 @@ export function schemaFromColumnData(columnData) {
 }
 
 /**
+ * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement} from 'hyparquet'
+ * @import {BasicType, ColumnData} from '../src/types.js'
  * @param {string} name
  * @param {BasicType} type
  * @param {boolean} [nullable]
@@ -58,15 +69,13 @@ function basicTypeToSchemaElement(name, type, nullable) {
 }
 
 /**
- * Deduce a ParquetType from JS values
+ * Automatically determine a SchemaElement from an array of values.
  *
- * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement} from 'hyparquet'
- * @import {BasicType, ColumnData} from '../src/types.js'
  * @param {string} name
  * @param {DecodedArray} values
  * @returns {SchemaElement}
  */
-function autoSchemaElement(name, values) {
+export function autoSchemaElement(name, values) {
   /** @type {ParquetType | undefined} */
   let type
   /** @type {FieldRepetitionType} */
