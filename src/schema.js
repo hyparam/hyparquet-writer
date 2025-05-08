@@ -1,11 +1,11 @@
 /**
  * Convert column data to schema.
  *
- * @param {ColumnData[]} columnData
- * @returns {SchemaElement[]}
+ * @param {import('./types.js').ColumnData[]} columnData
+ * @returns {import('./types.js').SchemaElement[]}
  */
 export function schemaFromColumnData(columnData) {
-  /** @type {SchemaElement[]} */
+  /** @type {import('./types.js').SchemaElement[]} */
   const schema = [{
     name: 'root',
     num_children: columnData.length,
@@ -35,18 +35,16 @@ export function schemaFromColumnData(columnData) {
 /**
  * Deduce a ParquetType from JS values
  *
- * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement} from 'hyparquet'
- * @import {ColumnData} from '../src/types.js'
  * @param {string} name
- * @param {DecodedArray} values
- * @returns {SchemaElement}
+ * @param {import('./types.js').DecodedArray} values
+ * @returns {import('./types.js').SchemaElement}
  */
 function autoSchemaElement(name, values) {
-  /** @type {ParquetType | undefined} */
+  /** @type {import('./types.js').ParquetType | undefined} */
   let type
-  /** @type {FieldRepetitionType} */
+  /** @type {import('hyparquet').FieldRepetitionType} */
   let repetition_type = 'REQUIRED'
-  /** @type {ConvertedType | undefined} */
+  /** @type {import('hyparquet').ConvertedType | undefined} */
   let converted_type = undefined
 
   if (values instanceof Int32Array) return { name, type: 'INT32', repetition_type }
@@ -59,7 +57,7 @@ function autoSchemaElement(name, values) {
       repetition_type = 'OPTIONAL'
     } else {
       // value is defined
-      /** @type {ParquetType | undefined} */
+      /** @type {import('./types.js').ParquetType | undefined} */
       let valueType = undefined
       if (value === true || value === false) valueType = 'BOOLEAN'
       else if (typeof value === 'bigint') valueType = 'INT64'
@@ -105,7 +103,7 @@ function autoSchemaElement(name, values) {
 /**
  * Get the max repetition level for a given schema path.
  *
- * @param {SchemaElement[]} schemaPath
+ * @param {import('./types.js').SchemaElement[]} schemaPath
  * @returns {number} max repetition level
  */
 export function getMaxRepetitionLevel(schemaPath) {
@@ -121,7 +119,7 @@ export function getMaxRepetitionLevel(schemaPath) {
 /**
  * Get the max definition level for a given schema path.
  *
- * @param {SchemaElement[]} schemaPath
+ * @param {import('./types.js').SchemaElement[]} schemaPath
  * @returns {number} max definition level
  */
 export function getMaxDefinitionLevel(schemaPath) {

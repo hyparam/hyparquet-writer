@@ -5,7 +5,10 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "outDir": "types",
-    "declarationMap": true
+    "declarationMap": true,
+    "skipLibCheck": true,
+    "rootDir": "src"
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["node_modules"]
 }

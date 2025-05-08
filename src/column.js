@@ -5,12 +5,12 @@ import { ByteWriter } from './bytewriter.js'
 import { writeDataPageV2, writePageHeader } from './datapage.js'
 
 /**
- * @param {Writer} writer
- * @param {SchemaElement[]} schemaPath
- * @param {DecodedArray} values
+ * @param {import('./types.js').Writer} writer
+ * @param {import('./types.js').SchemaElement[]} schemaPath
+ * @param {import('./types.js').DecodedArray} values
  * @param {boolean} compressed
  * @param {boolean} stats
- * @returns {ColumnMetaData}
+ * @returns {import('./types.js').ColumnMetaData}
  */
 export function writeColumn(writer, schemaPath, values, compressed, stats) {
   const element = schemaPath[schemaPath.length - 1]
@@ -18,7 +18,7 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
   if (!type) throw new Error(`column ${element.name} cannot determine type`)
   const offsetStart = writer.offset
   const num_values = values.length
-  /** @type {Encoding[]} */
+  /** @type {import('./types.js').Encoding[]} */
   const encodings = []
 
   // Compute statistics
@@ -27,7 +27,7 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
   // dictionary encoding
   let dictionary_page_offset
   let data_page_offset = BigInt(writer.offset)
-  /** @type {DecodedArray | undefined} */
+  /** @type {import('./types.js').DecodedArray | undefined} */
   const dictionary = useDictionary(values, type)
   if (dictionary) {
     dictionary_page_offset = BigInt(writer.offset)
@@ -73,8 +73,8 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
 }
 
 /**
- * @param {DecodedArray} values
- * @param {ParquetType} type
+ * @param {import('./types.js').DecodedArray} values
+ * @param {import('./types.js').ParquetType} type
  * @returns {any[] | undefined}
  */
 function useDictionary(values, type) {
@@ -89,9 +89,9 @@ function useDictionary(values, type) {
 }
 
 /**
- * @param {Writer} writer
- * @param {DecodedArray} dictionary
- * @param {ParquetType} type
+ * @param {import('./types.js').Writer} writer
+ * @param {import('./types.js').DecodedArray} dictionary
+ * @param {import('./types.js').ParquetType} type
  * @param {number | undefined} fixedLength
  * @param {boolean} compressed
  */
@@ -120,10 +120,8 @@ function writeDictionaryPage(writer, dictionary, type, fixedLength, compressed) 
 }
 
 /**
- * @import {ColumnMetaData, DecodedArray, Encoding, ParquetType, SchemaElement, Statistics} from 'hyparquet'
- * @import {Writer} from '../src/types.js'
- * @param {DecodedArray} values
- * @returns {Statistics}
+ * @param {import('./types.js').DecodedArray} values
+ * @returns {import('./types.js').Statistics}
  */
 function getStatistics(values) {
   let min_value = undefined

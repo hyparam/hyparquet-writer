@@ -5,8 +5,7 @@ import { schemaFromColumnData } from './schema.js'
 /**
  * Write data as parquet to a file or stream.
  *
- * @import {ParquetWriteOptions} from '../src/types.js'
- * @param {ParquetWriteOptions} options
+ * @param {import('./types.js').ParquetWriteOptions} options
  */
 export function parquetWrite({
   writer,
@@ -34,7 +33,7 @@ export function parquetWrite({
 /**
  * Write data as parquet to an ArrayBuffer.
  *
- * @param {Omit<ParquetWriteOptions, 'writer'>} options
+ * @param {Omit<import('./types.js').ParquetWriteOptions, 'writer'>} options
  * @returns {ArrayBuffer}
  */
 export function parquetWriteBuffer(options) {

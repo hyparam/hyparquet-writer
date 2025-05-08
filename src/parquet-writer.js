@@ -3,15 +3,17 @@ import { writeMetadata } from './metadata.js'
 
 /**
  * ParquetWriter class allows incremental writing of parquet files.
- *
+ * 
  * @import {ColumnChunk, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
  * @import {ColumnData, Writer} from '../src/types.js'
- * @param {object} options
- * @param {Writer} options.writer
- * @param {SchemaElement[]} options.schema
- * @param {boolean} [options.compressed]
- * @param {boolean} [options.statistics]
- * @param {KeyValue[]} [options.kvMetadata]
+ * @constructor
+ * @param {object} options - Writer options
+ * @param {Writer} options.writer - The writer to use
+ * @param {SchemaElement[]} options.schema - The schema
+ * @param {boolean} [options.compressed=true] - Whether to compress data
+ * @param {boolean} [options.statistics=true] - Whether to include statistics
+ * @param {KeyValue[]} [options.kvMetadata] - Key-value metadata
+ * @constructor
  */
 export function ParquetWriter({ writer, schema, compressed = true, statistics = true, kvMetadata }) {
   this.writer = writer

@@ -16,7 +16,7 @@ describe('parquetWrite round-trip', () => {
       const schema = parquetSchema(metadata)
       const columnData = schema.children.map(({ element }) => ({
         ...element,
-        data: /** @type {any[]} */ ([]),
+        data: /** @type {any[]} */ [],
       }))
       for (const row of rows) {
         for (const { name, data } of columnData) {

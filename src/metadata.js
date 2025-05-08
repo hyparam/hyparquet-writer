@@ -3,13 +3,11 @@ import { serializeTCompactProtocol } from './thrift.js'
 import { unconvertStatistics } from './unconvert.js'
 
 /**
- * @import {FileMetaData, LogicalType, TimeUnit} from 'hyparquet'
- * @import {ThriftObject, Writer} from '../src/types.js'
- * @param {Writer} writer
- * @param {FileMetaData} metadata
+ * @param {import('./types.js').Writer} writer
+ * @param {import('./types.js').FileMetaData} metadata
  */
 export function writeMetadata(writer, metadata) {
-  /** @type {ThriftObject} */
+  /** @type {import('./types.js').ThriftObject} */
   const compact = {
     field_1: metadata.version,
     field_2: metadata.schema && metadata.schema.map(element => ({
@@ -92,8 +90,8 @@ export function writeMetadata(writer, metadata) {
 }
 
 /**
- * @param {LogicalType | undefined} type
- * @returns {ThriftObject | undefined}
+ * @param {import('hyparquet').LogicalType | undefined} type
+ * @returns {import('./types.js').ThriftObject | undefined}
  */
 export function logicalType(type) {
   if (!type) return
@@ -129,8 +127,8 @@ export function logicalType(type) {
 }
 
 /**
- * @param {TimeUnit} unit
- * @returns {ThriftObject}
+ * @param {import('hyparquet').TimeUnit} unit
+ * @returns {import('./types.js').ThriftObject}
  */
 function timeUnit(unit) {
   if (unit === 'NANOS') return { field_3: {} }

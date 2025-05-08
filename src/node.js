@@ -9,8 +9,7 @@ export { fileWriter }
 /**
  * Write data as parquet to a local file.
  *
- * @import {ParquetWriteOptions} from '../src/types.js'
- * @param {Omit<ParquetWriteOptions, 'writer'> & {filename: string}} options
+ * @param {Omit<import('./types.js').ParquetWriteOptions, 'writer'> & {filename: string}} options
  */
 export function parquetWriteFile(options) {
   const { filename, ...rest } = options

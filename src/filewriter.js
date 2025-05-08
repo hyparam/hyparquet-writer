@@ -5,9 +5,8 @@ import { ByteWriter } from './bytewriter.js'
  * Buffered file writer.
  * Writes data to a local file in chunks using node fs.
  *
- * @import {Writer} from '../src/types.js'
  * @param {string} filename
- * @returns {Writer}
+ * @returns {import('./types.js').Writer}
  */
 export function fileWriter(filename) {
   const writer = new ByteWriter()

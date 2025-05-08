@@ -2,9 +2,8 @@
 /**
  * Generic buffered writer.
  * Writes data to an auto-expanding ArrayBuffer.
- *
- * @import {Writer} from '../src/types.js'
- * @returns {Writer}
+ * 
+ * @returns {import('./types.js').Writer}
  */
 export function ByteWriter() {
   this.buffer = new ArrayBuffer(1024)
