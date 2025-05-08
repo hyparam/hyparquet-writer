@@ -32,17 +32,17 @@ const arrayBuffer = parquetWriteBuffer({
 
 Note: if `type` is not provided, the type will be guessed from the data. The supported types are a superset of the parquet types:
 
-- `BOOLEAN`
-- `INT32`
-- `INT64`
-- `FLOAT`
-- `DOUBLE`
-- `BYTE_ARRAY`
-- `STRING`
-- `JSON`
-- `TIMESTAMP`
-- `UUID`
-- `FLOAT16`
+| `BOOLEAN` | `{ type: 'BOOLEAN' }` |
+| `INT32` | `{ type: 'INT32' }` |
+| `INT64` | `{ type: 'INT64' }` |
+| `FLOAT` | `{ type: 'FLOAT' }` |
+| `DOUBLE` | `{ type: 'DOUBLE' }` |
+| `BYTE_ARRAY` | `{ type: 'BYTE_ARRAY' }` |
+| `STRING` | `{ type: 'BYTE_ARRAY', converted_type: 'UTF8' }` |
+| `JSON` | `{ type: 'BYTE_ARRAY', converted_type: 'JSON' }` |
+| `TIMESTAMP` | `{ type: 'INT64', converted_type: 'TIMESTAMP_MILLIS' }` |
+| `UUID` | `{ type: 'FIXED_LEN_BYTE_ARRAY', type_length: 16, logical_type: { type: 'UUID' } }` |
+| `FLOAT16` | `{ type: 'FIXED_LEN_BYTE_ARRAY', type_length: 2, logical_type: { type: 'FLOAT16' } }` |
 
 More types are supported but require defining the `schema` explicitly. See the [advanced usage](#advanced-usage) section for more details.
 
@@ -87,6 +87,7 @@ parquetWrite({
     { name: 'dob', data: [new Date(1000000), new Date(2000000), new Date(3000000)] },
   ],
   schema: [
+    { name: 'root', num_children: 3 },
     { name: 'name', type: 'BYTE_ARRAY', converted_type: 'UTF8' },
     { name: 'age', type: 'FIXED_LEN_BYTE_ARRAY', type_length: 4, converted_type: 'DECIMAL', scale: 2, precision: 4 },
     { name: 'dob', type: 'INT32', converted_type: 'DATE' },

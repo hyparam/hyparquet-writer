@@ -1,7 +1,18 @@
 import type { DecodedArray, KeyValue, SchemaElement } from 'hyparquet'
 
 // Superset of parquet types with automatic conversions
-export type BasicType = 'BOOLEAN' | 'INT32' | 'INT64' | 'FLOAT' | 'DOUBLE' | 'BYTE_ARRAY' | 'STRING' | 'JSON' | 'TIMESTAMP' | 'UUID' | 'FLOAT16'
+export type BasicType =
+  'BOOLEAN' |
+  'INT32' |
+  'INT64' |
+  'FLOAT' |
+  'DOUBLE' |
+  'BYTE_ARRAY' |
+  'STRING' |
+  'JSON' |
+  'TIMESTAMP' |
+  'UUID' |
+  'FLOAT16'
 
 export interface ParquetWriteOptions {
   writer: Writer
