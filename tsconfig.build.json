@@ -7,7 +7,9 @@
     "outDir": "types",
     "declarationMap": true,
     "skipLibCheck": true,
-    "rootDir": "src"
+    "rootDir": "src",
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true
   },
   "include": ["src"],
   "exclude": ["node_modules"]

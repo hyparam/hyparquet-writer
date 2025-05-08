@@ -2,7 +2,7 @@
 /**
  * Generic buffered writer.
  * Writes data to an auto-expanding ArrayBuffer.
- * 
+ *
  * @returns {import('./types.js').Writer}
  */
 export function ByteWriter() {

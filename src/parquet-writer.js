@@ -2,25 +2,42 @@ import { writeColumn } from './column.js'
 import { writeMetadata } from './metadata.js'
 
 /**
- * ParquetWriter class allows incremental writing of parquet files.
- * 
- * @import {ColumnChunk, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
- * @import {ColumnData, Writer} from '../src/types.js'
- * @constructor
- * @param {object} options - Writer options
- * @param {Writer} options.writer - The writer to use
- * @param {SchemaElement[]} options.schema - The schema
- * @param {boolean} [options.compressed=true] - Whether to compress data
- * @param {boolean} [options.statistics=true] - Whether to include statistics
- * @param {KeyValue[]} [options.kvMetadata] - Key-value metadata
- * @constructor
+ * @typedef {import('hyparquet').ColumnChunk} ColumnChunk
+ * @typedef {import('hyparquet').FileMetaData} FileMetaData
+ * @typedef {import('hyparquet').KeyValue} KeyValue
+ * @typedef {import('hyparquet').RowGroup} RowGroup
+ * @typedef {import('hyparquet').SchemaElement} SchemaElement
+ * @typedef {import('./types.js').ColumnData} ColumnData
+ * @typedef {import('./types.js').Writer} Writer
  */
-export function ParquetWriter({ writer, schema, compressed = true, statistics = true, kvMetadata }) {
-  this.writer = writer
-  this.schema = schema
-  this.compressed = compressed
-  this.statistics = statistics
-  this.kvMetadata = kvMetadata
+
+/**
+ * @typedef {object} ParquetWriterOptions
+ * @property {Writer} writer - The writer to use
+ * @property {SchemaElement[]} schema - The schema
+ * @property {boolean} [compressed=true] - Whether to compress data
+ * @property {boolean} [statistics=true] - Whether to include statistics
+ * @property {KeyValue[]} [kvMetadata] - Key-value metadata
+ */
+
+/**
+ * @typedef {object} ParquetWriteOptions
+ * @property {ColumnData[]} columnData - The columns to write
+ * @property {number} [rowGroupSize=100000] - The number of rows per row group
+ */
+
+/**
+ * ParquetWriter class allows incremental writing of parquet files.
+ *
+ * @class
+ * @param {ParquetWriterOptions} options - Writer options
+ */
+export function ParquetWriter(options) {
+  this.writer = options.writer
+  this.schema = options.schema
+  this.compressed = options.compressed !== false
+  this.statistics = options.statistics !== false
+  this.kvMetadata = options.kvMetadata
 
   /** @type {RowGroup[]} */
   this.row_groups = []
@@ -34,13 +51,18 @@ export function ParquetWriter({ writer, schema, compressed = true, statistics = 
  * Write data to the file.
  * Will split data into row groups of the specified size.
  *
- * @param {object} options
- * @param {ColumnData[]} options.columnData
- * @param {number} [options.rowGroupSize]
+ * @param {ParquetWriteOptions} options - Write options
  */
-ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) {
+ParquetWriter.prototype.write = function (options) {
+  const columnData = options.columnData
+  const rowGroupSize = options.rowGroupSize || 100000
+
   const columnDataRows = columnData[0]?.data?.length || 0
-  for (let groupStartIndex = 0; groupStartIndex < columnDataRows; groupStartIndex += rowGroupSize) {
+  for (
+    let groupStartIndex = 0;
+    groupStartIndex < columnDataRows;
+    groupStartIndex += rowGroupSize
+  ) {
     const groupStartOffset = this.writer.offset
     const groupSize = Math.min(rowGroupSize, columnDataRows - groupStartIndex)
 
@@ -52,9 +74,18 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) 
     for (let j = 0; j < columnData.length; j++) {
       const { data } = columnData[j]
       const schemaPath = [this.schema[0], this.schema[j + 1]]
-      const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
+      const groupData = data.slice(
+        groupStartIndex,
+        groupStartIndex + groupSize
+      )
       const file_offset = BigInt(this.writer.offset)
-      const meta_data = writeColumn(this.writer, schemaPath, groupData, this.compressed, this.statistics)
+      const meta_data = writeColumn(
+        this.writer,
+        schemaPath,
+        groupData,
+        this.compressed,
+        this.statistics
+      )
 
       // save column chunk metadata
       columns.push({
@@ -75,7 +106,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) 
 /**
  * Finish writing the file.
  */
-ParquetWriter.prototype.finish = function() {
+ParquetWriter.prototype.finish = function () {
   // write metadata
   /** @type {FileMetaData} */
   const metadata = {
