@@ -138,10 +138,13 @@ const columnData = [
 parquetWrite({
   columnData,
   // override schema for uint column
-  schema: schemaFromColumnData(columnData, {
-    unsigned_int: {
-      type: 'INT32',
-      converted_type: 'UINT_32',
+  schema: schemaFromColumnData({
+    columnData,
+    schemaOverrides: {
+      unsigned_int: {
+        type: 'INT32',
+        converted_type: 'UINT_32',
+      },
     },
   }),
 })
