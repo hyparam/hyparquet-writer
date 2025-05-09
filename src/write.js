@@ -18,7 +18,7 @@ export function parquetWrite({
   kvMetadata,
 }) {
   if (!schema) {
-    schema = schemaFromColumnData(columnData)
+    schema = schemaFromColumnData({ columnData })
   } else if (columnData.some(({ type }) => type)) {
     throw new Error('cannot provide both schema and columnData type')
   } else {

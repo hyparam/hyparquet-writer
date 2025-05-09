@@ -90,12 +90,15 @@ describe('parquet schema', () => {
     ]
     const file = parquetWriteBuffer({
       columnData,
-      schema: schemaFromColumnData(columnData, {
-        numbers: {
-          name: 'numbers',
-          type: 'DOUBLE',
-          repetition_type: 'OPTIONAL',
-          field_id: 1,
+      schema: schemaFromColumnData({
+        columnData,
+        schemaOverrides: {
+          numbers: {
+            name: 'numbers',
+            type: 'DOUBLE',
+            repetition_type: 'OPTIONAL',
+            field_id: 1,
+          },
         },
       }),
     })

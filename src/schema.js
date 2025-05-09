@@ -2,11 +2,12 @@
  * Infer a schema from column data.
  * Accepts optional schemaOverrides to override the type of columns by name.
  *
- * @param {ColumnData[]} columnData
- * @param {Record<string,SchemaElement>} [schemaOverrides]
+ * @param {object} options
+ * @param {ColumnData[]} options.columnData
+ * @param {Record<string,SchemaElement>} [options.schemaOverrides]
  * @returns {SchemaElement[]}
  */
-export function schemaFromColumnData(columnData, schemaOverrides) {
+export function schemaFromColumnData({ columnData, schemaOverrides }) {
   /** @type {SchemaElement[]} */
   const schema = [{
     name: 'root',
