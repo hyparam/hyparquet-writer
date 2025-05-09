@@ -1,8 +1,23 @@
-import type { ConvertedType, DecodedArray, FieldRepetitionType, KeyValue, LogicalType, ParquetType } from 'hyparquet'
+import type { DecodedArray, KeyValue, SchemaElement } from 'hyparquet'
+
+// Superset of parquet types with automatic conversions
+export type BasicType =
+  'BOOLEAN' |
+  'INT32' |
+  'INT64' |
+  'FLOAT' |
+  'DOUBLE' |
+  'BYTE_ARRAY' |
+  'STRING' |
+  'JSON' |
+  'TIMESTAMP' |
+  'UUID' |
+  'FLOAT16'
 
 export interface ParquetWriteOptions {
   writer: Writer
   columnData: ColumnData[]
+  schema?: SchemaElement[]
   compressed?: boolean
   statistics?: boolean
   rowGroupSize?: number
@@ -12,15 +27,8 @@ export interface ParquetWriteOptions {
 export interface ColumnData {
   name: string
   data: DecodedArray
-  // fields from SchemaElement:
-  type?: ParquetType
-  type_length?: number
-  repetition_type?: FieldRepetitionType
-  converted_type?: ConvertedType
-  scale?: number
-  precision?: number
-  field_id?: number
-  logical_type?: LogicalType
+  type?: BasicType
+  nullable?: boolean
 }
 
 export interface Writer {

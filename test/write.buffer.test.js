@@ -8,10 +8,11 @@ import { exampleData, exampleMetadata } from './example.js'
  *
  * @import {ColumnData} from '../src/types.js'
  * @param {ColumnData[]} columnData
+ * @param {import('hyparquet').SchemaElement[]} [schema]
  * @returns {Promise<Record<string, any>>}
  */
-async function roundTripDeserialize(columnData) {
-  const file = parquetWriteBuffer({ columnData })
+async function roundTripDeserialize(columnData, schema) {
+  const file = parquetWriteBuffer({ columnData, schema })
   return await parquetReadObjects({ file, utf8: false })
 }
 
@@ -32,10 +33,10 @@ describe('parquetWriteBuffer', () => {
     ])
   })
 
-  it('serializes a string without converted_type', () => {
+  it('serializes a string as a BYTE_ARRAY', () => {
     const data = ['string1', 'string2', 'string3']
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data, type: 'BYTE_ARRAY' }] })
-    expect(file.byteLength).toBe(162)
+    expect(file.byteLength).toBe(164)
   })
 
   it('serializes booleans as RLE', async () => {
@@ -141,23 +142,28 @@ describe('parquetWriteBuffer', () => {
   })
 
   it('serializes time types', async () => {
-    const result = await roundTripDeserialize([
-      {
-        name: 'time32',
-        data: [100000, 200000, 300000],
-        logical_type: { type: 'TIME', isAdjustedToUTC: false, unit: 'MILLIS' },
-      },
-      {
-        name: 'time64',
-        data: [100000000n, 200000000n, 300000000n],
-        logical_type: { type: 'TIME', isAdjustedToUTC: false, unit: 'MICROS' },
-      },
-      {
-        name: 'interval',
-        data: [1000000000n, 2000000000n, 3000000000n],
-        logical_type: { type: 'INTERVAL' },
-      },
-    ])
+    const result = await roundTripDeserialize(
+      [
+        {
+          name: 'time32',
+          data: [100000, 200000, 300000],
+        },
+        {
+          name: 'time64',
+          data: [100000000n, 200000000n, 300000000n],
+        },
+        {
+          name: 'interval',
+          data: [1000000000n, 2000000000n, 3000000000n],
+        },
+      ],
+      [
+        { name: 'root', num_children: 3 },
+        { name: 'time32', repetition_type: 'OPTIONAL', type: 'INT32', logical_type: { type: 'TIME', isAdjustedToUTC: false, unit: 'MILLIS' } },
+        { name: 'time64', repetition_type: 'OPTIONAL', type: 'INT64', logical_type: { type: 'TIME', isAdjustedToUTC: false, unit: 'MICROS' } },
+        { name: 'interval', repetition_type: 'OPTIONAL', type: 'INT64', logical_type: { type: 'INTERVAL' } },
+      ]
+    )
     expect(result).toEqual([
       { time32: 100000, time64: 100000000n, interval: 1000000000n },
       { time32: 200000, time64: 200000000n, interval: 2000000000n },
@@ -186,9 +192,7 @@ describe('parquetWriteBuffer', () => {
           new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
           new Uint8Array([17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]),
         ],
-        type: 'FIXED_LEN_BYTE_ARRAY',
-        type_length: 16,
-        logical_type: { type: 'UUID' },
+        type: 'UUID',
       },
       {
         name: 'string',
@@ -196,9 +200,7 @@ describe('parquetWriteBuffer', () => {
           '00000000-0000-0000-0000-000000000001',
           '00010002-0003-0004-0005-000600070008',
         ],
-        type: 'FIXED_LEN_BYTE_ARRAY',
-        type_length: 16,
-        logical_type: { type: 'UUID' },
+        type: 'UUID',
       },
     ])
     expect(result).toEqual([
@@ -277,20 +279,10 @@ describe('parquetWriteBuffer', () => {
       .toThrow('parquet expected number value')
     expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'BYTE_ARRAY' }] }))
       .toThrow('parquet expected Uint8Array value')
-    expect(() => parquetWriteBuffer({ columnData: [{ name: 'float16', data: [1, 2, 3], type: 'FIXED_LEN_BYTE_ARRAY' }] }))
-      .toThrow('parquet FIXED_LEN_BYTE_ARRAY expected type_length')
-    expect(() => parquetWriteBuffer({ columnData: [{ name: 'float16', data: [1, 2, 3], type: 'FIXED_LEN_BYTE_ARRAY', type_length: 4 }] }))
-      .toThrow('parquet expected Uint8Array value')
-    expect(() => parquetWriteBuffer({ columnData: [{ name: 'float16', data: [1, 2, 3], type: 'FIXED_LEN_BYTE_ARRAY', type_length: 4, logical_type: { type: 'FLOAT16' } }] }))
-      .toThrow('FLOAT16 expected type_length to be 2 bytes')
-    expect(() => parquetWriteBuffer({ columnData: [{ name: 'uuid', data: [new Uint8Array(4)], type: 'FIXED_LEN_BYTE_ARRAY', logical_type: { type: 'UUID' } }] }))
-      .toThrow('UUID expected type_length to be 16 bytes')
-    expect(() => parquetWriteBuffer({ columnData: [{ name: 'uuid', data: [new Uint8Array(4)], type: 'FIXED_LEN_BYTE_ARRAY', type_length: 16, logical_type: { type: 'UUID' } }] }))
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'float16', data: [1n, 2n, 3n], type: 'FLOAT16' }] }))
+      .toThrow('parquet float16 expected number value')
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'uuid', data: [new Uint8Array(4)], type: 'UUID' }] }))
       .toThrow('parquet expected Uint8Array of length 16')
-    expect(() => parquetWriteBuffer({ columnData: [{ name: 'uuid', data: [new Uint8Array(16)], type: 'FIXED_LEN_BYTE_ARRAY', type_length: 4, logical_type: { type: 'UUID' } }] }))
-      .toThrow('UUID expected type_length to be 16 bytes')
-    expect(() => parquetWriteBuffer({ columnData: [{ name: 'uuid', data: ['0000'], type: 'FIXED_LEN_BYTE_ARRAY', logical_type: { type: 'UUID' } }] }))
-      .toThrow('UUID expected type_length to be 16 bytes')
   })
 
   it('throws for empty column with no type specified', () => {

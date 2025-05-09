@@ -197,6 +197,7 @@ export function unconvertDecimal({ type, type_length }, value) {
  */
 export function unconvertFloat16(value) {
   if (value === undefined || value === null) return
+  if (typeof value !== 'number') throw new Error('parquet float16 expected number value')
   if (Number.isNaN(value)) return new Uint8Array([0x00, 0x7e])
 
   const sign = value < 0 || Object.is(value, -0) ? 1 : 0

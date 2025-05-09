@@ -11,12 +11,19 @@ import { schemaFromColumnData } from './schema.js'
 export function parquetWrite({
   writer,
   columnData,
+  schema,
   compressed = true,
   statistics = true,
   rowGroupSize = 100000,
   kvMetadata,
 }) {
-  const schema = schemaFromColumnData(columnData)
+  if (!schema) {
+    schema = schemaFromColumnData({ columnData })
+  } else if (columnData.some(({ type }) => type)) {
+    throw new Error('cannot provide both schema and columnData type')
+  } else {
+    // TODO: validate schema
+  }
   const pq = new ParquetWriter({
     writer,
     schema,

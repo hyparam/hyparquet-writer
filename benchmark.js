@@ -38,9 +38,7 @@ console.log(`parsed ${filename} ${rows.length.toLocaleString()} rows in ${ms.toF
 // transpose rows
 const schema = parquetSchema(metadata)
 const columnData = schema.children.map(({ element }) => ({
-  // name: element.name,
-  // type: element.type,
-  ...element,
+  name: element.name,
   data: [],
 })) // .filter(({ name }) => name === 'l_comment')
 for (const row of rows) {
@@ -56,6 +54,7 @@ startTime = performance.now()
 parquetWriteFile({
   filename: outputFilename,
   columnData,
+  schema: metadata.schema,
 })
 ms = performance.now() - startTime
 stat = await fs.stat(outputFilename)
