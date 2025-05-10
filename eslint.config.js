@@ -42,6 +42,7 @@ export default [
       'jsdoc/require-returns': 'error',
       'jsdoc/require-returns-type': 'error',
       'jsdoc/sort-tags': 'error',
+      'key-spacing': 'error',
       'no-constant-condition': 'off',
       'no-extra-parens': 'warn',
       'no-multi-spaces': 'error',
