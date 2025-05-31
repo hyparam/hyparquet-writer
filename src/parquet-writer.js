@@ -5,7 +5,7 @@ import { writeMetadata } from './metadata.js'
  * ParquetWriter class allows incremental writing of parquet files.
  *
  * @import {ColumnChunk, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
- * @import {ColumnData, Writer} from '../src/types.js'
+ * @import {ColumnSource, Writer} from '../src/types.js'
  * @param {object} options
  * @param {Writer} options.writer
  * @param {SchemaElement[]} options.schema
@@ -22,7 +22,7 @@ export function ParquetWriter({ writer, schema, compressed = true, statistics = 
 
   /** @type {RowGroup[]} */
   this.row_groups = []
-  this.num_rows = BigInt(0)
+  this.num_rows = 0n
 
   // write header PAR1
   this.writer.appendUint32(0x31524150)
@@ -33,7 +33,7 @@ export function ParquetWriter({ writer, schema, compressed = true, statistics = 
  * Will split data into row groups of the specified size.
  *
  * @param {object} options
- * @param {ColumnData[]} options.columnData
+ * @param {ColumnSource[]} options.columnData
  * @param {number} [options.rowGroupSize]
  */
 ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) {

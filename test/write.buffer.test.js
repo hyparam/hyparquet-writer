@@ -6,8 +6,8 @@ import { exampleData, exampleMetadata } from './example.js'
 /**
  * Utility to encode a parquet file and then read it back into a JS object.
  *
- * @import {ColumnData} from '../src/types.js'
- * @param {ColumnData[]} columnData
+ * @import {ColumnSource} from '../src/types.js'
+ * @param {ColumnSource[]} columnData
  * @param {import('hyparquet').SchemaElement[]} [schema]
  * @returns {Promise<Record<string, any>>}
  */

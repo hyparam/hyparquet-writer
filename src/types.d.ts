@@ -16,7 +16,7 @@ export type BasicType =
 
 export interface ParquetWriteOptions {
   writer: Writer
-  columnData: ColumnData[]
+  columnData: ColumnSource[]
   schema?: SchemaElement[]
   compressed?: boolean
   statistics?: boolean
@@ -24,7 +24,7 @@ export interface ParquetWriteOptions {
   kvMetadata?: KeyValue[]
 }
 
-export interface ColumnData {
+export interface ColumnSource {
   name: string
   data: DecodedArray
   type?: BasicType

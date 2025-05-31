@@ -3,7 +3,7 @@
  * Accepts optional schemaOverrides to override the type of columns by name.
  *
  * @param {object} options
- * @param {ColumnData[]} options.columnData
+ * @param {ColumnSource[]} options.columnData
  * @param {Record<string,SchemaElement>} [options.schemaOverrides]
  * @returns {SchemaElement[]}
  */
@@ -43,7 +43,7 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
 
 /**
  * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement} from 'hyparquet'
- * @import {BasicType, ColumnData} from '../src/types.js'
+ * @import {BasicType, ColumnSource} from '../src/types.js'
  * @param {string} name
  * @param {BasicType} type
  * @param {boolean} [nullable]
