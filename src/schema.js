@@ -133,7 +133,12 @@ export function autoSchemaElement(name, values) {
       }
     }
   }
-  if (!type) throw new Error(`column ${name} cannot determine type`)
+  if (!type) {
+    // fallback to nullable BYTE_ARRAY
+    // TODO: logical_type: 'NULL'
+    type = 'BYTE_ARRAY'
+    repetition_type = 'OPTIONAL'
+  }
   return { name, type, repetition_type, converted_type }
 }
 

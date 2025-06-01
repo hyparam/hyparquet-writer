@@ -285,13 +285,6 @@ describe('parquetWriteBuffer', () => {
       .toThrow('parquet expected Uint8Array of length 16')
   })
 
-  it('throws for empty column with no type specified', () => {
-    expect(() => parquetWriteBuffer({ columnData: [{ name: 'empty', data: [] }] }))
-      .toThrow('column empty cannot determine type')
-    expect(() => parquetWriteBuffer({ columnData: [{ name: 'empty', data: [null, null, null, null] }] }))
-      .toThrow('column empty cannot determine type')
-  })
-
   it('throws for mixed types', () => {
     expect(() => parquetWriteBuffer({ columnData: [{ name: 'mixed', data: [1, 2, 3, 'boom'] }] }))
       .toThrow('mixed types not supported')

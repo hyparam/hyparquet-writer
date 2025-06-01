@@ -63,6 +63,42 @@ describe('parquet schema', () => {
     ])
   })
 
+  it('allow zero rows to be auto-typed', () => {
+    const file = parquetWriteBuffer({ columnData: [
+      { name: 'numbers', data: [] },
+    ] })
+    const metadata = parquetMetadata(file)
+    expect(metadata.schema).toEqual([
+      {
+        name: 'root',
+        num_children: 1,
+      },
+      {
+        name: 'numbers',
+        repetition_type: 'OPTIONAL',
+        type: 'BYTE_ARRAY',
+      },
+    ])
+  })
+
+  it('allow entirely null columns to be auto-typed', () => {
+    const file = parquetWriteBuffer({ columnData: [
+      { name: 'numbers', data: [null, null, null] },
+    ] })
+    const metadata = parquetMetadata(file)
+    expect(metadata.schema).toEqual([
+      {
+        name: 'root',
+        num_children: 1,
+      },
+      {
+        name: 'numbers',
+        repetition_type: 'OPTIONAL',
+        type: 'BYTE_ARRAY',
+      },
+    ])
+  })
+
   it('accepts explicit schema', () => {
     const file = parquetWriteBuffer({ columnData: [
       { name: 'numbers', data: [1, 2, 3] },
