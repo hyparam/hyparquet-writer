@@ -1,6 +1,6 @@
 import fs from 'fs'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { fileWriter } from '../src/filewriter.js'
+import { fileWriter } from '../src/node.js'
 
 const filedir = 'data/'
 const filename = 'data/filewriter.test.bin'

@@ -28,13 +28,13 @@
   "types": "types/index.d.ts",
   "exports": {
     ".": {
-      "node": {
-        "types": "./types/node.d.ts",
-        "import": "./src/node.js"
-      },
-      "default": {
+      "browser": {
         "types": "./types/index.d.ts",
         "import": "./src/index.js"
+      },
+      "default": {
+        "types": "./types/node.d.ts",
+        "import": "./src/node.js"
       }
     },
     "./src/*.js": {
