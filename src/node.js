@@ -53,7 +53,7 @@ export function fileWriter(filename) {
       writer.view = new DataView(writer.buffer)
     }
   }
-  writer.getBuffer = function () {
+  writer.getBuffer = function() {
     throw new Error('getBuffer not supported for FileWriter')
   }
   writer.finish = function() {
