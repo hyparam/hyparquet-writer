@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { unconvert, unconvertDecimal, unconvertFloat16, unconvertMinMax } from '../src/unconvert.js'
 import { convertMetadata } from 'hyparquet/src/metadata.js'
-import { parseFloat16 } from 'hyparquet/src/convert.js'
+import { DEFAULT_PARSERS, parseFloat16 } from 'hyparquet/src/convert.js'
 
 /**
  * @import {SchemaElement} from 'hyparquet'
@@ -97,7 +97,7 @@ describe('unconvertMinMax', () => {
     const value = 1.5
     const result = unconvertMinMax(value, schema)
     expect(result).toBeInstanceOf(Uint8Array)
-    const roundtrip = convertMetadata(result, schema)
+    const roundtrip = convertMetadata(result, schema, DEFAULT_PARSERS)
     expect(roundtrip).toEqual(1.5)
   })
 
@@ -107,7 +107,7 @@ describe('unconvertMinMax', () => {
     const value = 1.123456789
     const result = unconvertMinMax(value, schema)
     expect(result).toBeInstanceOf(Uint8Array)
-    const roundtrip = convertMetadata(result, schema)
+    const roundtrip = convertMetadata(result, schema, DEFAULT_PARSERS)
     expect(roundtrip).toEqual(1.123456789)
   })
 
@@ -116,7 +116,7 @@ describe('unconvertMinMax', () => {
     const schema = { name: 'test', type: 'INT32' }
     const value = 123456
     const result = unconvertMinMax(value, schema)
-    const roundtrip = convertMetadata(result, schema)
+    const roundtrip = convertMetadata(result, schema, DEFAULT_PARSERS)
     expect(roundtrip).toEqual(123456)
   })
 
@@ -125,7 +125,7 @@ describe('unconvertMinMax', () => {
     const schema = { name: 'test', type: 'INT64' }
     const value = 1234567890123456789n
     const result = unconvertMinMax(value, schema)
-    const roundtrip = convertMetadata(result, schema)
+    const roundtrip = convertMetadata(result, schema, DEFAULT_PARSERS)
     expect(roundtrip).toEqual(1234567890123456789n)
   })
 
@@ -134,7 +134,7 @@ describe('unconvertMinMax', () => {
     const schema = { name: 'test', type: 'INT64', converted_type: 'TIMESTAMP_MILLIS' }
     const date = new Date('2023-01-01T00:00:00Z')
     const result = unconvertMinMax(date, schema)
-    const roundtrip = convertMetadata(result, schema)
+    const roundtrip = convertMetadata(result, schema, DEFAULT_PARSERS)
     expect(roundtrip).toEqual(date)
   })
 

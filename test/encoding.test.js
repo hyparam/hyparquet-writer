@@ -21,7 +21,7 @@ function roundTripDeserialize(values) {
   // Decode the values using readRleBitPackedHybrid from hyparquet
   /** @type {number[]} */
   const output = new Array(values.length)
-  readRleBitPackedHybrid(reader, bitWidth, values.length, output)
+  readRleBitPackedHybrid(reader, bitWidth, output, values.length)
   return output
 }
 
