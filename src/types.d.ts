@@ -20,7 +20,7 @@ export interface ParquetWriteOptions {
   schema?: SchemaElement[]
   compressed?: boolean
   statistics?: boolean
-  rowGroupSize?: number
+  rowGroupSize?: number | number[]
   kvMetadata?: KeyValue[]
 }
 

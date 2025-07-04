@@ -264,6 +264,26 @@ describe('parquetWriteBuffer', () => {
     expect(result[199]).toEqual({ int: 13 })
   })
 
+  it('splits row groups with custom sizes', async () => {
+    const data = Array(200).fill(13)
+    const file = parquetWriteBuffer({ columnData: [{ name: 'int', data }], rowGroupSize: [20, 50] })
+    const metadata = parquetMetadata(file)
+    expect(metadata.row_groups.length).toBe(5)
+    expect(metadata.row_groups[0].num_rows).toBe(20n)
+    expect(metadata.row_groups[1].num_rows).toBe(50n)
+    // should use last size for remaining row groups
+    expect(metadata.row_groups[2].num_rows).toBe(50n)
+    expect(metadata.row_groups[3].num_rows).toBe(50n)
+    expect(metadata.row_groups[4].num_rows).toBe(30n)
+    // round trip
+    const result = await parquetReadObjects({ file })
+    expect(result.length).toBe(200)
+    expect(result[0]).toEqual({ int: 13 })
+    expect(result[49]).toEqual({ int: 13 })
+    expect(result[50]).toEqual({ int: 13 })
+    expect(result[199]).toEqual({ int: 13 })
+  })
+
   it('throws for wrong type specified', () => {
     expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'INT64' }] }))
       .toThrow('parquet expected bigint value')
