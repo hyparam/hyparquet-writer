@@ -30,7 +30,7 @@ export function unconvert(element, values) {
   if (ctype === 'JSON') {
     if (!Array.isArray(values)) throw new Error('JSON must be an array')
     const encoder = new TextEncoder()
-    return values.map(v => encoder.encode(JSON.stringify(v)))
+    return values.map(v => v === undefined ? undefined : encoder.encode(JSON.stringify(v)))
   }
   if (ctype === 'UTF8') {
     if (!Array.isArray(values)) throw new Error('strings must be an array')

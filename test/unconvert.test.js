@@ -28,6 +28,20 @@ describe('unconvert', () => {
     expect(new TextDecoder().decode(result[1])).toEqual(JSON.stringify({ hello: 'world' }))
   })
 
+  it('should handle undefined values in JSON arrays', () => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', converted_type: 'JSON' }
+    const input = [{ foo: 'bar' }, undefined, { hello: 'world' }]
+    const result = unconvert(schema, input)
+
+    expect(result).toHaveLength(3)
+    expect(result[0]).toBeInstanceOf(Uint8Array)
+    expect(result[1]).toBeUndefined()
+    expect(result[2]).toBeInstanceOf(Uint8Array)
+    expect(new TextDecoder().decode(result[0])).toEqual(JSON.stringify({ foo: 'bar' }))
+    expect(new TextDecoder().decode(result[2])).toEqual(JSON.stringify({ hello: 'world' }))
+  })
+
   it('should convert string array to Uint8Array when converted_type = UTF8', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', converted_type: 'UTF8' }
