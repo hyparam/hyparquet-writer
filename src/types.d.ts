@@ -31,6 +31,13 @@ export interface ColumnSource {
   nullable?: boolean
 }
 
+export interface ListValues {
+  values: any[]
+  definitionLevels: number[]
+  repetitionLevels: number[]
+  numNulls: number
+}
+
 export interface ColumnEncoder {
   columnName: string
   element: SchemaElement

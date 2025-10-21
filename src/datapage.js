@@ -11,8 +11,9 @@ import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
  * @param {DecodedArray} values
  * @param {ColumnEncoder} column
  * @param {import('hyparquet').Encoding} encoding
+ * @param {ListValues} [listValues]
  */
-export function writeDataPageV2(writer, values, column, encoding) {
+export function writeDataPageV2(writer, values, column, encoding, listValues) {
   const { columnName, element, compressed } = column
   const { type, type_length, repetition_type } = element
 
@@ -21,8 +22,12 @@ export function writeDataPageV2(writer, values, column, encoding) {
 
   // write levels to temp buffer
   const levelWriter = new ByteWriter()
-  const { definition_levels_byte_length, repetition_levels_byte_length, num_nulls }
-    = writeLevels(levelWriter, column, values)
+  const {
+    definition_levels_byte_length,
+    repetition_levels_byte_length,
+    num_nulls,
+    num_values,
+  } = writeLevels(levelWriter, column, values, listValues)
 
   const nonnull = values.filter(v => v !== null && v !== undefined)
 
@@ -56,7 +61,7 @@ export function writeDataPageV2(writer, values, column, encoding) {
     uncompressed_page_size: levelWriter.offset + page.offset,
     compressed_page_size: levelWriter.offset + compressedPage.offset,
     data_page_header_v2: {
-      num_values: values.length,
+      num_values,
       num_nulls,
       num_rows: values.length,
       encoding,
@@ -110,43 +115,63 @@ export function writePageHeader(writer, header) {
 
 /**
  * @import {DecodedArray, PageHeader, SchemaElement} from 'hyparquet'
- * @import {ColumnEncoder, Writer} from '../src/types.js'
+ * @import {ColumnEncoder, ListValues, Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {ColumnEncoder} column
  * @param {DecodedArray} values
+ * @param {ListValues} [listValues]
  * @returns {{
  *   definition_levels_byte_length: number
  *   repetition_levels_byte_length: number
  *   num_nulls: number
+ *   num_values: number
  * }}
  */
-function writeLevels(writer, column, values) {
+function writeLevels(writer, column, values, listValues) {
   const { schemaPath } = column
+  const definitionLevels = listValues?.definitionLevels
+  const repetitionLevels = listValues?.repetitionLevels
 
-  let num_nulls = 0
+  let num_nulls = listValues?.numNulls ?? 0
+  let num_values = definitionLevels?.length ?? values.length
 
-  // TODO: repetition levels
   const maxRepetitionLevel = getMaxRepetitionLevel(schemaPath)
   let repetition_levels_byte_length = 0
   if (maxRepetitionLevel) {
-    repetition_levels_byte_length = writeRleBitPackedHybrid(writer, [], 0)
+    const bitWidth = Math.ceil(Math.log2(maxRepetitionLevel + 1))
+    const reps = repetitionLevels ?? []
+    repetition_levels_byte_length = writeRleBitPackedHybrid(writer, reps, bitWidth)
   }
 
   // definition levels
   const maxDefinitionLevel = getMaxDefinitionLevel(schemaPath)
   let definition_levels_byte_length = 0
   if (maxDefinitionLevel) {
-    const definitionLevels = []
-    for (const value of values) {
-      if (value === null || value === undefined) {
-        definitionLevels.push(maxDefinitionLevel - 1)
-        num_nulls++
-      } else {
-        definitionLevels.push(maxDefinitionLevel)
-      }
-    }
     const bitWidth = Math.ceil(Math.log2(maxDefinitionLevel + 1))
-    definition_levels_byte_length = writeRleBitPackedHybrid(writer, definitionLevels, bitWidth)
+    const defs = definitionLevels ?? (() => {
+      const generated = []
+      for (const value of values) {
+        if (value === null || value === undefined) {
+          generated.push(maxDefinitionLevel - 1)
+          num_nulls++
+        } else {
+          generated.push(maxDefinitionLevel)
+        }
+      }
+      num_values = generated.length
+      return generated
+    })()
+
+    if (definitionLevels && listValues === undefined) {
+      num_nulls = definitionLevels.reduce(
+        (count, def) => def === maxDefinitionLevel ? count : count + 1,
+        0
+      )
+    }
+
+    definition_levels_byte_length = writeRleBitPackedHybrid(writer, defs, bitWidth)
+  } else {
+    num_nulls = values.filter(value => value === null || value === undefined).length
   }
-  return { definition_levels_byte_length, repetition_levels_byte_length, num_nulls }
+  return { definition_levels_byte_length, repetition_levels_byte_length, num_nulls, num_values }
 }

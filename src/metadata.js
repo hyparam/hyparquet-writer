@@ -1,3 +1,4 @@
+import { getSchemaPath } from 'hyparquet/src/schema.js'
 import { CompressionCodec, ConvertedType, Encoding, FieldRepetitionType, PageType, ParquetType } from 'hyparquet/src/constants.js'
 import { serializeTCompactProtocol } from './thrift.js'
 import { unconvertStatistics } from './unconvert.js'
@@ -44,7 +45,10 @@ export function writeMetadata(writer, metadata) {
           field_9: c.meta_data.data_page_offset,
           field_10: c.meta_data.index_page_offset,
           field_11: c.meta_data.dictionary_page_offset,
-          field_12: c.meta_data.statistics && unconvertStatistics(c.meta_data.statistics, metadata.schema[columnIndex + 1]),
+          field_12: c.meta_data.statistics && unconvertStatistics(
+            c.meta_data.statistics,
+            schemaElement(metadata.schema, c.meta_data.path_in_schema, columnIndex + 1)
+          ),
           field_13: c.meta_data.encoding_stats && c.meta_data.encoding_stats.map(es => ({
             field_1: PageType.indexOf(es.page_type),
             field_2: Encoding.indexOf(es.encoding),
@@ -89,6 +93,22 @@ export function writeMetadata(writer, metadata) {
   // write metadata length
   const metadataLength = writer.offset - metadataStart
   writer.appendUint32(metadataLength)
+}
+
+/**
+ * Resolve schema element for statistics using the stored path.
+ *
+ * @param {import('hyparquet').SchemaElement[]} schema
+ * @param {string[] | undefined} path
+ * @param {number} fallbackIndex
+ * @returns {import('hyparquet').SchemaElement}
+ */
+function schemaElement(schema, path, fallbackIndex) {
+  if (path?.length) {
+    const resolved = getSchemaPath(schema, path).at(-1)?.element
+    if (resolved) return resolved
+  }
+  return schema[fallbackIndex]
 }
 
 /**
