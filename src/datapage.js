@@ -7,23 +7,22 @@ import { serializeTCompactProtocol } from './thrift.js'
 import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
 
 /**
- * @import {Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {DecodedArray} values
- * @param {SchemaElement[]} schemaPath
+ * @param {ColumnEncoder} column
  * @param {import('hyparquet').Encoding} encoding
- * @param {boolean} compressed
  */
-export function writeDataPageV2(writer, values, schemaPath, encoding, compressed) {
-  const { name, type, type_length, repetition_type } = schemaPath[schemaPath.length - 1]
+export function writeDataPageV2(writer, values, column, encoding) {
+  const { columnName, element, compressed } = column
+  const { type, type_length, repetition_type } = element
 
-  if (!type) throw new Error(`column ${name} cannot determine type`)
-  if (repetition_type === 'REPEATED') throw new Error(`column ${name} repeated types not supported`)
+  if (!type) throw new Error(`column ${columnName} cannot determine type`)
+  if (repetition_type === 'REPEATED') throw new Error(`column ${columnName} repeated types not supported`)
 
   // write levels to temp buffer
-  const levels = new ByteWriter()
+  const levelWriter = new ByteWriter()
   const { definition_levels_byte_length, repetition_levels_byte_length, num_nulls }
-     = writeLevels(levels, schemaPath, values)
+    = writeLevels(levelWriter, column, values)
 
   const nonnull = values.filter(v => v !== null && v !== undefined)
 
@@ -54,8 +53,8 @@ export function writeDataPageV2(writer, values, schemaPath, encoding, compressed
   // write page header
   writePageHeader(writer, {
     type: 'DATA_PAGE_V2',
-    uncompressed_page_size: levels.offset + page.offset,
-    compressed_page_size: levels.offset + compressedPage.offset,
+    uncompressed_page_size: levelWriter.offset + page.offset,
+    compressed_page_size: levelWriter.offset + compressedPage.offset,
     data_page_header_v2: {
       num_values: values.length,
       num_nulls,
@@ -68,7 +67,7 @@ export function writeDataPageV2(writer, values, schemaPath, encoding, compressed
   })
 
   // write levels
-  writer.appendBuffer(levels.getBuffer())
+  writer.appendBuffer(levelWriter.getBuffer())
 
   // write page data
   writer.appendBuffer(compressedPage.getBuffer())
@@ -111,12 +110,19 @@ export function writePageHeader(writer, header) {
 
 /**
  * @import {DecodedArray, PageHeader, SchemaElement} from 'hyparquet'
+ * @import {ColumnEncoder, Writer} from '../src/types.js'
  * @param {Writer} writer
- * @param {SchemaElement[]} schemaPath
+ * @param {ColumnEncoder} column
  * @param {DecodedArray} values
- * @returns {{ definition_levels_byte_length: number, repetition_levels_byte_length: number, num_nulls: number}}
+ * @returns {{
+ *   definition_levels_byte_length: number
+ *   repetition_levels_byte_length: number
+ *   num_nulls: number
+ * }}
  */
-function writeLevels(writer, schemaPath, values) {
+function writeLevels(writer, column, values) {
+  const { schemaPath } = column
+
   let num_nulls = 0
 
   // TODO: repetition levels

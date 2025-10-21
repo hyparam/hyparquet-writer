@@ -1,3 +1,4 @@
+import { getSchemaPath } from 'hyparquet/src/schema.js'
 import { writeColumn } from './column.js'
 import { writeMetadata } from './metadata.js'
 
@@ -5,7 +6,7 @@ import { writeMetadata } from './metadata.js'
  * ParquetWriter class allows incremental writing of parquet files.
  *
  * @import {ColumnChunk, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
- * @import {ColumnSource, Writer} from '../src/types.js'
+ * @import {ColumnEncoder, ColumnSource, Writer} from '../src/types.js'
  * @param {object} options
  * @param {Writer} options.writer
  * @param {SchemaElement[]} options.schema
@@ -47,11 +48,39 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) 
 
     // write columns
     for (let j = 0; j < columnData.length; j++) {
-      const { data } = columnData[j]
-      const schemaPath = [this.schema[0], this.schema[j + 1]]
+      const { name, data } = columnData[j]
       const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
+
+      const schemaTree = getSchemaPath(this.schema, [name])
+      // Dive into the leaf element
+      while (true) {
+        const child = schemaTree[schemaTree.length - 1]
+        if (!child.element.num_children) {
+          break
+        } else if (child.element.num_children === 1) {
+          schemaTree.push(child.children[0])
+        } else {
+          throw new Error(`parquet column ${name} struct unsupported`)
+        }
+      }
+      const schemaPath = schemaTree.map(node => node.element)
+      const element = schemaPath.at(-1)
+      if (!element) throw new Error(`parquet column ${name} missing schema element`)
+      /** @type {ColumnEncoder} */
+      const column = {
+        columnName: name,
+        element,
+        schemaPath,
+        compressed: this.compressed,
+      }
+
       const file_offset = BigInt(this.writer.offset)
-      const meta_data = writeColumn(this.writer, schemaPath, groupData, this.compressed, this.statistics)
+      const meta_data = writeColumn(
+        this.writer,
+        column,
+        groupData,
+        this.statistics
+      )
 
       // save column chunk metadata
       columns.push({

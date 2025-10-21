@@ -31,6 +31,13 @@ export interface ColumnSource {
   nullable?: boolean
 }
 
+export interface ColumnEncoder {
+  columnName: string
+  element: SchemaElement
+  schemaPath: SchemaElement[]
+  compressed: boolean
+}
+
 export interface Writer {
   buffer: ArrayBuffer
   view: DataView

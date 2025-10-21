@@ -1,22 +1,22 @@
-import { unconvert } from './unconvert.js'
-import { writePlain } from './plain.js'
-import { snappyCompress } from './snappy.js'
 import { ByteWriter } from './bytewriter.js'
 import { writeDataPageV2, writePageHeader } from './datapage.js'
+import { writePlain } from './plain.js'
+import { snappyCompress } from './snappy.js'
+import { unconvert } from './unconvert.js'
 
 /**
  * @param {Writer} writer
- * @param {SchemaElement[]} schemaPath
+ * @param {ColumnEncoder} column
  * @param {DecodedArray} values
- * @param {boolean} compressed
  * @param {boolean} stats
  * @returns {ColumnMetaData}
  */
-export function writeColumn(writer, schemaPath, values, compressed, stats) {
-  const element = schemaPath[schemaPath.length - 1]
-  const { type, type_length } = element
-  if (!type) throw new Error(`column ${element.name} cannot determine type`)
+export function writeColumn(writer, column, values, stats) {
+  const { columnName, element, schemaPath, compressed } = column
+  const { type } = element
+  if (!type) throw new Error(`column ${columnName} cannot determine type`)
   const offsetStart = writer.offset
+
   const num_values = values.length
   /** @type {Encoding[]} */
   const encodings = []
@@ -42,11 +42,11 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
 
     // write unconverted dictionary page
     const unconverted = unconvert(element, dictionary)
-    writeDictionaryPage(writer, unconverted, type, type_length, compressed)
+    writeDictionaryPage(writer, column, unconverted)
 
     // write data page with dictionary indexes
     data_page_offset = BigInt(writer.offset)
-    writeDataPageV2(writer, indexes, schemaPath, 'RLE_DICTIONARY', compressed)
+    writeDataPageV2(writer, indexes, column, 'RLE_DICTIONARY')
     encodings.push('RLE_DICTIONARY')
   } else {
     // unconvert values from rich types to simple
@@ -54,7 +54,7 @@ export function writeColumn(writer, schemaPath, values, compressed, stats) {
 
     // write data page
     const encoding = type === 'BOOLEAN' && values.length > 16 ? 'RLE' : 'PLAIN'
-    writeDataPageV2(writer, values, schemaPath, encoding, compressed)
+    writeDataPageV2(writer, values, column, encoding)
     encodings.push(encoding)
   }
 
@@ -90,14 +90,15 @@ function useDictionary(values, type) {
 
 /**
  * @param {Writer} writer
+ * @param {ColumnEncoder} column
  * @param {DecodedArray} dictionary
- * @param {ParquetType} type
- * @param {number | undefined} fixedLength
- * @param {boolean} compressed
  */
-function writeDictionaryPage(writer, dictionary, type, fixedLength, compressed) {
+function writeDictionaryPage(writer, column, dictionary) {
+  const { element, compressed } = column
+  const { type, type_length } = element
+  if (!type) throw new Error(`column ${column.columnName} cannot determine type`)
   const dictionaryPage = new ByteWriter()
-  writePlain(dictionaryPage, dictionary, type, fixedLength)
+  writePlain(dictionaryPage, dictionary, type, type_length)
 
   // compress dictionary page data
   let compressedDictionaryPage = dictionaryPage
@@ -120,8 +121,8 @@ function writeDictionaryPage(writer, dictionary, type, fixedLength, compressed) 
 }
 
 /**
- * @import {ColumnMetaData, DecodedArray, Encoding, ParquetType, SchemaElement, Statistics} from 'hyparquet'
- * @import {Writer} from '../src/types.js'
+ * @import {ColumnMetaData, DecodedArray, Encoding, ParquetType, Statistics} from 'hyparquet'
+ * @import {ColumnEncoder, Writer} from '../src/types.js'
  * @param {DecodedArray} values
  * @returns {Statistics}
  */
