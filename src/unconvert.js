@@ -1,3 +1,5 @@
+import { geojsonToWkb } from './wkb.js'
+
 const dayMillis = 86400000 // 1 day in milliseconds
 
 /**
@@ -47,6 +49,10 @@ export function unconvert(element, values) {
     if (type !== 'FIXED_LEN_BYTE_ARRAY') throw new Error('UUID must be FIXED_LEN_BYTE_ARRAY type')
     if (element.type_length !== 16) throw new Error('UUID expected type_length to be 16 bytes')
     return values.map(unconvertUuid)
+  }
+  if (ltype?.type === 'GEOMETRY' || ltype?.type === 'GEOGRAPHY') {
+    if (!Array.isArray(values)) throw new Error('geometry must be an array')
+    return values.map(v => v && geojsonToWkb(v))
   }
   return values
 }

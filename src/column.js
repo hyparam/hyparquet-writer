@@ -33,7 +33,7 @@ export function writeColumn(writer, column, values, stats) {
   const encodings = []
 
   // Compute statistics
-  const statistics = stats ? getStatistics(values) : undefined
+  const statistics = stats ? getStatistics(values, element) : undefined
 
   // dictionary encoding
   let dictionary_page_offset
@@ -135,9 +135,14 @@ function writeDictionaryPage(writer, column, dictionary) {
  * @import {ColumnMetaData, DecodedArray, Encoding, ParquetType, SchemaElement, Statistics} from 'hyparquet'
  * @import {ColumnEncoder, ListValues, Writer} from '../src/types.js'
  * @param {DecodedArray} values
- * @returns {Statistics}
+ * @param {SchemaElement} element
+ * @returns {Statistics | undefined}
  */
-function getStatistics(values) {
+function getStatistics(values, element) {
+  const ltype = element?.logical_type?.type
+  const isGeospatial = ltype === 'GEOMETRY' || ltype === 'GEOGRAPHY'
+  if (isGeospatial) return
+
   let min_value = undefined
   let max_value = undefined
   let null_count = 0n

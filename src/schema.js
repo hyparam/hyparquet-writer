@@ -66,6 +66,12 @@ function basicTypeToSchemaElement(name, type, nullable) {
   if (type === 'FLOAT16') {
     return { name, type: 'FIXED_LEN_BYTE_ARRAY', type_length: 2, logical_type: { type: 'FLOAT16' }, repetition_type }
   }
+  if (type === 'GEOMETRY') {
+    return { name, type: 'BYTE_ARRAY', logical_type: { type: 'GEOMETRY' }, repetition_type }
+  }
+  if (type === 'GEOGRAPHY') {
+    return { name, type: 'BYTE_ARRAY', logical_type: { type: 'GEOGRAPHY' }, repetition_type }
+  }
   return { name, type, repetition_type }
 }
 
