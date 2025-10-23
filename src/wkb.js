@@ -35,7 +35,10 @@ function writeGeometry(writer, geometry) {
   } else if (geometry.type === 'LineString') {
     writeLine(writer, geometry.coordinates, dim)
   } else if (geometry.type === 'Polygon') {
-    writePolygon(writer, geometry.coordinates, dim)
+    writer.appendUint32(geometry.coordinates.length)
+    for (const ring of geometry.coordinates) {
+      writeLine(writer, ring, dim)
+    }
   } else if (geometry.type === 'MultiPoint') {
     writer.appendUint32(geometry.coordinates.length)
     for (const coordinates of geometry.coordinates) {
@@ -84,18 +87,6 @@ function writeLine(writer, coordinates, dim) {
   writer.appendUint32(coordinates.length)
   for (const position of coordinates) {
     writePosition(writer, position, dim)
-  }
-}
-
-/**
- * @param {ByteWriter} writer
- * @param {Position[][]} rings
- * @param {number} dimensions
- */
-function writePolygon(writer, rings, dimensions) {
-  writer.appendUint32(rings.length)
-  for (const ring of rings) {
-    writeLine(writer, ring, dimensions)
   }
 }
 

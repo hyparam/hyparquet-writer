@@ -30,8 +30,10 @@ const arrayBuffer = parquetWriteBuffer({
 })
 ```
 
-Note: if `type` is not provided, the type will be guessed from the data. The supported types are a superset of the parquet types:
+Note: if `type` is not provided, the type will be guessed from the data. The supported `BasicType` are a superset of the parquet primitive types:
 
+| Basic Type | Equivalent Schema Element |
+|------|----------------|
 | `BOOLEAN` | `{ type: 'BOOLEAN' }` |
 | `INT32` | `{ type: 'INT32' }` |
 | `INT64` | `{ type: 'INT64' }` |
@@ -43,10 +45,12 @@ Note: if `type` is not provided, the type will be guessed from the data. The sup
 | `TIMESTAMP` | `{ type: 'INT64', converted_type: 'TIMESTAMP_MILLIS' }` |
 | `UUID` | `{ type: 'FIXED_LEN_BYTE_ARRAY', type_length: 16, logical_type: { type: 'UUID' } }` |
 | `FLOAT16` | `{ type: 'FIXED_LEN_BYTE_ARRAY', type_length: 2, logical_type: { type: 'FLOAT16' } }` |
+| `GEOMETRY` | `{ type: 'BYTE_ARRAY', logical_type: { type: 'GEOMETRY' } }` |
+| `GEOGRAPHY` | `{ type: 'BYTE_ARRAY', logical_type: { type: 'GEOGRAPHY' } }` |
 
 More types are supported but require defining the `schema` explicitly. See the [advanced usage](#advanced-usage) section for more details.
 
-### Node.js Write to Local Parquet File
+### Write to Local Parquet File (nodejs)
 
 To write a local parquet file in node.js use `parquetWriteFile` with arguments `filename` and `columnData`:
 
