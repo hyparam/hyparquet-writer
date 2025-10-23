@@ -129,21 +129,25 @@ Most converted types will be auto-detected if you just provide data with no type
 You can use mostly automatic schema detection, but override the schema for specific columns. This is useful if most of the column types can be automatically determined, but you want to use a specific schema element for one particular element.
 
 ```javascript
-import { parquetWrite, schemaFromColumnData } from 'hyparquet-writer'
+const { ByteWriter, parquetWrite, schemaFromColumnData } = await import("hyparquet-writer")
 
 const columnData = [
   { name: 'unsigned_int', data: [1000000, 2000000] },
   { name: 'signed_int', data: [1000000, 2000000] },
 ]
+const writer = new ByteWriter()
 parquetWrite({
+  writer,
   columnData,
   // override schema for uint column
   schema: schemaFromColumnData({
     columnData,
     schemaOverrides: {
       unsigned_int: {
+        name: 'unsigned_int',
         type: 'INT32',
         converted_type: 'UINT_32',
+        repetition_type: 'REQUIRED',
       },
     },
   }),

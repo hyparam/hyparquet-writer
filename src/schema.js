@@ -26,8 +26,6 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
       // use schema override
       const override = schemaOverrides[name]
       if (override.name !== name) throw new Error('schema override name does not match column name')
-      if (override.num_children) throw new Error('schema override cannot have children')
-      if (override.repetition_type === 'REPEATED') throw new Error('schema override cannot be repeated')
       schema.push(override)
     } else if (type) {
       // use provided type

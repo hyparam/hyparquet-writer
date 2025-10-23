@@ -44,24 +44,6 @@ describe('schemaFromColumnData', () => {
     ).toThrow(/columns must have the same length/)
   })
 
-  it('rejects override type REPEATED', () => {
-    expect(() =>
-      schemaFromColumnData({
-        columnData: [{ name: 'x', data: new Int32Array([1]) }],
-        schemaOverrides: { x: { name: 'x', type: 'INT32', repetition_type: 'REPEATED' } },
-      })
-    ).toThrow(/cannot be repeated/)
-  })
-
-  it('rejects override with children', () => {
-    expect(() =>
-      schemaFromColumnData({
-        columnData: [{ name: 'x', data: new Int32Array([1]) }],
-        schemaOverrides: { x: { name: 'x', type: 'INT32', num_children: 1 } },
-      })
-    ).toThrow(/cannot have children/)
-  })
-
   it('rejects override with mismatched name', () => {
     expect(() =>
       schemaFromColumnData({
