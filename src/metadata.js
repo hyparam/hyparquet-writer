@@ -144,8 +144,13 @@ export function logicalType(type) {
   if (type.type === 'UUID') return { field_14: {} }
   if (type.type === 'FLOAT16') return { field_15: {} }
   if (type.type === 'VARIANT') return { field_16: {} }
-  if (type.type === 'GEOMETRY') return { field_17: {} }
-  if (type.type === 'GEOGRAPHY') return { field_18: {} }
+  if (type.type === 'GEOMETRY') return { field_17: {
+    field_1: type.crs,
+  } }
+  if (type.type === 'GEOGRAPHY') return { field_18: {
+    field_1: type.crs,
+    field_2: type.algorithm && edgeAlgorithm[type.algorithm],
+  } }
 }
 
 /**
@@ -156,4 +161,16 @@ function timeUnit(unit) {
   if (unit === 'NANOS') return { field_3: {} }
   if (unit === 'MICROS') return { field_2: {} }
   return { field_1: {} }
+}
+
+/**
+ * @import {EdgeInterpolationAlgorithm} from 'hyparquet/src/types.js'
+ * @type {Record<EdgeInterpolationAlgorithm, number>}
+ */
+const edgeAlgorithm = {
+  SPHERICAL: 0,
+  VINCENTY: 1,
+  THOMAS: 2,
+  ANDOYER: 3,
+  KARNEY: 4,
 }

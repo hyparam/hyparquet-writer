@@ -12,7 +12,9 @@ export type BasicType =
   'JSON' |
   'TIMESTAMP' |
   'UUID' |
-  'FLOAT16'
+  'FLOAT16' |
+  'GEOMETRY' |
+  'GEOGRAPHY'
 
 export interface ParquetWriteOptions {
   writer: Writer
