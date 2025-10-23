@@ -2,6 +2,7 @@ import { deserializeTCompactProtocol } from 'hyparquet/src/thrift.js'
 import { describe, expect, it } from 'vitest'
 import { serializeTCompactProtocol } from '../src/thrift.js'
 import { ByteWriter } from '../src/bytewriter.js'
+import { logicalType } from '../src/metadata.js'
 
 /**
  * Utility to decode a Thrift-serialized buffer and return the parsed object.
@@ -30,8 +31,7 @@ describe('serializeTCompactProtocol', () => {
 
     const writer = new ByteWriter()
     serializeTCompactProtocol(writer, data)
-    const buf = writer.buffer.slice(0, writer.offset)
-    const result = roundTripDeserialize(buf)
+    const result = roundTripDeserialize(writer.getBuffer())
 
     expect(result.field_1).toBe(true)
     expect(result.field_2).toBe(false)
@@ -61,8 +61,7 @@ describe('serializeTCompactProtocol', () => {
 
     const writer = new ByteWriter()
     serializeTCompactProtocol(writer, data)
-    const buf = writer.buffer.slice(0, writer.offset)
-    const result = roundTripDeserialize(buf)
+    const result = roundTripDeserialize(writer.getBuffer())
 
     expect(result.field_1.field_1).toBe(42)
     expect(result.field_1.field_2.field_1).toBe(true)
@@ -74,13 +73,12 @@ describe('serializeTCompactProtocol', () => {
     const data = {}
     const writer = new ByteWriter()
     serializeTCompactProtocol(writer, data)
-    const buf = writer.buffer.slice(0, writer.offset)
-    const arr = new Uint8Array(buf)
+    const arr = new Uint8Array(writer.getBuffer())
     // The entire buffer should just be [0x00] = STOP
     expect(arr).toEqual(new Uint8Array([0x00]))
 
     // Round-trip: should deserialize to an empty object
-    const result = roundTripDeserialize(buf)
+    const result = roundTripDeserialize(writer.getBuffer())
     expect(result).toEqual({})
   })
 
@@ -91,5 +89,22 @@ describe('serializeTCompactProtocol', () => {
     }
     const writer = new ByteWriter()
     expect(() => serializeTCompactProtocol(writer, invalidData)).toThrow()
+  })
+
+  it('serializes field IDs with gaps larger than 15', () => {
+    const data = { field_1: 1, field_17: 17 }
+    const writer = new ByteWriter()
+    serializeTCompactProtocol(writer, data)
+    const result = roundTripDeserialize(writer.getBuffer())
+    expect(result.field_1).toBe(1)
+    expect(result.field_17).toBe(17)
+  })
+
+  it('serializes GEOMETRY logicalType struct with field_17', () => {
+    const data = { field_1: logicalType({ type: 'GEOMETRY' }) }
+    const writer = new ByteWriter()
+    serializeTCompactProtocol(writer, data)
+    const result = roundTripDeserialize(writer.getBuffer())
+    expect(result.field_1.field_17).toEqual({})
   })
 })

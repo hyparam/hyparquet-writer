@@ -55,12 +55,12 @@
     "hyparquet": "1.20.0"
   },
   "devDependencies": {
-    "@babel/eslint-parser": "7.28.4",
+    "@babel/eslint-parser": "7.28.5",
     "@types/node": "24.9.1",
-    "@vitest/coverage-v8": "3.2.4",
+    "@vitest/coverage-v8": "4.0.2",
     "eslint": "9.38.0",
-    "eslint-plugin-jsdoc": "61.1.5",
+    "eslint-plugin-jsdoc": "61.1.7",
     "typescript": "5.9.3",
-    "vitest": "3.2.4"
+    "vitest": "4.0.2"
   }
 }

@@ -28,8 +28,13 @@ export function serializeTCompactProtocol(writer, data) {
     if (delta <= 0) {
       throw new Error(`thrift non-monotonic field ID: fid=${fid}, lastFid=${lastFid}`)
     }
-    // High nibble = delta, low nibble = type
-    writer.appendUint8(delta << 4 | type)
+    // high nibble = delta, low nibble = type < 15 or zigzag
+    if (delta <= 15) {
+      writer.appendUint8(delta << 4 | type)
+    } else {
+      writer.appendUint8(type)
+      writer.appendVarInt(fid << 1 ^ fid >> 15) // zigzag
+    }
 
     // Write the field content itself
     writeElement(writer, type, value)
@@ -137,7 +142,12 @@ function writeElement(writer, type, value) {
       if (delta <= 0) {
         throw new Error(`Non-monotonic fid in struct: fid=${fid}, lastFid=${lastFid}`)
       }
-      writer.appendUint8(delta << 4 | t & 0x0f)
+      if (delta <= 15) {
+        writer.appendUint8(delta << 4 | t)
+      } else {
+        writer.appendUint8(t)
+        writer.appendVarInt(fid << 1 ^ fid >> 15)
+      }
       writeElement(writer, t, v)
       lastFid = fid
     }
