@@ -1,6 +1,7 @@
 import { ByteWriter } from './bytewriter.js'
 import { writeDataPageV2, writePageHeader } from './datapage.js'
 import { encodeListValues } from './dremel.js'
+import { geospatialStatistics } from './geospatial.js'
 import { writePlain } from './plain.js'
 import { snappyCompress } from './snappy.js'
 import { unconvert } from './unconvert.js'
@@ -32,8 +33,11 @@ export function writeColumn(writer, column, values, stats) {
   /** @type {Encoding[]} */
   const encodings = []
 
+  const isGeospatial = element?.logical_type?.type === 'GEOMETRY' || element?.logical_type?.type === 'GEOGRAPHY'
+
   // Compute statistics
-  const statistics = stats ? getStatistics(values, element) : undefined
+  const statistics = stats ? getStatistics(values) : undefined
+  const geospatial_statistics = stats && isGeospatial ? geospatialStatistics(values) : undefined
 
   // dictionary encoding
   let dictionary_page_offset
@@ -80,6 +84,7 @@ export function writeColumn(writer, column, values, stats) {
     data_page_offset,
     dictionary_page_offset,
     statistics,
+    geospatial_statistics,
   }
 }
 
@@ -135,14 +140,9 @@ function writeDictionaryPage(writer, column, dictionary) {
  * @import {ColumnMetaData, DecodedArray, Encoding, ParquetType, SchemaElement, Statistics} from 'hyparquet'
  * @import {ColumnEncoder, ListValues, Writer} from '../src/types.js'
  * @param {DecodedArray} values
- * @param {SchemaElement} element
- * @returns {Statistics | undefined}
+ * @returns {Statistics}
  */
-function getStatistics(values, element) {
-  const ltype = element?.logical_type?.type
-  const isGeospatial = ltype === 'GEOMETRY' || ltype === 'GEOGRAPHY'
-  if (isGeospatial) return
-
+function getStatistics(values) {
   let min_value = undefined
   let max_value = undefined
   let null_count = 0n
@@ -151,12 +151,9 @@ function getStatistics(values, element) {
       null_count++
       continue
     }
-    if (min_value === undefined || value < min_value) {
-      min_value = value
-    }
-    if (max_value === undefined || value > max_value) {
-      max_value = value
-    }
+    if (typeof value === 'object') continue // skip objects
+    if (min_value === undefined || value < min_value) min_value = value
+    if (max_value === undefined || value > max_value) max_value = value
   }
   return { min_value, max_value, null_count }
 }
