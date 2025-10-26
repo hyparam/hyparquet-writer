@@ -6,7 +6,7 @@
 [![minzipped](https://img.shields.io/bundlephobia/minzip/hyparquet-writer)](https://www.npmjs.com/package/hyparquet-writer)
 [![workflow status](https://github.com/hyparam/hyparquet-writer/actions/workflows/ci.yml/badge.svg)](https://github.com/hyparam/hyparquet-writer/actions)
 [![mit license](https://img.shields.io/badge/License-MIT-orange.svg)](https://opensource.org/licenses/MIT)
-![coverage](https://img.shields.io/badge/Coverage-96-darkred)
+![coverage](https://img.shields.io/badge/Coverage-94-darkred)
 [![dependencies](https://img.shields.io/badge/Dependencies-1-blueviolet)](https://www.npmjs.com/package/hyparquet-writer?activeTab=dependencies)
 
 Hyparquet Writer is a JavaScript library for writing [Apache Parquet](https://parquet.apache.org) files. It is designed to be lightweight, fast and store data very efficiently. It is a companion to the [hyparquet](https://github.com/hyparam/hyparquet) library, which is a JavaScript library for reading parquet files.
@@ -30,8 +30,10 @@ const arrayBuffer = parquetWriteBuffer({
 })
 ```
 
-Note: if `type` is not provided, the type will be guessed from the data. The supported types are a superset of the parquet types:
+Note: if `type` is not provided, the type will be guessed from the data. The supported `BasicType` are a superset of the parquet primitive types:
 
+| Basic Type | Equivalent Schema Element |
+|------|----------------|
 | `BOOLEAN` | `{ type: 'BOOLEAN' }` |
 | `INT32` | `{ type: 'INT32' }` |
 | `INT64` | `{ type: 'INT64' }` |
@@ -43,10 +45,12 @@ Note: if `type` is not provided, the type will be guessed from the data. The sup
 | `TIMESTAMP` | `{ type: 'INT64', converted_type: 'TIMESTAMP_MILLIS' }` |
 | `UUID` | `{ type: 'FIXED_LEN_BYTE_ARRAY', type_length: 16, logical_type: { type: 'UUID' } }` |
 | `FLOAT16` | `{ type: 'FIXED_LEN_BYTE_ARRAY', type_length: 2, logical_type: { type: 'FLOAT16' } }` |
+| `GEOMETRY` | `{ type: 'BYTE_ARRAY', logical_type: { type: 'GEOMETRY' } }` |
+| `GEOGRAPHY` | `{ type: 'BYTE_ARRAY', logical_type: { type: 'GEOGRAPHY' } }` |
 
 More types are supported but require defining the `schema` explicitly. See the [advanced usage](#advanced-usage) section for more details.
 
-### Node.js Write to Local Parquet File
+### Write to Local Parquet File (nodejs)
 
 To write a local parquet file in node.js use `parquetWriteFile` with arguments `filename` and `columnData`:
 

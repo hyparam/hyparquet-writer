@@ -36,6 +36,94 @@ describe('writeMetadata', () => {
 
     expect(outputMetadata).toEqual(withKvMetadata)
   })
+
+  it('writes extended column metadata fields', () => {
+    const writer = new ByteWriter()
+    writer.appendUint32(0x31524150)
+
+    /** @type {FileMetaData} */
+    const extendedMetadata = {
+      version: 2,
+      created_by: 'hyparquet',
+      schema: [
+        { name: 'root', num_children: 1 },
+        {
+          name: 'geo',
+          type: 'BYTE_ARRAY',
+          repetition_type: 'REQUIRED',
+          logical_type: { type: 'GEOGRAPHY', crs: 'EPSG:4326', algorithm: 'KARNEY' },
+        },
+      ],
+      num_rows: 1n,
+      row_groups: [{
+        columns: [{
+          file_path: 'part-0.parquet',
+          file_offset: 4n,
+          meta_data: {
+            type: 'BYTE_ARRAY',
+            encodings: ['PLAIN', 'RLE'],
+            path_in_schema: [],
+            codec: 'SNAPPY',
+            num_values: 1n,
+            total_uncompressed_size: 10n,
+            total_compressed_size: 8n,
+            key_value_metadata: [{ key: 'chunk', value: 'value' }],
+            data_page_offset: 4n,
+            index_page_offset: 12n,
+            dictionary_page_offset: 20n,
+            statistics: {
+              null_count: 0n,
+              min_value: 'a',
+              max_value: 'z',
+            },
+            encoding_stats: [{ page_type: 'DATA_PAGE', encoding: 'PLAIN', count: 1 }],
+            bloom_filter_offset: 30n,
+            bloom_filter_length: 4,
+            size_statistics: {
+              unencoded_byte_array_data_bytes: 5n,
+              repetition_level_histogram: [1n, 0n],
+              definition_level_histogram: [2n, 0n],
+            },
+            geospatial_statistics: {
+              bbox: {
+                xmin: 0,
+                xmax: 10,
+                ymin: -5,
+                ymax: 5,
+                zmin: 1,
+                zmax: 2,
+                mmin: 3,
+                mmax: 4,
+              },
+              geospatial_types: [0, 1],
+            },
+          },
+          offset_index_offset: 40n,
+          offset_index_length: 16,
+          column_index_offset: 60n,
+          column_index_length: 24,
+          encrypted_column_metadata: new Uint8Array([7, 8, 9]),
+        }],
+        total_byte_size: 64n,
+        num_rows: 1n,
+        sorting_columns: [{
+          column_idx: 0,
+          descending: true,
+          nulls_first: false,
+        }],
+        file_offset: 4n,
+        total_compressed_size: 8n,
+      }],
+      key_value_metadata: [{ key: 'meta', value: 'data' }],
+      metadata_length: 223,
+    }
+
+    writeMetadata(writer, extendedMetadata)
+    writer.appendUint32(0x31524150)
+
+    const outputMetadata = parquetMetadata(writer.getBuffer())
+    expect(outputMetadata).toEqual(extendedMetadata)
+  })
 })
 
 describe('logicalType', () => {
