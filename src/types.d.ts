@@ -46,6 +46,7 @@ export interface PageData {
   definitionLevels: number[]
   repetitionLevels: number[]
   numNulls: number
+  maxDefinitionLevel: number
 }
 
 export interface ColumnEncoder {

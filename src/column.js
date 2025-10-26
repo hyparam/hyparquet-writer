@@ -1,6 +1,5 @@
 import { ByteWriter } from './bytewriter.js'
 import { writeDataPageV2, writePageHeader } from './datapage.js'
-import { encodeListValues } from './dremel.js'
 import { geospatialStatistics } from './geospatial.js'
 import { writePlain } from './plain.js'
 import { unconvert, unconvertMinMax } from './unconvert.js'
@@ -12,23 +11,14 @@ import { unconvert, unconvertMinMax } from './unconvert.js'
  * @param {Writer} options.writer
  * @param {ColumnEncoder} options.column
  * @param {DecodedArray} options.values
+ * @param {PageData} options.pageData
  * @returns {{ chunk: ColumnChunk, columnIndex?: ColumnIndex, offsetIndex?: OffsetIndex }}
  */
-export function writeColumn({ writer, column, values }) {
+export function writeColumn({ writer, column, values, pageData }) {
   const { columnName, element, schemaPath, stats, pageSize, encoding: userEncoding } = column
   const { type, type_length } = element
   if (!type) throw new Error(`column ${columnName} cannot determine type`)
   const offsetStart = writer.offset
-
-  /** @type {PageData | undefined} */
-  let pageData
-  if (isListLike(schemaPath)) {
-    if (!Array.isArray(values)) {
-      throw new Error(`parquet column ${columnName} expects array values for list encoding`)
-    }
-    pageData = encodeListValues(schemaPath, values)
-    values = pageData.values
-  }
 
   const num_values = values.length
   /** @type {Encoding[]} */
@@ -99,7 +89,7 @@ export function writeColumn({ writer, column, values }) {
     const chunk = createPageChunk(writeValues, pageData, start, end)
     const pageOffset = writer.offset
 
-    writeDataPageV2(writer, chunk.values, column, encoding, chunk.pageData)
+    writeDataPageV2({ writer, column, encoding, ...chunk })
 
     // Track page info for indexes
     const pageRows = BigInt(end - start)
@@ -205,25 +195,23 @@ function getPageBoundaries(values, type, type_length, pageSize) {
  * Create a page chunk with sliced values and pageData.
  *
  * @param {DecodedArray} values
- * @param {PageData | undefined} pageData
+ * @param {PageData} pageData
  * @param {number} start
  * @param {number} end
- * @returns {{values: DecodedArray, pageData: PageData | undefined}}
+ * @returns {{values: DecodedArray, pageData: PageData}}
  */
 function createPageChunk(values, pageData, start, end) {
   const chunkValues = values.slice(start, end)
-  if (!pageData) {
-    return { values: chunkValues, pageData: undefined }
-  }
   const defLevels = pageData.definitionLevels.slice(start, end)
-  const maxDefLevel = Math.max(...pageData.definitionLevels)
+  const { maxDefinitionLevel } = pageData
   return {
     values: chunkValues,
     pageData: {
       values: chunkValues,
       definitionLevels: defLevels,
       repetitionLevels: pageData.repetitionLevels.slice(start, end),
-      numNulls: defLevels.filter(level => level < maxDefLevel).length,
+      numNulls: defLevels.reduce((n, level) => level < maxDefinitionLevel ? n + 1 : n, 0),
+      maxDefinitionLevel,
     },
   }
 }
@@ -262,6 +250,7 @@ function useDictionary(values, type, encoding) {
   const unique = new Set(values)
   unique.delete(undefined)
   unique.delete(null)
+  if (unique.size === 0) return // all nulls, no dictionary needed
   if (values.length / unique.size > 2) {
     // TODO: sort by frequency
     return Array.from(unique)
@@ -323,19 +312,4 @@ function getStatistics(values) {
     if (max_value === undefined || value > max_value) max_value = value
   }
   return { min_value, max_value, null_count }
-}
-
-/**
- * @param {SchemaElement[]} schemaPath
- * @returns {boolean}
- */
-function isListLike(schemaPath) {
-  for (let i = 1; i < schemaPath.length; i++) {
-    const element = schemaPath[i]
-    if (element?.converted_type === 'LIST') {
-      const repeatedChild = schemaPath[i + 1]
-      return repeatedChild?.repetition_type === 'REPEATED'
-    }
-  }
-  return false
 }

@@ -3,18 +3,19 @@ import { ByteWriter } from './bytewriter.js'
 import { deltaBinaryPack, deltaByteArray, deltaLengthByteArray } from './delta.js'
 import { writeRleBitPackedHybrid } from './encoding.js'
 import { writePlain } from './plain.js'
+import { getMaxRepetitionLevel } from './schema.js'
 import { writeByteStreamSplit } from './splitstream.js'
 import { serializeTCompactProtocol } from './thrift.js'
-import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
 
 /**
- * @param {Writer} writer
- * @param {DecodedArray} values
- * @param {ColumnEncoder} column
- * @param {Encoding} encoding
- * @param {PageData} [listValues]
+ * @param {Object} options
+ * @param {Writer} options.writer
+ * @param {DecodedArray} options.values
+ * @param {ColumnEncoder} options.column
+ * @param {Encoding} options.encoding
+ * @param {PageData} options.pageData
  */
-export function writeDataPageV2(writer, values, column, encoding, listValues) {
+export function writeDataPageV2({ writer, values, column, encoding, pageData }) {
   const { columnName, element, codec, compressors } = column
   const { type, type_length, repetition_type } = element
 
@@ -28,7 +29,8 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
     repetition_levels_byte_length,
     num_nulls,
     num_values,
-  } = writeLevels(levelWriter, column, values, listValues)
+    num_rows,
+  } = writeLevels(levelWriter, column, pageData)
 
   const nonnull = values.filter(v => v !== null && v !== undefined)
 
@@ -82,7 +84,7 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
     data_page_header_v2: {
       num_values,
       num_nulls,
-      num_rows: values.length,
+      num_rows,
       encoding,
       definition_levels_byte_length,
       repetition_levels_byte_length,
@@ -137,60 +139,32 @@ export function writePageHeader(writer, header) {
  * @import {ColumnEncoder, PageData, ThriftObject, Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {ColumnEncoder} column
- * @param {DecodedArray} values
- * @param {PageData} [listValues]
+ * @param {PageData} dataPage
  * @returns {{
  *   definition_levels_byte_length: number
  *   repetition_levels_byte_length: number
  *   num_nulls: number
  *   num_values: number
+ *   num_rows: number
  * }}
  */
-function writeLevels(writer, column, values, listValues) {
+function writeLevels(writer, column, dataPage) {
   const { schemaPath } = column
-  const definitionLevels = listValues?.definitionLevels
-  const repetitionLevels = listValues?.repetitionLevels
-
-  let num_nulls = listValues?.numNulls ?? 0
-  let num_values = definitionLevels?.length ?? values.length
+  const { values, definitionLevels, repetitionLevels, numNulls, maxDefinitionLevel } = dataPage
+  const num_rows = repetitionLevels.length ? repetitionLevels.reduce((n, r) => r === 0 ? n + 1 : n, 0) : values.length
+  const num_values = definitionLevels.length || values.length
 
   const maxRepetitionLevel = getMaxRepetitionLevel(schemaPath)
   let repetition_levels_byte_length = 0
   if (maxRepetitionLevel) {
     const bitWidth = Math.ceil(Math.log2(maxRepetitionLevel + 1))
-    const reps = repetitionLevels ?? []
-    repetition_levels_byte_length = writeRleBitPackedHybrid(writer, reps, bitWidth)
+    repetition_levels_byte_length = writeRleBitPackedHybrid(writer, repetitionLevels, bitWidth)
   }
 
-  // definition levels
-  const maxDefinitionLevel = getMaxDefinitionLevel(schemaPath)
   let definition_levels_byte_length = 0
   if (maxDefinitionLevel) {
     const bitWidth = Math.ceil(Math.log2(maxDefinitionLevel + 1))
-    const defs = definitionLevels ?? (() => {
-      const generated = []
-      for (const value of values) {
-        if (value === null || value === undefined) {
-          generated.push(maxDefinitionLevel - 1)
-          num_nulls++
-        } else {
-          generated.push(maxDefinitionLevel)
-        }
-      }
-      num_values = generated.length
-      return generated
-    })()
-
-    if (definitionLevels && listValues === undefined) {
-      num_nulls = definitionLevels.reduce(
-        (count, def) => def === maxDefinitionLevel ? count : count + 1,
-        0
-      )
-    }
-
-    definition_levels_byte_length = writeRleBitPackedHybrid(writer, defs, bitWidth)
-  } else {
-    num_nulls = values.filter(value => value === null || value === undefined).length
+    definition_levels_byte_length = writeRleBitPackedHybrid(writer, definitionLevels, bitWidth)
   }
-  return { definition_levels_byte_length, repetition_levels_byte_length, num_nulls, num_values }
+  return { definition_levels_byte_length, repetition_levels_byte_length, num_nulls: numNulls, num_values, num_rows }
 }
