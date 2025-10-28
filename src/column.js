@@ -19,14 +19,14 @@ export function writeColumn(writer, column, values, stats) {
   if (!type) throw new Error(`column ${columnName} cannot determine type`)
   const offsetStart = writer.offset
 
-  /** @type {ListValues | undefined} */
-  let listValues
+  /** @type {PageData | undefined} */
+  let pageData
   if (isListLike(schemaPath)) {
     if (!Array.isArray(values)) {
       throw new Error(`parquet column ${columnName} expects array values for list encoding`)
     }
-    listValues = encodeListValues(schemaPath, values)
-    values = listValues.values
+    pageData = encodeListValues(schemaPath, values)
+    values = pageData.values
   }
 
   const num_values = values.length
@@ -61,7 +61,7 @@ export function writeColumn(writer, column, values, stats) {
 
     // write data page with dictionary indexes
     data_page_offset = BigInt(writer.offset)
-    writeDataPageV2(writer, indexes, column, 'RLE_DICTIONARY', listValues)
+    writeDataPageV2(writer, indexes, column, 'RLE_DICTIONARY', pageData)
     encodings.push('RLE_DICTIONARY')
   } else {
     // unconvert values from rich types to simple
@@ -69,7 +69,7 @@ export function writeColumn(writer, column, values, stats) {
 
     // write data page
     const encoding = type === 'BOOLEAN' && values.length > 16 ? 'RLE' : 'PLAIN'
-    writeDataPageV2(writer, values, column, encoding, listValues)
+    writeDataPageV2(writer, values, column, encoding, pageData)
     encodings.push(encoding)
   }
 
@@ -138,7 +138,7 @@ function writeDictionaryPage(writer, column, dictionary) {
 
 /**
  * @import {ColumnMetaData, DecodedArray, Encoding, ParquetType, SchemaElement, Statistics} from 'hyparquet'
- * @import {ColumnEncoder, ListValues, Writer} from '../src/types.js'
+ * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
  * @param {DecodedArray} values
  * @returns {Statistics}
  */

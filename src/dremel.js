@@ -4,10 +4,10 @@ import { getMaxDefinitionLevel } from './schema.js'
  * Encode nested list values into repetition and definition levels.
  *
  * @import {SchemaElement} from 'hyparquet'
- * @import {ListValues} from '../src/types.js'
+ * @import {PageData} from '../src/types.js'
  * @param {SchemaElement[]} schemaPath schema elements from root to leaf
  * @param {any[]} rows column data for the current row group
- * @returns {ListValues}
+ * @returns {PageData} encoded list values
  */
 export function encodeListValues(schemaPath, rows) {
   if (schemaPath.length < 2) throw new Error('parquet list schema path must include column')

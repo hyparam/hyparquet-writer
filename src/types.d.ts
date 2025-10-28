@@ -33,7 +33,7 @@ export interface ColumnSource {
   nullable?: boolean
 }
 
-export interface ListValues {
+export interface PageData {
   values: any[]
   definitionLevels: number[]
   repetitionLevels: number[]

@@ -11,7 +11,7 @@ import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
  * @param {DecodedArray} values
  * @param {ColumnEncoder} column
  * @param {import('hyparquet').Encoding} encoding
- * @param {ListValues} [listValues]
+ * @param {PageData} [listValues]
  */
 export function writeDataPageV2(writer, values, column, encoding, listValues) {
   const { columnName, element, compressed } = column
@@ -115,11 +115,11 @@ export function writePageHeader(writer, header) {
 
 /**
  * @import {DecodedArray, PageHeader, SchemaElement} from 'hyparquet'
- * @import {ColumnEncoder, ListValues, Writer} from '../src/types.js'
+ * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {ColumnEncoder} column
  * @param {DecodedArray} values
- * @param {ListValues} [listValues]
+ * @param {PageData} [listValues]
  * @returns {{
  *   definition_levels_byte_length: number
  *   repetition_levels_byte_length: number
