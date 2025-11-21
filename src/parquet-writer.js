@@ -74,8 +74,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) 
         compressed: this.compressed,
       }
 
-      const file_offset = BigInt(this.writer.offset)
-      const meta_data = writeColumn(
+      const columnChunk = writeColumn(
         this.writer,
         column,
         groupData,
@@ -83,10 +82,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) 
       )
 
       // save column chunk metadata
-      columns.push({
-        file_offset,
-        meta_data,
-      })
+      columns.push(columnChunk)
     }
     this.num_rows += BigInt(groupSize)
 

@@ -1,5 +1,5 @@
 import { getSchemaPath } from 'hyparquet/src/schema.js'
-import { CompressionCodec, ConvertedType, Encoding, FieldRepetitionType, PageType, ParquetType } from 'hyparquet/src/constants.js'
+import { CompressionCodecs, ConvertedTypes, Encodings, FieldRepetitionTypes, PageTypes, ParquetTypes } from 'hyparquet/src/constants.js'
 import { serializeTCompactProtocol } from './thrift.js'
 import { unconvertStatistics } from './unconvert.js'
 
@@ -14,12 +14,12 @@ export function writeMetadata(writer, metadata) {
   const compact = {
     field_1: metadata.version,
     field_2: metadata.schema && metadata.schema.map(element => ({
-      field_1: element.type && ParquetType.indexOf(element.type),
+      field_1: element.type && ParquetTypes.indexOf(element.type),
       field_2: element.type_length,
-      field_3: element.repetition_type && FieldRepetitionType.indexOf(element.repetition_type),
+      field_3: element.repetition_type && FieldRepetitionTypes.indexOf(element.repetition_type),
       field_4: element.name,
       field_5: element.num_children,
-      field_6: element.converted_type && ConvertedType.indexOf(element.converted_type),
+      field_6: element.converted_type && ConvertedTypes.indexOf(element.converted_type),
       field_7: element.scale,
       field_8: element.precision,
       field_9: element.field_id,
@@ -31,10 +31,10 @@ export function writeMetadata(writer, metadata) {
         field_1: c.file_path,
         field_2: c.file_offset,
         field_3: c.meta_data && {
-          field_1: ParquetType.indexOf(c.meta_data.type),
-          field_2: c.meta_data.encodings.map(e => Encoding.indexOf(e)),
+          field_1: ParquetTypes.indexOf(c.meta_data.type),
+          field_2: c.meta_data.encodings.map(e => Encodings.indexOf(e)),
           field_3: c.meta_data.path_in_schema,
-          field_4: CompressionCodec.indexOf(c.meta_data.codec),
+          field_4: CompressionCodecs.indexOf(c.meta_data.codec),
           field_5: c.meta_data.num_values,
           field_6: c.meta_data.total_uncompressed_size,
           field_7: c.meta_data.total_compressed_size,
@@ -50,8 +50,8 @@ export function writeMetadata(writer, metadata) {
             schemaElement(metadata.schema, c.meta_data.path_in_schema, columnIndex + 1)
           ),
           field_13: c.meta_data.encoding_stats && c.meta_data.encoding_stats.map(es => ({
-            field_1: PageType.indexOf(es.page_type),
-            field_2: Encoding.indexOf(es.encoding),
+            field_1: PageTypes.indexOf(es.page_type),
+            field_2: Encodings.indexOf(es.encoding),
             field_3: es.count,
           })),
           field_14: c.meta_data.bloom_filter_offset,

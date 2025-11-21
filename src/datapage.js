@@ -1,4 +1,4 @@
-import { Encoding, PageType } from 'hyparquet/src/constants.js'
+import { Encodings, PageTypes } from 'hyparquet/src/constants.js'
 import { ByteWriter } from './bytewriter.js'
 import { writeRleBitPackedHybrid } from './encoding.js'
 import { writePlain } from './plain.js'
@@ -85,26 +85,26 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
 export function writePageHeader(writer, header) {
   /** @type {import('../src/types.js').ThriftObject} */
   const compact = {
-    field_1: PageType.indexOf(header.type),
+    field_1: PageTypes.indexOf(header.type),
     field_2: header.uncompressed_page_size,
     field_3: header.compressed_page_size,
     field_4: header.crc,
     field_5: header.data_page_header && {
       field_1: header.data_page_header.num_values,
-      field_2: Encoding.indexOf(header.data_page_header.encoding),
-      field_3: Encoding.indexOf(header.data_page_header.definition_level_encoding),
-      field_4: Encoding.indexOf(header.data_page_header.repetition_level_encoding),
+      field_2: Encodings.indexOf(header.data_page_header.encoding),
+      field_3: Encodings.indexOf(header.data_page_header.definition_level_encoding),
+      field_4: Encodings.indexOf(header.data_page_header.repetition_level_encoding),
       // field_5: header.data_page_header.statistics,
     },
     field_7: header.dictionary_page_header && {
       field_1: header.dictionary_page_header.num_values,
-      field_2: Encoding.indexOf(header.dictionary_page_header.encoding),
+      field_2: Encodings.indexOf(header.dictionary_page_header.encoding),
     },
     field_8: header.data_page_header_v2 && {
       field_1: header.data_page_header_v2.num_values,
       field_2: header.data_page_header_v2.num_nulls,
       field_3: header.data_page_header_v2.num_rows,
-      field_4: Encoding.indexOf(header.data_page_header_v2.encoding),
+      field_4: Encodings.indexOf(header.data_page_header_v2.encoding),
       field_5: header.data_page_header_v2.definition_levels_byte_length,
       field_6: header.data_page_header_v2.repetition_levels_byte_length,
       field_7: header.data_page_header_v2.is_compressed ? undefined : false, // default true

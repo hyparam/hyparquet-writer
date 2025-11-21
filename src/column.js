@@ -11,7 +11,7 @@ import { unconvert } from './unconvert.js'
  * @param {ColumnEncoder} column
  * @param {DecodedArray} values
  * @param {boolean} stats
- * @returns {ColumnMetaData}
+ * @returns {ColumnChunk}
  */
 export function writeColumn(writer, column, values, stats) {
   const { columnName, element, schemaPath, compressed } = column
@@ -74,17 +74,20 @@ export function writeColumn(writer, column, values, stats) {
   }
 
   return {
-    type,
-    encodings,
-    path_in_schema: schemaPath.slice(1).map(s => s.name),
-    codec: compressed ? 'SNAPPY' : 'UNCOMPRESSED',
-    num_values: BigInt(num_values),
-    total_compressed_size: BigInt(writer.offset - offsetStart),
-    total_uncompressed_size: BigInt(writer.offset - offsetStart), // TODO
-    data_page_offset,
-    dictionary_page_offset,
-    statistics,
-    geospatial_statistics,
+    meta_data: {
+      type,
+      encodings,
+      path_in_schema: schemaPath.slice(1).map(s => s.name),
+      codec: compressed ? 'SNAPPY' : 'UNCOMPRESSED',
+      num_values: BigInt(num_values),
+      total_compressed_size: BigInt(writer.offset - offsetStart),
+      total_uncompressed_size: BigInt(writer.offset - offsetStart), // TODO
+      data_page_offset,
+      dictionary_page_offset,
+      statistics,
+      geospatial_statistics,
+    },
+    file_offset: BigInt(offsetStart),
   }
 }
 
@@ -137,7 +140,7 @@ function writeDictionaryPage(writer, column, dictionary) {
 }
 
 /**
- * @import {ColumnMetaData, DecodedArray, Encoding, ParquetType, SchemaElement, Statistics} from 'hyparquet'
+ * @import {ColumnChunk, ColumnMetaData, DecodedArray, Encoding, ParquetType, SchemaElement, Statistics} from 'hyparquet'
  * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
  * @param {DecodedArray} values
  * @returns {Statistics}
