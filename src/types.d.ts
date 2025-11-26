@@ -46,6 +46,7 @@ export interface ColumnEncoder {
   element: SchemaElement
   schemaPath: SchemaElement[]
   compressed: boolean
+  encoding?: Encoding // user-specified encoding
 }
 
 export interface Writer {

@@ -14,7 +14,7 @@ import { unconvert } from './unconvert.js'
  * @returns {ColumnChunk}
  */
 export function writeColumn(writer, column, values, stats) {
-  const { columnName, element, schemaPath, compressed } = column
+  const { columnName, element, schemaPath, compressed, encoding: userEncoding } = column
   const { type } = element
   if (!type) throw new Error(`column ${columnName} cannot determine type`)
   const offsetStart = writer.offset
@@ -42,8 +42,7 @@ export function writeColumn(writer, column, values, stats) {
   // dictionary encoding
   let dictionary_page_offset
   let data_page_offset = BigInt(writer.offset)
-  /** @type {DecodedArray | undefined} */
-  const dictionary = useDictionary(values, type)
+  const dictionary = useDictionary(values, type, userEncoding)
   if (dictionary) {
     dictionary_page_offset = BigInt(writer.offset)
 
@@ -68,7 +67,7 @@ export function writeColumn(writer, column, values, stats) {
     values = unconvert(element, values)
 
     // write data page
-    const encoding = type === 'BOOLEAN' && values.length > 16 ? 'RLE' : 'PLAIN'
+    const encoding = userEncoding ?? (type === 'BOOLEAN' && values.length > 16 ? 'RLE' : 'PLAIN')
     writeDataPageV2(writer, values, column, encoding, pageData)
     encodings.push(encoding)
   }
@@ -94,9 +93,11 @@ export function writeColumn(writer, column, values, stats) {
 /**
  * @param {DecodedArray} values
  * @param {ParquetType} type
+ * @param {Encoding | undefined} encoding
  * @returns {any[] | undefined}
  */
-function useDictionary(values, type) {
+function useDictionary(values, type, encoding) {
+  if (encoding && encoding !== 'RLE_DICTIONARY') return
   if (type === 'BOOLEAN') return
   const unique = new Set(values)
   unique.delete(undefined)
@@ -140,7 +141,7 @@ function writeDictionaryPage(writer, column, dictionary) {
 }
 
 /**
- * @import {ColumnChunk, ColumnMetaData, DecodedArray, Encoding, ParquetType, SchemaElement, Statistics} from 'hyparquet'
+ * @import {ColumnChunk, DecodedArray, Encoding, ParquetType, SchemaElement, Statistics} from 'hyparquet'
  * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
  * @param {DecodedArray} values
  * @returns {Statistics}

@@ -321,4 +321,19 @@ describe('parquetWriteBuffer', () => {
     expect(() => parquetWriteBuffer({ columnData: [{ name: 'func', data: [() => {}] }] }))
       .toThrow('cannot determine parquet type for: () => {}')
   })
+
+  it('skips dictionary encoding when encoding is specified', async () => {
+    // This data would normally use dictionary encoding due to low cardinality
+    const data = Array(1000).fill(1).map((_, i) => i % 10)
+    const file = parquetWriteBuffer({ columnData: [{ name: 'int', data, encoding: 'PLAIN' }] })
+    const metadata = parquetMetadata(file)
+    expect(metadata.row_groups[0].columns[0].meta_data?.encodings).toEqual(['PLAIN'])
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual(data.map(int => ({ int })))
+  })
+
+  it('throws for BYTE_STREAM_SPLIT encoding', () => {
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'float', data: [1.0, 2.0, 3.0], encoding: 'BYTE_STREAM_SPLIT' }] }))
+      .toThrow('parquet unsupported encoding: BYTE_STREAM_SPLIT')
+  })
 })

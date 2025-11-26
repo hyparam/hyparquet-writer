@@ -48,7 +48,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) 
 
     // write columns
     for (let j = 0; j < columnData.length; j++) {
-      const { name, data } = columnData[j]
+      const { name, data, encoding } = columnData[j]
       const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
 
       const schemaTree = getSchemaPath(this.schema, [name])
@@ -72,6 +72,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) 
         element,
         schemaPath,
         compressed: this.compressed,
+        encoding,
       }
 
       const columnChunk = writeColumn(

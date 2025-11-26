@@ -1,5 +1,6 @@
 import { Encodings, PageTypes } from 'hyparquet/src/constants.js'
 import { ByteWriter } from './bytewriter.js'
+import { deltaBinaryPack, deltaByteArray, deltaLengthByteArray } from './delta.js'
 import { writeRleBitPackedHybrid } from './encoding.js'
 import { writePlain } from './plain.js'
 import { snappyCompress } from './snappy.js'
@@ -33,7 +34,9 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
 
   // write page data to temp buffer
   const page = new ByteWriter()
-  if (encoding === 'RLE') {
+  if (encoding === 'PLAIN') {
+    writePlain(page, nonnull, type, type_length)
+  } else if (encoding === 'RLE') {
     if (type !== 'BOOLEAN') throw new Error('RLE encoding only supported for BOOLEAN type')
     page.appendUint32(nonnull.length) // prepend length
     writeRleBitPackedHybrid(page, nonnull, 1)
@@ -44,8 +47,23 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
     const bitWidth = Math.ceil(Math.log2(maxValue + 1))
     page.appendUint8(bitWidth) // prepend bitWidth
     writeRleBitPackedHybrid(page, nonnull, bitWidth)
+  } else if (encoding === 'DELTA_BINARY_PACKED') {
+    if (type !== 'INT32' && type !== 'INT64') {
+      throw new Error('DELTA_BINARY_PACKED encoding only supported for INT32 and INT64 types')
+    }
+    deltaBinaryPack(page, nonnull)
+  } else if (encoding === 'DELTA_LENGTH_BYTE_ARRAY') {
+    if (type !== 'BYTE_ARRAY') {
+      throw new Error('DELTA_LENGTH_BYTE_ARRAY encoding only supported for BYTE_ARRAY type')
+    }
+    deltaLengthByteArray(page, nonnull)
+  } else if (encoding === 'DELTA_BYTE_ARRAY') {
+    if (type !== 'BYTE_ARRAY') {
+      throw new Error('DELTA_BYTE_ARRAY encoding only supported for BYTE_ARRAY type')
+    }
+    deltaByteArray(page, nonnull)
   } else {
-    writePlain(page, nonnull, type, type_length)
+    throw new Error(`parquet unsupported encoding: ${encoding}`)
   }
 
   // compress page data
