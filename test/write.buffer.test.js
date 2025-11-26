@@ -332,8 +332,11 @@ describe('parquetWriteBuffer', () => {
     expect(result).toEqual(data.map(int => ({ int })))
   })
 
-  it('throws for BYTE_STREAM_SPLIT encoding', () => {
-    expect(() => parquetWriteBuffer({ columnData: [{ name: 'float', data: [1.0, 2.0, 3.0], encoding: 'BYTE_STREAM_SPLIT' }] }))
-      .toThrow('parquet unsupported encoding: BYTE_STREAM_SPLIT')
+  it('writes BYTE_STREAM_SPLIT encoding', () => {
+    const file = parquetWriteBuffer({
+      columnData: [{ name: 'float', data: [1.0, 2.0, 3.0], encoding: 'BYTE_STREAM_SPLIT' }],
+    })
+    const metadata = parquetMetadata(file)
+    expect(metadata.row_groups[0].columns[0].meta_data?.encodings).toEqual(['BYTE_STREAM_SPLIT'])
   })
 })

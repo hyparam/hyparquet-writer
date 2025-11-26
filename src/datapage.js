@@ -4,6 +4,7 @@ import { deltaBinaryPack, deltaByteArray, deltaLengthByteArray } from './delta.j
 import { writeRleBitPackedHybrid } from './encoding.js'
 import { writePlain } from './plain.js'
 import { snappyCompress } from './snappy.js'
+import { writeByteStreamSplit } from './splitstream.js'
 import { serializeTCompactProtocol } from './thrift.js'
 import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
 
@@ -62,6 +63,8 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
       throw new Error('DELTA_BYTE_ARRAY encoding only supported for BYTE_ARRAY type')
     }
     deltaByteArray(page, nonnull)
+  } else if (encoding === 'BYTE_STREAM_SPLIT') {
+    writeByteStreamSplit(page, nonnull, type, type_length)
   } else {
     throw new Error(`parquet unsupported encoding: ${encoding}`)
   }
