@@ -151,3 +151,16 @@ ByteWriter.prototype.appendVarBigInt = function(value) {
     }
   }
 }
+
+/**
+ * Convert number to zigzag encoding and write as varint.
+ *
+ * @param {number | bigint} value
+ */
+ByteWriter.prototype.appendZigZag = function(value) {
+  if (typeof value === 'number') {
+    this.appendVarInt(value << 1 ^ value >> 31)
+  } else {
+    this.appendVarBigInt(value << 1n ^ value >> 63n)
+  }
+}

@@ -10,7 +10,7 @@ import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
  * @param {Writer} writer
  * @param {DecodedArray} values
  * @param {ColumnEncoder} column
- * @param {import('hyparquet').Encoding} encoding
+ * @param {Encoding} encoding
  * @param {PageData} [listValues]
  */
 export function writeDataPageV2(writer, values, column, encoding, listValues) {
@@ -83,7 +83,7 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
  * @param {PageHeader} header
  */
 export function writePageHeader(writer, header) {
-  /** @type {import('../src/types.js').ThriftObject} */
+  /** @type {ThriftObject} */
   const compact = {
     field_1: PageTypes.indexOf(header.type),
     field_2: header.uncompressed_page_size,
@@ -114,8 +114,8 @@ export function writePageHeader(writer, header) {
 }
 
 /**
- * @import {DecodedArray, PageHeader, SchemaElement} from 'hyparquet'
- * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
+ * @import {DecodedArray, Encoding, PageHeader} from 'hyparquet'
+ * @import {ColumnEncoder, PageData, ThriftObject, Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {ColumnEncoder} column
  * @param {DecodedArray} values

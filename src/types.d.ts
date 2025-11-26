@@ -1,4 +1,4 @@
-import type { DecodedArray, KeyValue, SchemaElement } from 'hyparquet'
+import type { DecodedArray, Encoding, KeyValue, SchemaElement } from 'hyparquet'
 
 // Superset of parquet types with automatic conversions
 export type BasicType =
@@ -31,6 +31,7 @@ export interface ColumnSource {
   data: DecodedArray
   type?: BasicType
   nullable?: boolean
+  encoding?: Encoding
 }
 
 export interface PageData {
@@ -65,6 +66,7 @@ export interface Writer {
   appendBytes(value: Uint8Array): void
   appendVarInt(value: number): void
   appendVarBigInt(value: bigint): void
+  appendZigZag(value: number | bigint): void
 }
 
 export type ThriftObject = { [ key: `field_${number}` ]: ThriftType }
