@@ -37,7 +37,7 @@ export function ParquetWriter({ writer, schema, compressed = true, statistics = 
  * @param {ColumnSource[]} options.columnData
  * @param {number | number[]} [options.rowGroupSize]
  */
-ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 100000 }) {
+ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 10000 }) {
   const columnDataRows = columnData[0]?.data?.length || 0
   for (const { groupStartIndex, groupSize } of groupIterator({ columnDataRows, rowGroupSize })) {
     const groupStartOffset = this.writer.offset
