@@ -39,8 +39,10 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
     writePlain(page, nonnull, type, type_length)
   } else if (encoding === 'RLE') {
     if (type !== 'BOOLEAN') throw new Error('RLE encoding only supported for BOOLEAN type')
-    page.appendUint32(nonnull.length) // prepend length
-    writeRleBitPackedHybrid(page, nonnull, 1)
+    const rleData = new ByteWriter()
+    writeRleBitPackedHybrid(rleData, nonnull, 1)
+    page.appendUint32(rleData.offset) // prepend byte length
+    page.appendBuffer(rleData.getBuffer())
   } else if (encoding === 'PLAIN_DICTIONARY' || encoding === 'RLE_DICTIONARY') {
     // find max bitwidth
     let maxValue = 0
