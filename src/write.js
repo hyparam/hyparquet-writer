@@ -16,6 +16,7 @@ export function parquetWrite({
   statistics = true,
   rowGroupSize = 100000,
   kvMetadata,
+  pageSize = 1048576,
 }) {
   if (!schema) {
     schema = schemaFromColumnData({ columnData })
@@ -34,6 +35,7 @@ export function parquetWrite({
   pq.write({
     columnData,
     rowGroupSize,
+    pageSize,
   })
   pq.finish()
 }

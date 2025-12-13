@@ -7,15 +7,19 @@ import { snappyCompress } from './snappy.js'
 import { unconvert } from './unconvert.js'
 
 /**
- * @param {Writer} writer
- * @param {ColumnEncoder} column
- * @param {DecodedArray} values
- * @param {boolean} stats
+ * Write a column chunk to the writer.
+ *
+ * @param {object} options
+ * @param {Writer} options.writer
+ * @param {ColumnEncoder} options.column
+ * @param {DecodedArray} options.values
+ * @param {boolean} options.stats
+ * @param {number} options.pageSize
  * @returns {ColumnChunk}
  */
-export function writeColumn(writer, column, values, stats) {
+export function writeColumn({ writer, column, values, stats, pageSize }) {
   const { columnName, element, schemaPath, compressed, encoding: userEncoding } = column
-  const { type } = element
+  const { type, type_length } = element
   if (!type) throw new Error(`column ${columnName} cannot determine type`)
   const offsetStart = writer.offset
 
@@ -43,9 +47,12 @@ export function writeColumn(writer, column, values, stats) {
   let dictionary_page_offset
   let data_page_offset = BigInt(writer.offset)
   const dictionary = useDictionary(values, type, userEncoding)
-  if (dictionary) {
-    dictionary_page_offset = BigInt(writer.offset)
 
+  // Determine encoding and prepare values for writing
+  /** @type {Encoding} */
+  let encoding
+  let writeValues
+  if (dictionary) {
     // replace values with dictionary indices
     const indexes = new Array(values.length)
     for (let i = 0; i < values.length; i++) {
@@ -53,23 +60,27 @@ export function writeColumn(writer, column, values, stats) {
         indexes[i] = dictionary.indexOf(values[i])
       }
     }
+    writeValues = indexes
+    encoding = 'RLE_DICTIONARY'
 
-    // write unconverted dictionary page
+    // write dictionary page first
+    dictionary_page_offset = BigInt(writer.offset)
     const unconverted = unconvert(element, dictionary)
     writeDictionaryPage(writer, column, unconverted)
-
-    // write data page with dictionary indexes
-    data_page_offset = BigInt(writer.offset)
-    writeDataPageV2(writer, indexes, column, 'RLE_DICTIONARY', pageData)
-    encodings.push('RLE_DICTIONARY')
   } else {
     // unconvert values from rich types to simple
-    values = unconvert(element, values)
+    writeValues = unconvert(element, values)
+    encoding = userEncoding ?? (type === 'BOOLEAN' && values.length > 16 ? 'RLE' : 'PLAIN')
+  }
+  encodings.push(encoding)
 
-    // write data page
-    const encoding = userEncoding ?? (type === 'BOOLEAN' && values.length > 16 ? 'RLE' : 'PLAIN')
-    writeDataPageV2(writer, values, column, encoding, pageData)
-    encodings.push(encoding)
+  // Split values into pages based on pageSize
+  const pageChunks = splitIntoPages(writeValues, type, type_length, pageSize, pageData)
+
+  // Write data pages
+  data_page_offset = BigInt(writer.offset)
+  for (const chunk of pageChunks) {
+    writeDataPageV2(writer, chunk.values, column, encoding, chunk.pageData)
   }
 
   return {
@@ -88,6 +99,96 @@ export function writeColumn(writer, column, values, stats) {
     },
     file_offset: BigInt(offsetStart),
   }
+}
+
+/**
+ * Split values into page chunks based on estimated byte size.
+ *
+ * @param {DecodedArray} values
+ * @param {ParquetType} type
+ * @param {number | undefined} type_length
+ * @param {number | undefined} pageSize
+ * @param {PageData | undefined} pageData
+ * @returns {Array<{values: DecodedArray, pageData: PageData | undefined}>}
+ */
+function splitIntoPages(values, type, type_length, pageSize, pageData) {
+  // If no pageSize limit, return single page with all values
+  if (!pageSize) {
+    return [{ values, pageData }]
+  }
+
+  const chunks = []
+  let pageStart = 0
+  let accumulatedBytes = 0
+
+  for (let i = 0; i < values.length; i++) {
+    const valueSize = estimateValueSize(values[i], type, type_length)
+    accumulatedBytes += valueSize
+
+    // Check if we should start a new page
+    if (accumulatedBytes >= pageSize && i > pageStart) {
+      chunks.push(createPageChunk(values, pageData, pageStart, i))
+      pageStart = i
+      accumulatedBytes = valueSize
+    }
+  }
+
+  // Final page with remaining values
+  if (pageStart < values.length) {
+    chunks.push(createPageChunk(values, pageData, pageStart, values.length))
+  }
+
+  return chunks
+}
+
+/**
+ * Create a page chunk with sliced values and pageData.
+ *
+ * @param {DecodedArray} values
+ * @param {PageData | undefined} pageData
+ * @param {number} start
+ * @param {number} end
+ * @returns {{values: DecodedArray, pageData: PageData | undefined}}
+ */
+function createPageChunk(values, pageData, start, end) {
+  const chunkValues = values.slice(start, end)
+  if (!pageData) {
+    return { values: chunkValues, pageData: undefined }
+  }
+  const defLevels = pageData.definitionLevels.slice(start, end)
+  const maxDefLevel = Math.max(...pageData.definitionLevels)
+  return {
+    values: chunkValues,
+    pageData: {
+      values: chunkValues,
+      definitionLevels: defLevels,
+      repetitionLevels: pageData.repetitionLevels.slice(start, end),
+      numNulls: defLevels.filter(level => level < maxDefLevel).length,
+    },
+  }
+}
+
+/**
+ * Estimate the byte size of a value for page size calculation.
+ *
+ * @param {any} value
+ * @param {ParquetType} type
+ * @param {number | undefined} type_length
+ * @returns {number}
+ */
+function estimateValueSize(value, type, type_length) {
+  if (value === null || value === undefined) return 0
+  if (type === 'BOOLEAN') return 1 // bit, but count as byte for simplicity
+  if (type === 'INT32' || type === 'FLOAT') return 4
+  if (type === 'INT64' || type === 'DOUBLE') return 8
+  if (type === 'INT96') return 12
+  if (type === 'FIXED_LEN_BYTE_ARRAY') return type_length ?? 0
+  if (type === 'BYTE_ARRAY') {
+    if (value instanceof Uint8Array) return value.byteLength
+    if (typeof value === 'string') return value.length
+    return 0
+  }
+  return 4 // conservative default
 }
 
 /**

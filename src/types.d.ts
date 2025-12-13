@@ -23,6 +23,7 @@ export interface ParquetWriteOptions {
   compressed?: boolean
   statistics?: boolean
   rowGroupSize?: number | number[]
+  pageSize?: number
   kvMetadata?: KeyValue[]
 }
 
@@ -35,7 +36,7 @@ export interface ColumnSource {
 }
 
 export interface PageData {
-  values: any[]
+  values: DecodedArray
   definitionLevels: number[]
   repetitionLevels: number[]
   numNulls: number
