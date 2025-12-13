@@ -4,7 +4,7 @@ import { encodeListValues } from './dremel.js'
 import { geospatialStatistics } from './geospatial.js'
 import { writePlain } from './plain.js'
 import { snappyCompress } from './snappy.js'
-import { unconvert } from './unconvert.js'
+import { unconvert, unconvertMinMax } from './unconvert.js'
 
 /**
  * Write a column chunk to the writer.
@@ -13,12 +13,10 @@ import { unconvert } from './unconvert.js'
  * @param {Writer} options.writer
  * @param {ColumnEncoder} options.column
  * @param {DecodedArray} options.values
- * @param {boolean} options.stats
- * @param {number} options.pageSize
- * @returns {ColumnChunk}
+ * @returns {{ chunk: ColumnChunk, pageIndexes?: PageIndexes }}
  */
-export function writeColumn({ writer, column, values, stats, pageSize }) {
-  const { columnName, element, schemaPath, compressed, encoding: userEncoding } = column
+export function writeColumn({ writer, column, values }) {
+  const { columnName, element, schemaPath, stats, pageSize, encoding: userEncoding } = column
   const { type, type_length } = element
   if (!type) throw new Error(`column ${columnName} cannot determine type`)
   const offsetStart = writer.offset
@@ -75,50 +73,115 @@ export function writeColumn({ writer, column, values, stats, pageSize }) {
   encodings.push(encoding)
 
   // Split values into pages based on pageSize
-  const pageChunks = splitIntoPages(writeValues, type, type_length, pageSize, pageData)
+  const pageBoundaries = getPageBoundaries(writeValues, type, type_length, pageSize)
+
+  // Initialize page index structures if requested
+  /** @type {PageIndexes | undefined} */
+  let pageIndexes
+  if (column.pageIndex) {
+    pageIndexes = {
+      columnIndex: {
+        null_pages: [],
+        min_values: [],
+        max_values: [],
+        boundary_order: 'UNORDERED',
+        null_counts: [],
+      },
+      offsetIndex: {
+        page_locations: [],
+      },
+    }
+  }
 
   // Write data pages
   data_page_offset = BigInt(writer.offset)
-  for (const chunk of pageChunks) {
+  let firstRowIndex = 0n
+  let prevMaxValue
+  let ascending = true
+  let descending = true
+
+  for (const { start, end } of pageBoundaries) {
+    const chunk = createPageChunk(writeValues, pageData, start, end)
+    const pageOffset = writer.offset
+
     writeDataPageV2(writer, chunk.values, column, encoding, chunk.pageData)
+
+    // Track page info for pageIndex
+    const pageRows = BigInt(end - start)
+    if (pageIndexes) {
+      const originalSlice = values.slice(start, end)
+      const pageStats = getStatistics(originalSlice)
+      const nullCount = pageStats.null_count ?? 0n
+
+      pageIndexes.columnIndex.null_pages.push(nullCount === pageRows)
+      const currMin = unconvertMinMax(pageStats.min_value, element)
+      const currMax = unconvertMinMax(pageStats.max_value, element)
+      // Spec: for all-null pages set "byte[0]" whatever the fuck that means
+      pageIndexes.columnIndex.min_values.push(currMin ?? 0)
+      pageIndexes.columnIndex.max_values.push(currMax ?? 0)
+      pageIndexes.columnIndex.null_counts?.push(nullCount)
+
+      // Track boundary order
+      if (prevMaxValue !== undefined && currMin !== undefined) {
+        if (prevMaxValue > currMin) ascending = false
+        if (prevMaxValue < currMin) descending = false
+      }
+      prevMaxValue = currMax
+
+      pageIndexes.offsetIndex.page_locations.push({
+        offset: BigInt(pageOffset),
+        compressed_page_size: writer.offset - pageOffset,
+        first_row_index: BigInt(firstRowIndex),
+      })
+    }
+    firstRowIndex += pageRows
+  }
+
+  // Set boundary order after all pages are written
+  if (pageIndexes) {
+    const numPages = pageIndexes.columnIndex.min_values.length
+    pageIndexes.columnIndex.boundary_order = numPages < 2 ? 'UNORDERED'
+      : ascending ? 'ASCENDING' : descending ? 'DESCENDING' : 'UNORDERED'
   }
 
   return {
-    meta_data: {
-      type,
-      encodings,
-      path_in_schema: schemaPath.slice(1).map(s => s.name),
-      codec: compressed ? 'SNAPPY' : 'UNCOMPRESSED',
-      num_values: BigInt(num_values),
-      total_compressed_size: BigInt(writer.offset - offsetStart),
-      total_uncompressed_size: BigInt(writer.offset - offsetStart), // TODO
-      data_page_offset,
-      dictionary_page_offset,
-      statistics,
-      geospatial_statistics,
+    chunk: {
+      meta_data: {
+        type,
+        encodings,
+        path_in_schema: schemaPath.slice(1).map(s => s.name),
+        codec: column.compressed ? 'SNAPPY' : 'UNCOMPRESSED',
+        num_values: BigInt(num_values),
+        total_compressed_size: BigInt(writer.offset - offsetStart),
+        total_uncompressed_size: BigInt(writer.offset - offsetStart), // TODO
+        data_page_offset,
+        dictionary_page_offset,
+        statistics,
+        geospatial_statistics,
+      },
+      file_offset: BigInt(offsetStart),
     },
-    file_offset: BigInt(offsetStart),
+    pageIndexes,
   }
 }
 
 /**
- * Split values into page chunks based on estimated byte size.
+ * Get page boundaries based on estimated byte size.
  *
  * @param {DecodedArray} values
  * @param {ParquetType} type
  * @param {number | undefined} type_length
  * @param {number | undefined} pageSize
- * @param {PageData | undefined} pageData
- * @returns {Array<{values: DecodedArray, pageData: PageData | undefined}>}
+ * @returns {Array<{start: number, end: number}>}
  */
-function splitIntoPages(values, type, type_length, pageSize, pageData) {
+function getPageBoundaries(values, type, type_length, pageSize) {
   // If no pageSize limit, return single page with all values
   if (!pageSize) {
-    return [{ values, pageData }]
+    return [{ start: 0, end: values.length }]
   }
 
-  const chunks = []
-  let pageStart = 0
+  const boundaries = []
+  let start = 0
   let accumulatedBytes = 0
 
   for (let i = 0; i < values.length; i++) {
@@ -126,19 +189,19 @@ function splitIntoPages(values, type, type_length, pageSize, pageData) {
     accumulatedBytes += valueSize
 
     // Check if we should start a new page
-    if (accumulatedBytes >= pageSize && i > pageStart) {
-      chunks.push(createPageChunk(values, pageData, pageStart, i))
-      pageStart = i
+    if (accumulatedBytes >= pageSize && i > start) {
+      boundaries.push({ start, end: i })
+      start = i
       accumulatedBytes = valueSize
     }
   }
 
   // Final page with remaining values
-  if (pageStart < values.length) {
-    chunks.push(createPageChunk(values, pageData, pageStart, values.length))
+  if (start < values.length) {
+    boundaries.push({ start, end: values.length })
   }
 
-  return chunks
+  return boundaries
 }
 
 /**
@@ -186,9 +249,8 @@ function estimateValueSize(value, type, type_length) {
   if (type === 'BYTE_ARRAY') {
     if (value instanceof Uint8Array) return value.byteLength
     if (typeof value === 'string') return value.length
-    return 0
   }
-  return 4 // conservative default
+  return 0
 }
 
 /**
@@ -243,7 +305,7 @@ function writeDictionaryPage(writer, column, dictionary) {
 
 /**
  * @import {ColumnChunk, DecodedArray, Encoding, ParquetType, SchemaElement, Statistics} from 'hyparquet'
- * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
+ * @import {ColumnEncoder, PageData, PageIndexes, Writer} from '../src/types.js'
  * @param {DecodedArray} values
  * @returns {Statistics}
  */

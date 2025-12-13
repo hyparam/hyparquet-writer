@@ -3,8 +3,8 @@ import { pipeline } from 'stream/promises'
 import { asyncBufferFromFile, parquetMetadataAsync, parquetReadObjects, parquetSchema } from 'hyparquet'
 import { parquetWriteFile } from './src/node.js'
 
-const url = 'https://s3.hyperparam.app/tpch-lineitem-v2.parquet'
-const filename = 'data/tpch-lineitem-v2.parquet'
+const url = 'https://s3.hyperparam.app/wiki-en-00000-of-00041.parquet'
+const filename = 'data/wiki-en-00000-of-00041.parquet'
 
 // download test parquet file if needed
 let stat = await fs.stat(filename).catch(() => undefined)
@@ -29,8 +29,8 @@ const rows = await parquetReadObjects({
   file,
   metadata,
   // columns: ['l_comment'],
-  rowStart: 0,
-  rowEnd: 100_000,
+  // rowStart: 0,
+  // rowEnd: 100_000,
 })
 let ms = performance.now() - startTime
 console.log(`parsed ${filename} ${rows.length.toLocaleString()} rows in ${ms.toFixed(0)} ms`)
@@ -40,6 +40,7 @@ const schema = parquetSchema(metadata)
 const columnData = schema.children.map(({ element }) => ({
   name: element.name,
   data: [],
+  pageIndex: true,
 })) // .filter(({ name }) => name === 'l_comment')
 for (const row of rows) {
   for (const { name, data } of columnData) {
@@ -48,13 +49,14 @@ for (const row of rows) {
 }
 
 // write parquet file
-const outputFilename = 'data/output-tpch.parquet'
+const outputFilename = 'data/benchmark-output.parquet'
 console.log(`writing ${outputFilename} (${rows.length.toLocaleString()} rows)`)
 startTime = performance.now()
 parquetWriteFile({
   filename: outputFilename,
   columnData,
   schema: metadata.schema,
+  // rowGroupSize: 200_000,
 })
 ms = performance.now() - startTime
 stat = await fs.stat(outputFilename)

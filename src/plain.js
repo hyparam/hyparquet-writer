@@ -1,6 +1,6 @@
 
 /**
- * @import {DecodedArray, ParquetType} from 'hyparquet/src/types.js'
+ * @import {DecodedArray, ParquetType} from 'hyparquet'
  * @import {Writer} from '../src/types.js'
  * @param {Writer} writer
  * @param {DecodedArray} values

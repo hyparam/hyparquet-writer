@@ -1,4 +1,4 @@
-import type { DecodedArray, Encoding, KeyValue, SchemaElement } from 'hyparquet'
+import type { ColumnIndex, DecodedArray, Encoding, KeyValue, OffsetIndex, SchemaElement } from 'hyparquet'
 
 // Superset of parquet types with automatic conversions
 export type BasicType =
@@ -33,6 +33,7 @@ export interface ColumnSource {
   type?: BasicType
   nullable?: boolean
   encoding?: Encoding
+  pageIndex?: boolean
 }
 
 export interface PageData {
@@ -42,11 +43,19 @@ export interface PageData {
   numNulls: number
 }
 
+export interface PageIndexes {
+  columnIndex: ColumnIndex
+  offsetIndex: OffsetIndex
+}
+
 export interface ColumnEncoder {
   columnName: string
   element: SchemaElement
   schemaPath: SchemaElement[]
   compressed: boolean
+  stats: boolean
+  pageSize: number
+  pageIndex: boolean
   encoding?: Encoding // user-specified encoding
 }
 

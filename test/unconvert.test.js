@@ -232,7 +232,7 @@ describe('unconvertFloat16', () => {
     expect(unconvertFloat16(65504)).toEqual(new Uint8Array([0xff, 0x7b]))
     expect(unconvertFloat16(65505)).toEqual(new Uint8Array([0xff, 0x7b]))
     // subnormal
-    expect(unconvertFloat16(Math.pow(2, -24))).toEqual(new Uint8Array([0x02, 0x00]))
+    expect(unconvertFloat16(2 ** -24)).toEqual(new Uint8Array([0x02, 0x00]))
     // mantissa overflow
     expect(unconvertFloat16(2047.9999)).toEqual(new Uint8Array([0x00, 0x68]))
   })

@@ -163,9 +163,7 @@ function compressFragment(input, ip, inputSize, writer) {
     globalHashTables[hashTableBits] = new Uint16Array(1 << hashTableBits)
   }
   const hashTable = globalHashTables[hashTableBits]
-  for (let i = 0; i < hashTable.length; i++) {
-    hashTable[i] = 0
-  }
+  hashTable.fill(0)
 
   const ipEnd = ip + inputSize
   let ipLimit

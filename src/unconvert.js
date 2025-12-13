@@ -2,11 +2,15 @@ import { toJson } from 'hyparquet'
 import { geojsonToWkb } from './wkb.js'
 
 const dayMillis = 86400000 // 1 day in milliseconds
+/**
+ * @import {DecodedArray, SchemaElement, Statistics} from 'hyparquet'
+ * @import {MinMaxType} from 'hyparquet/src/types.js'
+ * @import {ThriftObject} from '../src/types.js'
+ */
 
 /**
  * Convert from rich to primitive types.
  *
- * @import {DecodedArray, SchemaElement, Statistics} from 'hyparquet'
  * @param {SchemaElement} element
  * @param {DecodedArray} values
  * @returns {DecodedArray}
@@ -83,7 +87,7 @@ function unconvertUuid(value) {
 /**
  * Uncovert from rich type to byte array for metadata statistics.
  *
- * @param {import('hyparquet/src/types.js').MinMaxType | undefined} value
+ * @param {MinMaxType | undefined} value
  * @param {SchemaElement} element
  * @returns {Uint8Array | undefined}
  */
@@ -148,7 +152,7 @@ export function unconvertMinMax(value, element) {
 /**
  * @param {Statistics} stats
  * @param {SchemaElement} element
- * @returns {import('../src/types.js').ThriftObject}
+ * @returns {ThriftObject}
  */
 export function unconvertStatistics(stats, element) {
   return {

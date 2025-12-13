@@ -1,12 +1,13 @@
 import { getSchemaPath } from 'hyparquet/src/schema.js'
 import { writeColumn } from './column.js'
+import { writeIndexes } from './indexes.js'
 import { writeMetadata } from './metadata.js'
 
 /**
  * ParquetWriter class allows incremental writing of parquet files.
  *
  * @import {ColumnChunk, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
- * @import {ColumnEncoder, ColumnSource, Writer} from '../src/types.js'
+ * @import {ColumnEncoder, ColumnSource, PageIndexes, Writer} from '../src/types.js'
  * @param {object} options
  * @param {Writer} options.writer
  * @param {SchemaElement[]} options.schema
@@ -43,13 +44,15 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 10000, pag
   for (const { groupStartIndex, groupSize } of groupIterator({ columnDataRows, rowGroupSize })) {
     const groupStartOffset = this.writer.offset
 
-    // row group columns
+    // row group columns and page indexes
     /** @type {ColumnChunk[]} */
     const columns = []
+    /** @type {PageIndexes[]}>} */
+    const indexes = []
 
     // write columns
     for (let j = 0; j < columnData.length; j++) {
-      const { name, data, encoding } = columnData[j]
+      const { name, data, encoding, pageIndex = false } = columnData[j]
       const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
 
       const schemaTree = getSchemaPath(this.schema, [name])
@@ -73,20 +76,32 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 10000, pag
         element,
         schemaPath,
         compressed: this.compressed,
+        stats: this.statistics,
+        pageSize,
+        pageIndex,
         encoding,
       }
 
-      const columnChunk = writeColumn({
+      const { chunk, pageIndexes } = writeColumn({
         writer: this.writer,
         column,
         values: groupData,
-        stats: this.statistics,
-        pageSize,
       })
 
       // save column chunk metadata
-      columns.push(columnChunk)
+      columns.push(chunk)
+
+      // Track page indexes for writing
+      if (pageIndexes) {
+        indexes.push(pageIndexes)
+      }
     }
+
+    // Write page indexes after all column data
+    for (let i = 0; i < indexes.length; i++) {
+      writeIndexes(this.writer, columns[i], indexes[i])
+    }
+
     this.num_rows += BigInt(groupSize)
 
     this.row_groups.push({
