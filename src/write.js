@@ -12,7 +12,8 @@ export function parquetWrite({
   writer,
   columnData,
   schema,
-  compressed = true,
+  codec = 'SNAPPY',
+  compressors,
   statistics = true,
   rowGroupSize = 100000,
   kvMetadata,
@@ -28,7 +29,8 @@ export function parquetWrite({
   const pq = new ParquetWriter({
     writer,
     schema,
-    compressed,
+    codec,
+    compressors,
     statistics,
     kvMetadata,
   })

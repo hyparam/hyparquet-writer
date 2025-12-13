@@ -60,6 +60,7 @@
     "@vitest/coverage-v8": "4.0.15",
     "eslint": "9.39.2",
     "eslint-plugin-jsdoc": "61.5.0",
+    "hysnappy": "1.1.0",
     "typescript": "5.9.3",
     "vitest": "4.0.15"
   }

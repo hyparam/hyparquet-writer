@@ -1,4 +1,7 @@
-import type { ColumnIndex, DecodedArray, Encoding, KeyValue, OffsetIndex, SchemaElement } from 'hyparquet'
+import type { ColumnIndex, CompressionCodec, DecodedArray, Encoding, KeyValue, OffsetIndex, SchemaElement } from 'hyparquet'
+
+export type Compressor = (input: Uint8Array) => Uint8Array
+export type Compressors = { [K in CompressionCodec]?: Compressor }
 
 // Superset of parquet types with automatic conversions
 export type BasicType =
@@ -20,10 +23,11 @@ export interface ParquetWriteOptions {
   writer: Writer
   columnData: ColumnSource[]
   schema?: SchemaElement[]
-  compressed?: boolean
-  statistics?: boolean
-  rowGroupSize?: number | number[]
-  pageSize?: number
+  codec?: CompressionCodec // global default codec, default 'SNAPPY'
+  compressors?: Compressors // custom compressors
+  statistics?: boolean // enable column statistics, default true
+  rowGroupSize?: number | number[] // number of rows per row group
+  pageSize?: number // target uncompressed page size in bytes, default 1048576
   kvMetadata?: KeyValue[]
 }
 
@@ -33,7 +37,7 @@ export interface ColumnSource {
   type?: BasicType
   nullable?: boolean
   encoding?: Encoding
-  pageIndex?: boolean
+  pageIndex?: boolean // write page indexes, default false
 }
 
 export interface PageData {
@@ -52,7 +56,8 @@ export interface ColumnEncoder {
   columnName: string
   element: SchemaElement
   schemaPath: SchemaElement[]
-  compressed: boolean
+  codec: CompressionCodec
+  compressors: Compressors
   stats: boolean
   pageSize: number
   pageIndex: boolean

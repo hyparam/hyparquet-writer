@@ -78,8 +78,8 @@ describe('parquetWriteBuffer', () => {
   it('less efficiently serializes string without compression', () => {
     const str = 'a'.repeat(10000)
     const columnData = [{ name: 'string', data: [str] }]
-    const file = parquetWriteBuffer({ columnData, compressed: false })
-    expect(file.byteLength).toBe(10168)
+    const file = parquetWriteBuffer({ columnData, codec: 'UNCOMPRESSED' })
+    expect(file.byteLength).toBe(10167)
   })
 
   it('efficiently serializes column with few distinct values', async () => {

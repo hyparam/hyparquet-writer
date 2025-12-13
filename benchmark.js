@@ -1,6 +1,7 @@
 import { createWriteStream, promises as fs } from 'fs'
 import { pipeline } from 'stream/promises'
 import { asyncBufferFromFile, parquetMetadataAsync, parquetReadObjects, parquetSchema } from 'hyparquet'
+import { snappyCompressor } from 'hysnappy'
 import { parquetWriteFile } from './src/node.js'
 
 const url = 'https://s3.hyperparam.app/wiki-en-00000-of-00041.parquet'
@@ -56,6 +57,7 @@ parquetWriteFile({
   filename: outputFilename,
   columnData,
   schema: metadata.schema,
+  compressors: { SNAPPY: snappyCompressor() },
   // rowGroupSize: 200_000,
 })
 ms = performance.now() - startTime

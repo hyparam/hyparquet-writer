@@ -74,13 +74,15 @@ Options can be passed to `parquetWrite` to adjust parquet file writing behavior:
 
  - `writer`: a generic writer object
  - `schema`: parquet schema object (optional)
- - `compressed`: use snappy compression (default true)
+ - `codec`: use snappy compression (default true)
+ - `compressors`: custom compressors
  - `statistics`: write column statistics (default true)
  - `rowGroupSize`: number of rows in each row group (default 100000)
  - `kvMetadata`: extra key-value metadata to be stored in the parquet footer
 
 ```javascript
 import { ByteWriter, parquetWrite } from 'hyparquet-writer'
+import { snappyCompress } from 'hysnappy'
 
 const writer = new ByteWriter()
 parquetWrite({
@@ -97,7 +99,7 @@ parquetWrite({
     { name: 'age', type: 'FIXED_LEN_BYTE_ARRAY', type_length: 4, converted_type: 'DECIMAL', scale: 2, precision: 4 },
     { name: 'dob', type: 'INT32', converted_type: 'DATE' },
   ],
-  compressed: false,
+  compressors: { SNAPPY: snappyCompresss }, // high performance wasm compressor
   statistics: false,
   rowGroupSize: 1000,
   kvMetadata: [

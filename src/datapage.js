@@ -3,7 +3,6 @@ import { ByteWriter } from './bytewriter.js'
 import { deltaBinaryPack, deltaByteArray, deltaLengthByteArray } from './delta.js'
 import { writeRleBitPackedHybrid } from './encoding.js'
 import { writePlain } from './plain.js'
-import { snappyCompress } from './snappy.js'
 import { writeByteStreamSplit } from './splitstream.js'
 import { serializeTCompactProtocol } from './thrift.js'
 import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
@@ -16,7 +15,7 @@ import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
  * @param {PageData} [listValues]
  */
 export function writeDataPageV2(writer, values, column, encoding, listValues) {
-  const { columnName, element, compressed } = column
+  const { columnName, element, codec, compressors } = column
   const { type, type_length, repetition_type } = element
 
   if (!type) throw new Error(`column ${columnName} cannot determine type`)
@@ -72,17 +71,14 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
   }
 
   // compress page data
-  let compressedPage = page
-  if (compressed) {
-    compressedPage = new ByteWriter()
-    snappyCompress(compressedPage, new Uint8Array(page.getBuffer()))
-  }
+  const pageBuffer = new Uint8Array(page.getBuffer())
+  const compressedBytes = compressors[codec]?.(pageBuffer) ?? pageBuffer
 
   // write page header
   writePageHeader(writer, {
     type: 'DATA_PAGE_V2',
     uncompressed_page_size: levelWriter.offset + page.offset,
-    compressed_page_size: levelWriter.offset + compressedPage.offset,
+    compressed_page_size: levelWriter.offset + compressedBytes.length,
     data_page_header_v2: {
       num_values,
       num_nulls,
@@ -90,7 +86,7 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
       encoding,
       definition_levels_byte_length,
       repetition_levels_byte_length,
-      is_compressed: compressed,
+      is_compressed: !!codec,
     },
   })
 
@@ -98,7 +94,7 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
   writer.appendBuffer(levelWriter.getBuffer())
 
   // write page data
-  writer.appendBuffer(compressedPage.getBuffer())
+  writer.appendBytes(compressedBytes)
 }
 
 /**
