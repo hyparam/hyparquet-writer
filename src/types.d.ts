@@ -37,7 +37,8 @@ export interface ColumnSource {
   type?: BasicType
   nullable?: boolean
   encoding?: Encoding
-  pageIndex?: boolean // write page indexes, default false
+  columnIndex?: boolean // write column indexes, default false
+  offsetIndex?: boolean // write offset indexes, default false
 }
 
 export interface PageData {
@@ -45,11 +46,6 @@ export interface PageData {
   definitionLevels: number[]
   repetitionLevels: number[]
   numNulls: number
-}
-
-export interface PageIndexes {
-  columnIndex: ColumnIndex
-  offsetIndex: OffsetIndex
 }
 
 export interface ColumnEncoder {
@@ -60,7 +56,8 @@ export interface ColumnEncoder {
   compressors: Compressors
   stats: boolean
   pageSize: number
-  pageIndex: boolean
+  columnIndex: boolean
+  offsetIndex: boolean
   encoding?: Encoding // user-specified encoding
 }
 

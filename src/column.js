@@ -12,7 +12,7 @@ import { unconvert, unconvertMinMax } from './unconvert.js'
  * @param {Writer} options.writer
  * @param {ColumnEncoder} options.column
  * @param {DecodedArray} options.values
- * @returns {{ chunk: ColumnChunk, pageIndexes?: PageIndexes }}
+ * @returns {{ chunk: ColumnChunk, columnIndex?: ColumnIndex, offsetIndex?: OffsetIndex }}
  */
 export function writeColumn({ writer, column, values }) {
   const { columnName, element, schemaPath, stats, pageSize, encoding: userEncoding } = column
@@ -74,23 +74,19 @@ export function writeColumn({ writer, column, values }) {
   // Split values into pages based on pageSize
   const pageBoundaries = getPageBoundaries(writeValues, type, type_length, pageSize)
 
-  // Initialize page index structures if requested
-  /** @type {PageIndexes | undefined} */
-  let pageIndexes
-  if (column.pageIndex) {
-    pageIndexes = {
-      columnIndex: {
-        null_pages: [],
-        min_values: [],
-        max_values: [],
-        boundary_order: 'UNORDERED',
-        null_counts: [],
-      },
-      offsetIndex: {
-        page_locations: [],
-      },
-    }
-  }
+  // Initialize index structures if requested
+  /** @type {ColumnIndex | undefined} */
+  const columnIndex = column.columnIndex ? {
+    null_pages: [],
+    min_values: [],
+    max_values: [],
+    boundary_order: 'UNORDERED',
+    null_counts: [],
+  } : undefined
+  /** @type {OffsetIndex | undefined} */
+  const offsetIndex = column.offsetIndex ? {
+    page_locations: [],
+  } : undefined
 
   // Write data pages
   data_page_offset = BigInt(writer.offset)
@@ -105,20 +101,20 @@ export function writeColumn({ writer, column, values }) {
 
     writeDataPageV2(writer, chunk.values, column, encoding, chunk.pageData)
 
-    // Track page info for pageIndex
+    // Track page info for indexes
     const pageRows = BigInt(end - start)
-    if (pageIndexes) {
+    if (columnIndex) {
       const originalSlice = values.slice(start, end)
       const pageStats = getStatistics(originalSlice)
       const nullCount = pageStats.null_count ?? 0n
 
-      pageIndexes.columnIndex.null_pages.push(nullCount === pageRows)
+      columnIndex.null_pages.push(nullCount === pageRows)
       const currMin = unconvertMinMax(pageStats.min_value, element)
       const currMax = unconvertMinMax(pageStats.max_value, element)
       // Spec: for all-null pages set "byte[0]" whatever the fuck that means
-      pageIndexes.columnIndex.min_values.push(currMin ?? 0)
-      pageIndexes.columnIndex.max_values.push(currMax ?? 0)
-      pageIndexes.columnIndex.null_counts?.push(nullCount)
+      columnIndex.min_values.push(currMin ?? 0)
+      columnIndex.max_values.push(currMax ?? 0)
+      columnIndex.null_counts?.push(nullCount)
 
       // Track boundary order
       if (prevMaxValue !== undefined && currMin !== undefined) {
@@ -126,8 +122,9 @@ export function writeColumn({ writer, column, values }) {
         if (prevMaxValue < currMin) descending = false
       }
       prevMaxValue = currMax
-
-      pageIndexes.offsetIndex.page_locations.push({
+    }
+    if (offsetIndex) {
+      offsetIndex.page_locations.push({
         offset: BigInt(pageOffset),
         compressed_page_size: writer.offset - pageOffset,
         first_row_index: BigInt(firstRowIndex),
@@ -137,9 +134,9 @@ export function writeColumn({ writer, column, values }) {
   }
 
   // Set boundary order after all pages are written
-  if (pageIndexes) {
-    const numPages = pageIndexes.columnIndex.min_values.length
-    pageIndexes.columnIndex.boundary_order = numPages < 2 ? 'UNORDERED'
+  if (columnIndex) {
+    const numPages = columnIndex.min_values.length
+    columnIndex.boundary_order = numPages < 2 ? 'UNORDERED'
       : ascending ? 'ASCENDING' : descending ? 'DESCENDING' : 'UNORDERED'
   }
 
@@ -160,7 +157,8 @@ export function writeColumn({ writer, column, values }) {
       },
       file_offset: BigInt(offsetStart),
     },
-    pageIndexes,
+    columnIndex,
+    offsetIndex,
   }
 }
 
@@ -306,8 +304,8 @@ function writeDictionaryPage(writer, column, dictionary) {
 }
 
 /**
- * @import {ColumnChunk, DecodedArray, Encoding, ParquetType, SchemaElement, Statistics} from 'hyparquet'
- * @import {ColumnEncoder, PageData, PageIndexes, Writer} from '../src/types.js'
+ * @import {ColumnChunk, ColumnIndex, DecodedArray, Encoding, OffsetIndex, ParquetType, SchemaElement, Statistics} from 'hyparquet'
+ * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
  * @param {DecodedArray} values
  * @returns {Statistics}
  */

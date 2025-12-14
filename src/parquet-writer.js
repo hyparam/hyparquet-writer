@@ -7,8 +7,8 @@ import { snappyCompress } from './snappy.js'
 /**
  * ParquetWriter class allows incremental writing of parquet files.
  *
- * @import {ColumnChunk, CompressionCodec, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
- * @import {ColumnEncoder, ColumnSource, Compressors, PageIndexes, Writer} from '../src/types.js'
+ * @import {ColumnChunk, ColumnIndex, CompressionCodec, FileMetaData, KeyValue, OffsetIndex, RowGroup, SchemaElement} from 'hyparquet'
+ * @import {ColumnEncoder, ColumnSource, Compressors, Writer} from '../src/types.js'
  * @param {object} options
  * @param {Writer} options.writer
  * @param {SchemaElement[]} options.schema
@@ -48,15 +48,17 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 10000, pag
   for (const { groupStartIndex, groupSize } of groupIterator({ columnDataRows, rowGroupSize })) {
     const groupStartOffset = this.writer.offset
 
-    // row group columns and page indexes
+    // row group columns and indexes
     /** @type {ColumnChunk[]} */
     const columns = []
-    /** @type {(PageIndexes | undefined)[]} */
-    const indexes = []
+    /** @type {(ColumnIndex | undefined)[]} */
+    const columnIndexes = []
+    /** @type {(OffsetIndex | undefined)[]} */
+    const offsetIndexes = []
 
     // write columns
     for (let j = 0; j < columnData.length; j++) {
-      const { name, data, encoding, pageIndex = false } = columnData[j]
+      const { name, data, encoding, columnIndex = false, offsetIndex = false } = columnData[j]
       const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
 
       const schemaTree = getSchemaPath(this.schema, [name])
@@ -83,28 +85,25 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 10000, pag
         compressors: this.compressors,
         stats: this.statistics,
         pageSize,
-        pageIndex,
+        columnIndex,
+        offsetIndex,
         encoding,
       }
 
-      const { chunk, pageIndexes } = writeColumn({
+      const result = writeColumn({
         writer: this.writer,
         column,
         values: groupData,
       })
 
-      // save column chunk metadata and pageIndexes (or undefined)
-      columns.push(chunk)
-      indexes.push(pageIndexes)
+      // save column chunk metadata and indexes
+      columns.push(result.chunk)
+      columnIndexes.push(result.columnIndex)
+      offsetIndexes.push(result.offsetIndex)
     }
 
-    // Write page indexes after all column data
-    for (let i = 0; i < indexes.length; i++) {
-      const pageIndexes = indexes[i]
-      if (pageIndexes) {
-        writeIndexes(this.writer, columns[i], pageIndexes)
-      }
-    }
+    // Write indexes after all column data
+    writeIndexes(this.writer, columns, columnIndexes, offsetIndexes)
 
     this.num_rows += BigInt(groupSize)
 

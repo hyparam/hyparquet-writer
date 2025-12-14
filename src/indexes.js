@@ -2,16 +2,34 @@ import { BoundaryOrders } from 'hyparquet/src/constants.js'
 import { serializeTCompactProtocol } from './thrift.js'
 
 /**
- * Write ColumnIndex and OffsetIndex to the writer.
+ * @import {ColumnChunk, ColumnIndex, OffsetIndex} from 'hyparquet'
+ * @import {Writer} from '../src/types.js'
+ */
+
+/**
+ * Write ColumnIndex and OffsetIndex for the given columns.
  *
- * @import {ColumnChunk} from 'hyparquet'
- * @import {PageIndexes, Writer} from '../src/types.js'
+ * @param {Writer} writer
+ * @param {ColumnChunk[]} columns
+ * @param {(ColumnIndex | undefined)[]} columnIndexes
+ * @param {(OffsetIndex | undefined)[]} offsetIndexes
+ */
+export function writeIndexes(writer, columns, columnIndexes, offsetIndexes) {
+  for (let i = 0; i < columns.length; i++) {
+    writeColumnIndex(writer, columns[i], columnIndexes[i])
+  }
+  for (let i = 0; i < columns.length; i++) {
+    writeOffsetIndex(writer, columns[i], offsetIndexes[i])
+  }
+}
+
+/**
  * @param {Writer} writer
  * @param {ColumnChunk} columnChunk
- * @param {PageIndexes} pageIndexes
+ * @param {ColumnIndex} [columnIndex]
  */
-export function writeIndexes(writer, columnChunk, { columnIndex, offsetIndex }) {
-  // Write ColumnIndex
+function writeColumnIndex(writer, columnChunk, columnIndex) {
+  if (!columnIndex) return
   const columnIndexOffset = writer.offset
   serializeTCompactProtocol(writer, {
     field_1: columnIndex.null_pages,
@@ -22,8 +40,15 @@ export function writeIndexes(writer, columnChunk, { columnIndex, offsetIndex }) 
   })
   columnChunk.column_index_offset = BigInt(columnIndexOffset)
   columnChunk.column_index_length = writer.offset - columnIndexOffset
+}
 
-  // Write OffsetIndex
+/**
+ * @param {Writer} writer
+ * @param {ColumnChunk} columnChunk
+ * @param {OffsetIndex} [offsetIndex]
+ */
+function writeOffsetIndex(writer, columnChunk, offsetIndex) {
+  if (!offsetIndex) return
   const offsetIndexOffset = writer.offset
   serializeTCompactProtocol(writer, {
     field_1: offsetIndex.page_locations.map(p => ({
