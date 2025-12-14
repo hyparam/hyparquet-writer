@@ -2,23 +2,27 @@ import { getSchemaPath } from 'hyparquet/src/schema.js'
 import { writeColumn } from './column.js'
 import { writeIndexes } from './indexes.js'
 import { writeMetadata } from './metadata.js'
+import { snappyCompress } from './snappy.js'
 
 /**
  * ParquetWriter class allows incremental writing of parquet files.
  *
- * @import {ColumnChunk, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
- * @import {ColumnEncoder, ColumnSource, PageIndexes, Writer} from '../src/types.js'
+ * @import {ColumnChunk, CompressionCodec, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
+ * @import {ColumnEncoder, ColumnSource, Compressors, PageIndexes, Writer} from '../src/types.js'
  * @param {object} options
  * @param {Writer} options.writer
  * @param {SchemaElement[]} options.schema
- * @param {boolean} [options.compressed]
+ * @param {CompressionCodec} [options.codec]
+ * @param {Compressors} [options.compressors]
  * @param {boolean} [options.statistics]
  * @param {KeyValue[]} [options.kvMetadata]
  */
-export function ParquetWriter({ writer, schema, compressed = true, statistics = true, kvMetadata }) {
+export function ParquetWriter({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, kvMetadata }) {
   this.writer = writer
   this.schema = schema
-  this.compressed = compressed
+  this.codec = codec
+  // Include built-in snappy as fallback
+  this.compressors = { SNAPPY: snappyCompress, ...compressors }
   this.statistics = statistics
   this.kvMetadata = kvMetadata
 
@@ -75,7 +79,8 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 10000, pag
         columnName: name,
         element,
         schemaPath,
-        compressed: this.compressed,
+        codec: this.codec,
+        compressors: this.compressors,
         stats: this.statistics,
         pageSize,
         pageIndex,

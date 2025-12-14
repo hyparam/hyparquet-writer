@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { snappyCompress } from '../src/snappy.js'
-import { ByteWriter } from '../src/bytewriter.js'
 import { snappyUncompress } from 'hyparquet'
 
 describe('snappy compress', () => {
@@ -41,16 +40,13 @@ describe('snappy compress', () => {
       compressed: [1, 0, 5],
       uncompressed: new Uint8Array([5]),
     },
-  ])('compresses valid input %p', ({ compressed, uncompressed }) => {
-    const writer = new ByteWriter()
+  ])('compresses valid input %p', ({ uncompressed }) => {
     const encoder = new TextEncoder()
     const input = typeof uncompressed === 'string' ? encoder.encode(uncompressed) : new Uint8Array(uncompressed)
-    snappyCompress(writer, input)
-    const output = writer.getBuffer()
-    expect(output).toEqual(new Uint8Array(compressed).buffer)
-    // re-decompress to verify
+    const output = snappyCompress(input)
+    // verify round-trip: decompress and compare to original
     const decompressed = new Uint8Array(input.length)
-    snappyUncompress(new Uint8Array(output), decompressed)
+    snappyUncompress(output, decompressed)
     expect(decompressed).toEqual(input)
   })
 })

@@ -4,6 +4,8 @@
  * https://github.com/zhipeng-jia/snappyjs
  */
 
+import { ByteWriter } from './bytewriter.js'
+
 const BLOCK_LOG = 16
 const BLOCK_SIZE = 1 << BLOCK_LOG
 
@@ -12,16 +14,16 @@ const globalHashTables = new Array(MAX_HASH_TABLE_BITS + 1)
 
 /**
  * Compress snappy data.
- * Writes Snappy-compressed bytes into a writer.
+ * Returns Snappy-compressed bytes as Uint8Array.
  *
- * @import {Writer} from '../src/types.js'
- * @param {Writer} writer
  * @param {Uint8Array} input - uncompressed data
+ * @returns {Uint8Array}
  */
-export function snappyCompress(writer, input) {
+export function snappyCompress(input) {
+  const writer = new ByteWriter()
   // Write uncompressed length as a varint
   writer.appendVarInt(input.length)
-  if (input.length === 0) return // Nothing to do
+  if (input.length === 0) return new Uint8Array(writer.getBuffer())
 
   // Process input in 64K blocks
   let pos = 0
@@ -30,6 +32,7 @@ export function snappyCompress(writer, input) {
     compressFragment(input, pos, fragmentSize, writer)
     pos += fragmentSize
   }
+  return new Uint8Array(writer.getBuffer())
 }
 
 /**
@@ -79,6 +82,7 @@ function equals32(array, pos1, pos2) {
 
 /**
  * Emit a literal chunk of data.
+ * @import {Writer} from '../src/types.js'
  * @param {Uint8Array} input
  * @param {number} ip
  * @param {number} len

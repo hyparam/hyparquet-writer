@@ -67,7 +67,6 @@ describe('BYTE_STREAM_SPLIT encoding', () => {
     const data = Array.from({ length: 1000 }, (_, i) => i * 0.1)
     const file = parquetWriteBuffer({
       columnData: [{ name: 'float', data, encoding: 'BYTE_STREAM_SPLIT' }],
-      compressed: true,
     })
     const metadata = parquetMetadata(file)
     const columnMetadata = metadata.row_groups[0].columns[0].meta_data

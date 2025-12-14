@@ -3,7 +3,6 @@ import { writeDataPageV2, writePageHeader } from './datapage.js'
 import { encodeListValues } from './dremel.js'
 import { geospatialStatistics } from './geospatial.js'
 import { writePlain } from './plain.js'
-import { snappyCompress } from './snappy.js'
 import { unconvert, unconvertMinMax } from './unconvert.js'
 
 /**
@@ -150,7 +149,7 @@ export function writeColumn({ writer, column, values }) {
         type,
         encodings,
         path_in_schema: schemaPath.slice(1).map(s => s.name),
-        codec: column.compressed ? 'SNAPPY' : 'UNCOMPRESSED',
+        codec: column.codec ?? 'UNCOMPRESSED',
         num_values: BigInt(num_values),
         total_compressed_size: BigInt(writer.offset - offsetStart),
         total_uncompressed_size: BigInt(writer.offset - offsetStart), // TODO
@@ -277,7 +276,7 @@ function useDictionary(values, type, encoding) {
  * @param {DecodedArray} dictionary
  */
 function writeDictionaryPage(writer, column, dictionary) {
-  const { element, compressed } = column
+  const { element, codec, compressors } = column
   const { type, type_length } = element
   if (!type) throw new Error(`column ${column.columnName} cannot determine type`)
   const dictionaryPage = new ByteWriter()
@@ -285,9 +284,12 @@ function writeDictionaryPage(writer, column, dictionary) {
 
   // compress dictionary page data
   let compressedDictionaryPage = dictionaryPage
-  if (compressed) {
+  const compressor = compressors?.[codec]
+  if (compressor) {
+    const input = new Uint8Array(dictionaryPage.getBuffer())
+    const compressedData = compressor(input)
     compressedDictionaryPage = new ByteWriter()
-    snappyCompress(compressedDictionaryPage, new Uint8Array(dictionaryPage.getBuffer()))
+    compressedDictionaryPage.appendBytes(compressedData)
   }
 
   // write dictionary page header
