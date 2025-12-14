@@ -97,7 +97,7 @@ describe('parquetWrite pageIndex', () => {
     expect(column0.offset_index_offset).toBeUndefined()
   })
 
-  it('handles per-column pageIndex opt-in', () => {
+  it('handles per-column pageIndex opt-in (first column indexed)', () => {
     const numRows = 100
     /** @type {ColumnSource[]} */
     const columnData = [
@@ -121,6 +121,54 @@ describe('parquetWrite pageIndex', () => {
     // Non-indexed column should not
     expect(notIndexedColumn.column_index_offset).toBeUndefined()
     expect(notIndexedColumn.offset_index_offset).toBeUndefined()
+  })
+
+  it('handles per-column pageIndex opt-in (second column indexed)', async () => {
+    const numRows = 100
+    /** @type {ColumnSource[]} */
+    const columnData = [
+      { name: 'id', data: Array.from({ length: numRows }, (_, i) => i), type: 'INT32' },
+      { name: 'text', data: Array.from({ length: numRows }, (_, i) => `text${i}`), type: 'STRING', pageIndex: true },
+    ]
+
+    const buffer = parquetWriteBuffer({
+      columnData,
+      pageSize: 100,
+    })
+
+    const metadata = parquetMetadata(buffer)
+    const idColumn = metadata.row_groups[0].columns[0]
+    const textColumn = metadata.row_groups[0].columns[1]
+
+    // id column should NOT have indexes (no pageIndex requested)
+    expect(idColumn.column_index_offset).toBeUndefined()
+    expect(idColumn.offset_index_offset).toBeUndefined()
+
+    // text column should have indexes
+    expect(textColumn.column_index_offset).toBeDefined()
+    expect(textColumn.offset_index_offset).toBeDefined()
+
+    // Read back the column index for text column
+    const arrayBuffer = buffer.slice(0)
+    const columnIndexOffset = Number(textColumn.column_index_offset)
+    const columnIndexLength = Number(textColumn.column_index_length)
+    const columnIndexArrayBuffer = arrayBuffer.slice(columnIndexOffset, columnIndexOffset + columnIndexLength)
+    const columnIndexReader = { view: new DataView(columnIndexArrayBuffer), offset: 0 }
+    const schemaPath = getSchemaPath(metadata.schema, textColumn.meta_data?.path_in_schema ?? [])
+    const columnIndex = readColumnIndex(columnIndexReader, schemaPath.at(-1)?.element || { name: '' })
+
+    // Verify column index contains text data (strings), not integer data
+    // The min/max values should be strings like 'text0', 'text1', etc.
+    expect(columnIndex.min_values).toBeDefined()
+    expect(columnIndex.max_values).toBeDefined()
+    expect(typeof columnIndex.min_values[0]).toBe('string')
+    expect(columnIndex.min_values[0]).toMatch(/^text/)
+
+    // Data should still be readable and correct
+    const rows = await parquetReadObjects({ file: buffer })
+    expect(rows.length).toBe(numRows)
+    expect(rows[0]).toEqual({ id: 0, text: 'text0' })
+    expect(rows[99]).toEqual({ id: 99, text: 'text99' })
   })
 
   it('handles multiple pages with correct min/max values', () => {

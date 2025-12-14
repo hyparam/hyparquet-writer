@@ -51,7 +51,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 10000, pag
     // row group columns and page indexes
     /** @type {ColumnChunk[]} */
     const columns = []
-    /** @type {PageIndexes[]}>} */
+    /** @type {(PageIndexes | undefined)[]} */
     const indexes = []
 
     // write columns
@@ -93,18 +93,17 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 10000, pag
         values: groupData,
       })
 
-      // save column chunk metadata
+      // save column chunk metadata and pageIndexes (or undefined)
       columns.push(chunk)
-
-      // Track page indexes for writing
-      if (pageIndexes) {
-        indexes.push(pageIndexes)
-      }
+      indexes.push(pageIndexes)
     }
 
     // Write page indexes after all column data
     for (let i = 0; i < indexes.length; i++) {
-      writeIndexes(this.writer, columns[i], indexes[i])
+      const pageIndexes = indexes[i]
+      if (pageIndexes) {
+        writeIndexes(this.writer, columns[i], pageIndexes)
+      }
     }
 
     this.num_rows += BigInt(groupSize)
