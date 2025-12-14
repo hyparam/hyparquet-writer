@@ -7,8 +7,8 @@ import { snappyCompress } from './snappy.js'
 /**
  * ParquetWriter class allows incremental writing of parquet files.
  *
- * @import {ColumnChunk, ColumnIndex, CompressionCodec, FileMetaData, KeyValue, OffsetIndex, RowGroup, SchemaElement} from 'hyparquet'
- * @import {ColumnEncoder, ColumnSource, Compressors, Writer} from '../src/types.js'
+ * @import {ColumnChunk, CompressionCodec, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
+ * @import {ColumnEncoder, ColumnSource, Compressors, PageIndexes, Writer} from '../src/types.js'
  * @param {object} options
  * @param {Writer} options.writer
  * @param {SchemaElement[]} options.schema
@@ -30,6 +30,9 @@ export function ParquetWriter({ writer, schema, codec = 'SNAPPY', compressors, s
   this.row_groups = []
   this.num_rows = 0n
 
+  /** @type {PageIndexes[]} */
+  this.pendingIndexes = []
+
   // write header PAR1
   this.writer.appendUint32(0x31524150)
 }
@@ -47,14 +50,8 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 10000, pag
   const columnDataRows = columnData[0]?.data?.length || 0
   for (const { groupStartIndex, groupSize } of groupIterator({ columnDataRows, rowGroupSize })) {
     const groupStartOffset = this.writer.offset
-
-    // row group columns and indexes
     /** @type {ColumnChunk[]} */
     const columns = []
-    /** @type {(ColumnIndex | undefined)[]} */
-    const columnIndexes = []
-    /** @type {(OffsetIndex | undefined)[]} */
-    const offsetIndexes = []
 
     // write columns
     for (let j = 0; j < columnData.length; j++) {
@@ -96,17 +93,11 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 10000, pag
         values: groupData,
       })
 
-      // save column chunk metadata and indexes
       columns.push(result.chunk)
-      columnIndexes.push(result.columnIndex)
-      offsetIndexes.push(result.offsetIndex)
+      this.pendingIndexes.push(result)
     }
 
-    // Write indexes after all column data
-    writeIndexes(this.writer, columns, columnIndexes, offsetIndexes)
-
     this.num_rows += BigInt(groupSize)
-
     this.row_groups.push({
       columns,
       total_byte_size: BigInt(this.writer.offset - groupStartOffset),
@@ -119,6 +110,9 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = 10000, pag
  * Finish writing the file.
  */
 ParquetWriter.prototype.finish = function() {
+  // Write all indexes at end of file
+  writeIndexes(this.writer, this.pendingIndexes)
+
   // write metadata
   /** @type {FileMetaData} */
   const metadata = {

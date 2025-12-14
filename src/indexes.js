@@ -3,23 +3,21 @@ import { serializeTCompactProtocol } from './thrift.js'
 
 /**
  * @import {ColumnChunk, ColumnIndex, OffsetIndex} from 'hyparquet'
- * @import {Writer} from '../src/types.js'
+ * @import {PageIndexes, Writer} from '../src/types.js'
  */
 
 /**
  * Write ColumnIndex and OffsetIndex for the given columns.
  *
  * @param {Writer} writer
- * @param {ColumnChunk[]} columns
- * @param {(ColumnIndex | undefined)[]} columnIndexes
- * @param {(OffsetIndex | undefined)[]} offsetIndexes
+ * @param {PageIndexes[]} pageIndexes
  */
-export function writeIndexes(writer, columns, columnIndexes, offsetIndexes) {
-  for (let i = 0; i < columns.length; i++) {
-    writeColumnIndex(writer, columns[i], columnIndexes[i])
+export function writeIndexes(writer, pageIndexes) {
+  for (const { chunk, columnIndex } of pageIndexes) {
+    writeColumnIndex(writer, chunk, columnIndex)
   }
-  for (let i = 0; i < columns.length; i++) {
-    writeOffsetIndex(writer, columns[i], offsetIndexes[i])
+  for (const { chunk, offsetIndex } of pageIndexes) {
+    writeOffsetIndex(writer, chunk, offsetIndex)
   }
 }
 

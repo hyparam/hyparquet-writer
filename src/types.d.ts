@@ -1,4 +1,4 @@
-import type { ColumnIndex, CompressionCodec, DecodedArray, Encoding, KeyValue, OffsetIndex, SchemaElement } from 'hyparquet'
+import type { ColumnChunk, ColumnIndex, CompressionCodec, DecodedArray, Encoding, KeyValue, OffsetIndex, SchemaElement } from 'hyparquet'
 
 export type Compressor = (input: Uint8Array) => Uint8Array
 export type Compressors = { [K in CompressionCodec]?: Compressor }
@@ -59,6 +59,12 @@ export interface ColumnEncoder {
   columnIndex: boolean
   offsetIndex: boolean
   encoding?: Encoding // user-specified encoding
+}
+
+export interface PageIndexes {
+  chunk: ColumnChunk
+  columnIndex?: ColumnIndex
+  offsetIndex?: OffsetIndex
 }
 
 export interface Writer {
