@@ -15,13 +15,14 @@ describe('package.json', () => {
   })
 
   it('should have precise dev dependency versions', () => {
-    Object.values(packageJson.devDependencies).forEach(version => {
+    const { dependencies, devDependencies } = packageJson
+    const allDependencies = { ...dependencies, ...devDependencies }
+    Object.values(allDependencies).forEach(version => {
       expect(version).toMatch(/^\d+\.\d+\.\d+$/)
     })
   })
 
-  it('should have no dependencies', () => {
-    expect('dependencies' in packageJson).toBe(false)
+  it('should have no peer dependencies', () => {
     expect('peerDependencies' in packageJson).toBe(false)
   })
 
