@@ -56,6 +56,7 @@ export interface ColumnEncoder {
   compressors: Compressors
   stats: boolean
   pageSize: number
+  // Spec: If ColumnIndex is present, OffsetIndex must also be present
   columnIndex: boolean
   offsetIndex: boolean
   encoding?: Encoding // user-specified encoding

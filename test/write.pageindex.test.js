@@ -299,14 +299,11 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
   })
 
   it('writes only offset index when columnIndex is false', () => {
-    const numRows = 100
-    /** @type {ColumnSource[]} */
-    const columnData = [
-      { name: 'id', data: Array.from({ length: numRows }, (_, i) => i), type: 'INT32', offsetIndex: true },
-    ]
-
+    const data = Array.from({ length: 100 }, (_, i) => i)
     const buffer = parquetWriteBuffer({
-      columnData,
+      columnData: [
+        { name: 'id', data, type: 'INT32', offsetIndex: true },
+      ],
       pageSize: 100,
     })
 
@@ -334,18 +331,34 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     expect(offsetIndex.page_locations.length).toBeGreaterThan(0)
   })
 
-  it('handles mixed index options per column', () => {
-    const numRows = 100
-    /** @type {ColumnSource[]} */
-    const columnData = [
-      { name: 'col_index_only', data: Array.from({ length: numRows }, (_, i) => i), type: 'INT32', columnIndex: true },
-      { name: 'offset_index_only', data: Array.from({ length: numRows }, (_, i) => i * 2), type: 'INT32', offsetIndex: true },
-      { name: 'both_indexes', data: Array.from({ length: numRows }, (_, i) => i * 3), type: 'INT32', columnIndex: true, offsetIndex: true },
-      { name: 'no_indexes', data: Array.from({ length: numRows }, (_, i) => i * 4), type: 'INT32' },
-    ]
+  it('does not write indexes for single-page columns', () => {
+    // When a column chunk has only one page, columnIndex and offsetIndex provide no value
+    // since they are per-page structures meant to help skip pages during predicate pushdown
+    const data = Array.from({ length: 10 }, (_, i) => i)
+    const buffer = parquetWriteBuffer({ columnData: [
+      { name: 'id', data, type: 'INT32', columnIndex: true, offsetIndex: true },
+    ] })
 
+    const metadata = parquetMetadata(buffer)
+    const column0 = metadata.row_groups[0].columns[0]
+
+    // Even though columnIndex and offsetIndex were requested, they should not be written
+    // for a single-page column since they provide no benefit
+    expect(column0.column_index_offset).toBeUndefined()
+    expect(column0.column_index_length).toBeUndefined()
+    expect(column0.offset_index_offset).toBeUndefined()
+    expect(column0.offset_index_length).toBeUndefined()
+  })
+
+  it('handles mixed index options per column', () => {
+    const data = Array.from({ length: 100 }, (_, i) => i)
     const buffer = parquetWriteBuffer({
-      columnData,
+      columnData: [
+        { name: 'col_index_only', data, type: 'INT32', columnIndex: true },
+        { name: 'offset_index_only', data, type: 'INT32', offsetIndex: true },
+        { name: 'both_indexes', data, type: 'INT32', columnIndex: true, offsetIndex: true },
+        { name: 'no_indexes', data, type: 'INT32' },
+      ],
       pageSize: 100,
     })
 
