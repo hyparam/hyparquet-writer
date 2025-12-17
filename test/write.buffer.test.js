@@ -55,7 +55,7 @@ describe('parquetWriteBuffer', () => {
     data[100] = false
     data[500] = true
     data[9999] = false
-    const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data }] })
+    const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data }], rowGroupSize: 10000 })
     expect(file.byteLength).toBe(159)
     const metadata = parquetMetadata(file)
     expect(metadata.metadata_length).toBe(92)
@@ -86,7 +86,7 @@ describe('parquetWriteBuffer', () => {
     const data = Array(100000)
       .fill('aaaa', 0, 50000)
       .fill('bbbb', 50000, 100000)
-    const file = parquetWriteBuffer({ columnData: [{ name: 'string', data }], statistics: false })
+    const file = parquetWriteBuffer({ columnData: [{ name: 'string', data }], statistics: false, rowGroupSize: 100000 })
     expect(file.byteLength).toBe(170)
     // round trip
     const result = await parquetReadObjects({ file })
@@ -246,6 +246,21 @@ describe('parquetWriteBuffer', () => {
     expect(result[4].double).toEqual(0)
     expect(result[5].double).toEqual(-0)
     expect(result[5].double).not.toEqual(0)
+  })
+
+  it('splits row groups with default sizes', async () => {
+    // Default rowGroupSize is [100, 1000, 10000], repeating 10000
+    const data = Array(50000).fill(13)
+    const file = parquetWriteBuffer({ columnData: [{ name: 'int', data }] })
+    const metadata = parquetMetadata(file)
+    expect(metadata.row_groups.length).toBe(7)
+    expect(metadata.row_groups[0].num_rows).toBe(100n)
+    expect(metadata.row_groups[1].num_rows).toBe(1000n)
+    expect(metadata.row_groups[2].num_rows).toBe(10000n)
+    expect(metadata.row_groups[3].num_rows).toBe(10000n)
+    // round trip
+    const result = await parquetReadObjects({ file })
+    expect(result.length).toBe(50000)
   })
 
   it('splits row groups', async () => {
