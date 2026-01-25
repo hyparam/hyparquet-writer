@@ -1,4 +1,5 @@
 import { Encodings, PageTypes } from 'hyparquet/src/constants.js'
+import { writeALP } from './alp.js'
 import { ByteWriter } from './bytewriter.js'
 import { deltaBinaryPack, deltaByteArray, deltaLengthByteArray } from './delta.js'
 import { writeRleBitPackedHybrid } from './encoding.js'
@@ -11,7 +12,7 @@ import { getMaxDefinitionLevel, getMaxRepetitionLevel } from './schema.js'
  * @param {Writer} writer
  * @param {DecodedArray} values
  * @param {ColumnEncoder} column
- * @param {Encoding} encoding
+ * @param {Encoding | 'ALP'} encoding
  * @param {PageData} [listValues]
  */
 export function writeDataPageV2(writer, values, column, encoding, listValues) {
@@ -66,6 +67,11 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
     deltaByteArray(page, nonnull)
   } else if (encoding === 'BYTE_STREAM_SPLIT') {
     writeByteStreamSplit(page, nonnull, type, type_length)
+  } else if (encoding === 'ALP') {
+    if (type !== 'FLOAT' && type !== 'DOUBLE') {
+      throw new Error('ALP encoding only supported for FLOAT and DOUBLE types')
+    }
+    writeALP(page, nonnull, type)
   } else {
     throw new Error(`parquet unsupported encoding: ${encoding}`)
   }
@@ -83,6 +89,7 @@ export function writeDataPageV2(writer, values, column, encoding, listValues) {
       num_values,
       num_nulls,
       num_rows: values.length,
+      // @ts-expect-error ALP encoding not yet in hyparquet types
       encoding,
       definition_levels_byte_length,
       repetition_levels_byte_length,
