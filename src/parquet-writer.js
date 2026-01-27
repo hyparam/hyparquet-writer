@@ -1,5 +1,6 @@
 import { getSchemaPath } from 'hyparquet/src/schema.js'
 import { writeColumn } from './column.js'
+import { encodeNestedValues, normalizeValue } from './dremel.js'
 import { writeIndexes } from './indexes.js'
 import { writeMetadata } from './metadata.js'
 import { snappyCompress } from './snappy.js'
@@ -7,7 +8,7 @@ import { snappyCompress } from './snappy.js'
 /**
  * ParquetWriter class allows incremental writing of parquet files.
  *
- * @import {ColumnChunk, CompressionCodec, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
+ * @import {ColumnChunk, CompressionCodec, DecodedArray, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
  * @import {ColumnEncoder, ColumnSource, Compressors, PageIndexes, Writer} from '../src/types.js'
  * @param {object} options
  * @param {Writer} options.writer
@@ -58,43 +59,46 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [100, 1000
       const { name, data, encoding, columnIndex = false, offsetIndex = false } = columnData[j]
       const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
 
-      const schemaTree = getSchemaPath(this.schema, [name])
-      // Dive into the leaf element
-      while (true) {
-        const child = schemaTree[schemaTree.length - 1]
-        if (!child.element.num_children) {
-          break
-        } else if (child.element.num_children === 1) {
-          schemaTree.push(child.children[0])
-        } else {
-          throw new Error(`parquet column ${name} struct unsupported`)
+      const schemaTreePath = getSchemaPath(this.schema, [name])
+      const leafPaths = getLeafSchemaPaths(schemaTreePath)
+      const columnNode = schemaTreePath.at(-1)
+      /** @type {DecodedArray} */
+      const normalizedData = columnNode
+        ? Array.from(groupData, row => normalizeValue(columnNode, row))
+        : Array.from(groupData)
+
+      for (const leafPath of leafPaths) {
+        const schemaPath = leafPath.map(node => node.element)
+        const element = schemaPath.at(-1)
+        if (!element) throw new Error(`parquet column ${name} missing schema element`)
+
+        const pageData = encodeNestedValues(schemaPath, normalizedData)
+        const columnValues = pageData.values
+
+        /** @type {ColumnEncoder} */
+        const column = {
+          columnName: schemaPath.length === 2 ? name : schemaPath.slice(1).map(s => s.name).join('.'),
+          element,
+          schemaPath,
+          codec: this.codec,
+          compressors: this.compressors,
+          stats: this.statistics,
+          pageSize,
+          columnIndex,
+          offsetIndex,
+          encoding,
         }
-      }
-      const schemaPath = schemaTree.map(node => node.element)
-      const element = schemaPath.at(-1)
-      if (!element) throw new Error(`parquet column ${name} missing schema element`)
-      /** @type {ColumnEncoder} */
-      const column = {
-        columnName: name,
-        element,
-        schemaPath,
-        codec: this.codec,
-        compressors: this.compressors,
-        stats: this.statistics,
-        pageSize,
-        columnIndex,
-        offsetIndex,
-        encoding,
-      }
 
-      const result = writeColumn({
-        writer: this.writer,
-        column,
-        values: groupData,
-      })
+        const result = writeColumn({
+          writer: this.writer,
+          column,
+          values: columnValues,
+          pageData,
+        })
 
-      columns.push(result.chunk)
-      this.pendingIndexes.push(result)
+        columns.push(result.chunk)
+        this.pendingIndexes.push(result)
+      }
     }
 
     this.num_rows += BigInt(groupSize)
@@ -160,4 +164,32 @@ function groupIterator({ columnDataRows, rowGroupSize }) {
     groupIndex++
   }
   return groups
+}
+
+/**
+ * Expand a schema path to all primitive leaf nodes under the column.
+ *
+ * @import {SchemaTree} from 'hyparquet/src/types.js'
+ * @param {SchemaTree[]} schemaPath
+ * @returns {SchemaTree[][]}
+ */
+function getLeafSchemaPaths(schemaPath) {
+  /** @type {SchemaTree[][]} */
+  const leaves = []
+  dfs([...schemaPath])
+  return leaves
+
+  /**
+   * @param {SchemaTree[]} path
+   */
+  function dfs(path) {
+    const node = path[path.length - 1]
+    if (!node.children.length) {
+      leaves.push(path)
+      return
+    }
+    for (const child of node.children) {
+      dfs([...path, child])
+    }
+  }
 }
