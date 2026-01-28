@@ -15,7 +15,7 @@ export function parquetWrite({
   codec = 'SNAPPY',
   compressors,
   statistics = true,
-  rowGroupSize = [100, 1000, 10000],
+  rowGroupSize = [1000, 100000],
   kvMetadata,
   pageSize = 1048576,
 }) {

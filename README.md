@@ -77,7 +77,7 @@ Options can be passed to `parquetWrite` to adjust parquet file writing behavior:
  - `codec`: use snappy compression (default true)
  - `compressors`: custom compressors
  - `statistics`: write column statistics (default true)
- - `rowGroupSize`: number of rows in each row group (default 100000)
+ - `rowGroupSize`: number of rows in each row group (default [1000, 100000])
  - `kvMetadata`: extra key-value metadata to be stored in the parquet footer
 
 ```javascript
@@ -159,6 +159,19 @@ parquetWrite({
   }),
 })
 ```
+
+## Default Parameters
+
+Hyparquet-writer is opinionated about default settings for modern parquet files. Modern parquet files often contain large text datasets, and should be optimized for viewing. All defaults can be configured via options.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `codec` | `'SNAPPY'` | Compression codec balancing size and speed |
+| `statistics` | `true` | Column statistics for predicate pushdown |
+| `rowGroupSize` | `[1000, 100000]` | Small first group for fast previews, larger groups for efficiency |
+| `pageSize` | `1048576` | Target page size (1 MB) |
+| `columnIndex` | `false` | Page-level min/max indexes |
+| `offsetIndex` | `true` | Page offsets for efficient skipping |
 
 ## References
 
