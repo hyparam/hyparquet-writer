@@ -11,8 +11,20 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     const numRows = 100
     /** @type {ColumnSource[]} */
     const columnData = [
-      { name: 'id', data: Array.from({ length: numRows }, (_, i) => i), type: 'INT32', columnIndex: true, offsetIndex: true },
-      { name: 'value', data: Array.from({ length: numRows }, (_, i) => i * 10), type: 'INT32', columnIndex: true, offsetIndex: true },
+      {
+        name: 'id',
+        data: Array.from({ length: numRows }, (_, i) => i),
+        type: 'INT32',
+        columnIndex: true,
+        offsetIndex: true,
+      },
+      {
+        name: 'value',
+        data: Array.from({ length: numRows }, (_, i) => i * 10),
+        type: 'INT32',
+        columnIndex: true,
+        offsetIndex: true,
+      },
     ]
 
     const buffer = parquetWriteBuffer({
@@ -81,7 +93,13 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     const numRows = 100
     /** @type {ColumnSource[]} */
     const columnData = [
-      { name: 'id', data: Array.from({ length: numRows }, (_, i) => i), type: 'INT32' },
+      {
+        name: 'id',
+        data: Array.from({ length: numRows }, (_, i) => i),
+        type: 'INT32',
+        columnIndex: false,
+        offsetIndex: false,
+      },
     ]
 
     const buffer = parquetWriteBuffer({
@@ -97,12 +115,22 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     expect(column0.offset_index_offset).toBeUndefined()
   })
 
-  it('handles per-column opt-in (first column both indexes)', () => {
+  it('handles per-column opt-out', () => {
     const numRows = 100
     /** @type {ColumnSource[]} */
     const columnData = [
-      { name: 'indexed', data: Array.from({ length: numRows }, (_, i) => i), type: 'INT32', columnIndex: true, offsetIndex: true },
-      { name: 'not_indexed', data: Array.from({ length: numRows }, (_, i) => i * 2), type: 'INT32' },
+      {
+        name: 'indexed',
+        data: Array.from({ length: numRows }, (_, i) => i),
+        type: 'INT32',
+        columnIndex: true,
+      },
+      {
+        name: 'not_indexed',
+        data: Array.from({ length: numRows }, (_, i) => i * 2),
+        type: 'INT32',
+        offsetIndex: false,
+      },
     ]
 
     const buffer = parquetWriteBuffer({
@@ -123,60 +151,17 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     expect(notIndexedColumn.offset_index_offset).toBeUndefined()
   })
 
-  it('handles per-column opt-in (second column both indexes)', async () => {
-    const numRows = 100
-    /** @type {ColumnSource[]} */
-    const columnData = [
-      { name: 'id', data: Array.from({ length: numRows }, (_, i) => i), type: 'INT32' },
-      { name: 'text', data: Array.from({ length: numRows }, (_, i) => `text${i}`), type: 'STRING', columnIndex: true, offsetIndex: true },
-    ]
-
-    const buffer = parquetWriteBuffer({
-      columnData,
-      pageSize: 100,
-    })
-
-    const metadata = parquetMetadata(buffer)
-    const idColumn = metadata.row_groups[0].columns[0]
-    const textColumn = metadata.row_groups[0].columns[1]
-
-    // id column should NOT have indexes (no pageIndex requested)
-    expect(idColumn.column_index_offset).toBeUndefined()
-    expect(idColumn.offset_index_offset).toBeUndefined()
-
-    // text column should have indexes
-    expect(textColumn.column_index_offset).toBeDefined()
-    expect(textColumn.offset_index_offset).toBeDefined()
-
-    // Read back the column index for text column
-    const arrayBuffer = buffer.slice(0)
-    const columnIndexOffset = Number(textColumn.column_index_offset)
-    const columnIndexLength = Number(textColumn.column_index_length)
-    const columnIndexArrayBuffer = arrayBuffer.slice(columnIndexOffset, columnIndexOffset + columnIndexLength)
-    const columnIndexReader = { view: new DataView(columnIndexArrayBuffer), offset: 0 }
-    const schemaPath = getSchemaPath(metadata.schema, textColumn.meta_data?.path_in_schema ?? [])
-    const columnIndex = readColumnIndex(columnIndexReader, schemaPath.at(-1)?.element || { name: '' })
-
-    // Verify column index contains text data (strings), not integer data
-    // The min/max values should be strings like 'text0', 'text1', etc.
-    expect(columnIndex.min_values).toBeDefined()
-    expect(columnIndex.max_values).toBeDefined()
-    expect(typeof columnIndex.min_values[0]).toBe('string')
-    expect(columnIndex.min_values[0]).toMatch(/^text/)
-
-    // Data should still be readable and correct
-    const rows = await parquetReadObjects({ file: buffer })
-    expect(rows.length).toBe(numRows)
-    expect(rows[0]).toEqual({ id: 0, text: 'text0' })
-    expect(rows[99]).toEqual({ id: 99, text: 'text99' })
-  })
-
   it('handles multiple pages with correct min/max values', () => {
     const numRows = 100
     // Create data that will span multiple pages
     /** @type {ColumnSource[]} */
     const columnData = [
-      { name: 'id', data: Array.from({ length: numRows }, (_, i) => i), type: 'INT32', columnIndex: true, offsetIndex: true },
+      {
+        name: 'id',
+        data: Array.from({ length: numRows }, (_, i) => i),
+        type: 'INT32',
+        columnIndex: true,
+      },
     ]
 
     const buffer = parquetWriteBuffer({
@@ -229,7 +214,6 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
         type: 'INT32',
         nullable: true,
         columnIndex: true,
-        offsetIndex: true,
       },
     ]
 
@@ -261,11 +245,17 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     expect(rows[1].nullable).toBe(1)
   })
 
-  it('writes only column index when offsetIndex is false', () => {
+  it('writes only column index', () => {
     const numRows = 100
     /** @type {ColumnSource[]} */
     const columnData = [
-      { name: 'id', data: Array.from({ length: numRows }, (_, i) => i), type: 'INT32', columnIndex: true },
+      {
+        name: 'id',
+        data: Array.from({ length: numRows }, (_, i) => i),
+        type: 'INT32',
+        columnIndex: true,
+        offsetIndex: false,
+      },
     ]
 
     const buffer = parquetWriteBuffer({
@@ -298,11 +288,11 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     expect(columnIndex.max_values).toBeDefined()
   })
 
-  it('writes only offset index when columnIndex is false', () => {
+  it('writes only offset index by default', () => {
     const data = Array.from({ length: 100 }, (_, i) => i)
     const buffer = parquetWriteBuffer({
       columnData: [
-        { name: 'id', data, type: 'INT32', offsetIndex: true },
+        { name: 'id', data, type: 'INT32' },
       ],
       pageSize: 100,
     })
@@ -336,7 +326,7 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     // since they are per-page structures meant to help skip pages during predicate pushdown
     const data = Array.from({ length: 10 }, (_, i) => i)
     const buffer = parquetWriteBuffer({ columnData: [
-      { name: 'id', data, type: 'INT32', columnIndex: true, offsetIndex: true },
+      { name: 'id', data, type: 'INT32', columnIndex: true },
     ] })
 
     const metadata = parquetMetadata(buffer)
@@ -348,37 +338,5 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     expect(column0.column_index_length).toBeUndefined()
     expect(column0.offset_index_offset).toBeUndefined()
     expect(column0.offset_index_length).toBeUndefined()
-  })
-
-  it('handles mixed index options per column', () => {
-    const data = Array.from({ length: 100 }, (_, i) => i)
-    const buffer = parquetWriteBuffer({
-      columnData: [
-        { name: 'col_index_only', data, type: 'INT32', columnIndex: true },
-        { name: 'offset_index_only', data, type: 'INT32', offsetIndex: true },
-        { name: 'both_indexes', data, type: 'INT32', columnIndex: true, offsetIndex: true },
-        { name: 'no_indexes', data, type: 'INT32' },
-      ],
-      pageSize: 100,
-    })
-
-    const metadata = parquetMetadata(buffer)
-    const cols = metadata.row_groups[0].columns
-
-    // col_index_only: only column index
-    expect(cols[0].column_index_offset).toBeDefined()
-    expect(cols[0].offset_index_offset).toBeUndefined()
-
-    // offset_index_only: only offset index
-    expect(cols[1].column_index_offset).toBeUndefined()
-    expect(cols[1].offset_index_offset).toBeDefined()
-
-    // both_indexes: both
-    expect(cols[2].column_index_offset).toBeDefined()
-    expect(cols[2].offset_index_offset).toBeDefined()
-
-    // no_indexes: neither
-    expect(cols[3].column_index_offset).toBeUndefined()
-    expect(cols[3].offset_index_offset).toBeUndefined()
   })
 })

@@ -70,15 +70,39 @@ Note: hyparquet-writer is published as an ES module, so dynamic `import()` may b
 
 ## Advanced Usage
 
-Options can be passed to `parquetWrite` to adjust parquet file writing behavior:
+By default, hyparquet-writer generates parquet files that are optimized for large text datasets and fast previews. Parquet file parameters can be configured via options:
 
- - `writer`: a generic writer object
- - `schema`: parquet schema object (optional)
- - `codec`: use snappy compression (default true)
- - `compressors`: custom compressors
- - `statistics`: write column statistics (default true)
- - `rowGroupSize`: number of rows in each row group (default 100000)
- - `kvMetadata`: extra key-value metadata to be stored in the parquet footer
+```typescript
+interface ParquetWriteOptions {
+  writer: Writer // generic writer
+  columnData: ColumnSource[]
+  schema?: SchemaElement[] // explicit parquet schema
+  codec?: CompressionCodec // compression codec (default 'SNAPPY')
+  compressors?: Compressors // custom compressors (default includes snappy)
+  statistics?: boolean // enable column statistics (default true)
+  pageSize?: number // target page size in bytes (default 1 mb)
+  rowGroupSize?: number | number[] // target row group size in rows (default [1000, 100000])
+  kvMetadata?: { key: string; value?: string }[] // extra key-value metadata
+}
+```
+
+Note: `rowGroupSize` can be either constant or an array of row group sizes, with the last size repeating. The default `[1000, 100000]` means the first row group will have 1000 rows, and all subsequent row groups will have 100,000 rows. This is optimized for fast previews of large datasets.
+
+Per-column options:
+
+```typescript
+interface ColumnSource {
+  name: string
+  data: DecodedArray
+  type?: BasicType
+  nullable?: boolean // allow nulls (default true)
+  encoding?: Encoding // parquet encoding (PLAIN, RLE, DELTA_BINARY_PACKED, BYTE_STREAM_SPLIT, etc)
+  columnIndex?: boolean // enable page-level column index (default false)
+  offsetIndex?: boolean // enable page-level offset index (default true)
+}
+```
+
+Example:
 
 ```javascript
 import { ByteWriter, parquetWrite } from 'hyparquet-writer'
@@ -100,8 +124,8 @@ parquetWrite({
     { name: 'dob', type: 'INT32', converted_type: 'DATE' },
   ],
   compressors: { SNAPPY: snappyCompresss }, // high performance wasm compressor
-  statistics: false,
-  rowGroupSize: 1000,
+  statistics: false, // disable statistics
+  rowGroupSize: 1000000, // large row groups
   kvMetadata: [
     { key: 'key1', value: 'value1' },
     { key: 'key2', value: 'value2' },
@@ -110,33 +134,43 @@ parquetWrite({
 const arrayBuffer = writer.getBuffer()
 ```
 
-### Types
+## Column Types
 
-Parquet requires an explicit schema to be defined. You can provide schema information in three ways:
+Hyparquet-writer supports several ways to define the parquet schema. The simplest way is to provide basic types in the `columnData` elements.
 
-1. **Type**: You can provide a `type` in the `columnData` elements, the type will be used as the schema type.
-2. **Schema**: You can provide a `schema` parameter that explicitly defines the parquet schema. The schema should be an array of `SchemaElement` objects (see [parquet-format](https://github.com/apache/parquet-format)), each containing the following properties:
-   - `name`: column name
-   - `type`: parquet type
-   - `num_children`: number children in parquet nested schema (optional)
-   - `converted_type`: parquet converted type (optional)
-   - `logical_type`: parquet logical type (optional)
-   - `repetition_type`: parquet repetition type (optional)
-   - `type_length`: length for `FIXED_LENGTH_BYTE_ARRAY` type (optional)
-   - `scale`: the scale factor for `DECIMAL` converted types (optional)
-   - `precision`: the precision for `DECIMAL` converted types (optional)
-   - `field_id`: the field id for the column (optional)
-3. **Auto-detect**: If you provide no type or schema, the type will be auto-detected from the data. However, it is recommended that you provide type information when possible. (zero rows would throw an exception, floats might be typed as int, etc)
+If you don't provide types, the types will be auto-detected from the data. However, it is still recommended that you provide type information when possible. (zero rows would throw an exception, floats might be typed as int, etc)
 
-Most converted types will be auto-detected if you just provide data with no types. However, it is still recommended that you provide type information when possible. (zero rows would throw an exception, floats might be typed as int, etc)
+### Explicit Schema
 
-#### Schema Overrides
+You can provide your own parquet schema of type `SchemaElement` (see [parquet-format](https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift)):
+
+```typescript
+import { ByteWriter, parquetWrite } from 'hyparquet-writer'
+
+const writer = new ByteWriter()
+parquetWrite({
+  writer,
+  columnData: [
+    { name: 'name', data: ['Alice', 'Bob', 'Charlie'] },
+    { name: 'age', data: [25, 30, 35] },
+  ],
+  // explicit schema:
+  schema: [
+    { name: 'root', num_children: 2 },
+    { name: 'name', type: 'BYTE_ARRAY', converted_type: 'UTF8', repetition_type: 'REQUIRED' },
+    { name: 'age', type: 'INT32', repetition_type: 'REQUIRED' },
+  ],
+})
+```
+
+### Schema Overrides
 
 You can use mostly automatic schema detection, but override the schema for specific columns. This is useful if most of the column types can be automatically determined, but you want to use a specific schema element for one particular element.
 
 ```javascript
 const { ByteWriter, parquetWrite, schemaFromColumnData } = await import("hyparquet-writer")
 
+// one unsigned and one signed int column
 const columnData = [
   { name: 'unsigned_int', data: [1000000, 2000000] },
   { name: 'signed_int', data: [1000000, 2000000] },
@@ -145,7 +179,7 @@ const writer = new ByteWriter()
 parquetWrite({
   writer,
   columnData,
-  // override schema for uint column
+  // override schema for unsigned_int column
   schema: schemaFromColumnData({
     columnData,
     schemaOverrides: {

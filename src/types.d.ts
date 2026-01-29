@@ -38,7 +38,7 @@ export interface ColumnSource {
   nullable?: boolean
   encoding?: Encoding
   columnIndex?: boolean // write column indexes, default false
-  offsetIndex?: boolean // write offset indexes, default false
+  offsetIndex?: boolean // write offset indexes, default true
 }
 
 export interface PageData {

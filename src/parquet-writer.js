@@ -47,7 +47,7 @@ export function ParquetWriter({ writer, schema, codec = 'SNAPPY', compressors, s
  * @param {number | number[]} [options.rowGroupSize]
  * @param {number} [options.pageSize]
  */
-ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [100, 1000, 10000], pageSize = 1048576 }) {
+ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100000], pageSize = 1048576 }) {
   const columnDataRows = columnData[0]?.data?.length || 0
   for (const { groupStartIndex, groupSize } of groupIterator({ columnDataRows, rowGroupSize })) {
     const groupStartOffset = this.writer.offset
@@ -56,7 +56,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [100, 1000
 
     // write columns
     for (let j = 0; j < columnData.length; j++) {
-      const { name, data, encoding, columnIndex = false, offsetIndex = false } = columnData[j]
+      const { name, data, encoding, columnIndex = false, offsetIndex = true } = columnData[j]
       const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
 
       const schemaTreePath = getSchemaPath(this.schema, [name])

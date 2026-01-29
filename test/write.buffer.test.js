@@ -249,18 +249,18 @@ describe('parquetWriteBuffer', () => {
   })
 
   it('splits row groups with default sizes', async () => {
-    // Default rowGroupSize is [100, 1000, 10000], repeating 10000
-    const data = Array(50000).fill(13)
+    // Default rowGroupSize is [1000, 100000], repeating 100000
+    const data = Array(250000).fill(13)
     const file = parquetWriteBuffer({ columnData: [{ name: 'int', data }] })
     const metadata = parquetMetadata(file)
-    expect(metadata.row_groups.length).toBe(7)
-    expect(metadata.row_groups[0].num_rows).toBe(100n)
-    expect(metadata.row_groups[1].num_rows).toBe(1000n)
-    expect(metadata.row_groups[2].num_rows).toBe(10000n)
-    expect(metadata.row_groups[3].num_rows).toBe(10000n)
+    expect(metadata.row_groups.length).toBe(4)
+    expect(metadata.row_groups[0].num_rows).toBe(1000n)
+    expect(metadata.row_groups[1].num_rows).toBe(100000n)
+    expect(metadata.row_groups[2].num_rows).toBe(100000n)
+    expect(metadata.row_groups[3].num_rows).toBe(49000n)
     // round trip
     const result = await parquetReadObjects({ file })
-    expect(result.length).toBe(50000)
+    expect(result.length).toBe(250000)
   })
 
   it('splits row groups', async () => {
