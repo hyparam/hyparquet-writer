@@ -4,13 +4,15 @@ const INT64_MAX = 2n ** 63n - 1n
 
 /**
  * Encode an array of arbitrary JS values into variant binary format.
- * Each row becomes { metadata: Uint8Array, value: Uint8Array } (or null for missing values).
- * The metadata Uint8Array is shared across all rows in the column.
+ * Each row becomes { metadata, value } (or null for missing values).
+ * When shredding is provided, produces { metadata, value, typed_value } per row.
  *
+ * @import {BasicType} from '../src/types.js'
  * @param {any[]} values
- * @returns {Array<{ metadata: Uint8Array, value: Uint8Array } | null>}
+ * @param {Record<string, BasicType>} [shredding]
+ * @returns {Array<Record<string, any> | null>}
  */
-export function encodeVariantColumn(values) {
+export function encodeVariantColumn(values, shredding) {
   const dictionary = buildVariantDictionary(values)
   const metadata = writeVariantMetadata(dictionary)
   /** @type {Map<string, number>} */
@@ -18,11 +20,159 @@ export function encodeVariantColumn(values) {
   for (let i = 0; i < dictionary.length; i++) {
     keyIndex.set(dictionary[i], i)
   }
+  if (shredding) {
+    const fieldNames = Object.keys(shredding)
+    return values.map(value => {
+      if (value === undefined) return null
+      return encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNames)
+    })
+  }
   return values.map(value => {
     // Keep top-level null as a present Variant null (0x00). Only undefined is missing.
     if (value === undefined) return null
     return { metadata, value: writeVariantValue(value, keyIndex) }
   })
+}
+
+/**
+ * Encode a single row with variant shredding.
+ * Splits object fields into shredded typed_value columns and remaining binary value.
+ *
+ * @param {any} value
+ * @param {Uint8Array} metadata
+ * @param {Map<string, number>} keyIndex
+ * @param {Record<string, BasicType>} shredding
+ * @param {string[]} fieldNames
+ * @returns {Record<string, any>}
+ */
+function encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNames) {
+  // null -> value: variant null, typed_value: null
+  if (value === null) {
+    return { metadata, value: new Uint8Array([0x00]), typed_value: null }
+  }
+
+  // non-object -> value: binary variant, typed_value: null
+  if (typeof value !== 'object' || Array.isArray(value) || value instanceof Date || value instanceof Uint8Array) {
+    return { metadata, value: writeVariantValue(value, keyIndex), typed_value: null }
+  }
+
+  // object -> split into shredded fields + remaining fields
+  /** @type {Record<string, any>} */
+  const typedValue = {}
+  const shreddedKeys = new Set(fieldNames)
+
+  for (const fieldName of fieldNames) {
+    const fieldType = shredding[fieldName]
+    if (!(fieldName in value)) {
+      // missing field: both value and typed_value null
+      typedValue[fieldName] = { value: null, typed_value: null }
+    } else if (value[fieldName] === null || value[fieldName] === undefined) {
+      // null field: value is variant null, typed_value null
+      typedValue[fieldName] = { value: new Uint8Array([0x00]), typed_value: null }
+    } else if (matchesType(value[fieldName], fieldType)) {
+      // type matches: typed_value gets native value, value null
+      typedValue[fieldName] = { value: null, typed_value: value[fieldName] }
+    } else {
+      // type mismatch: value gets binary variant, typed_value null
+      typedValue[fieldName] = { value: writeVariantValue(value[fieldName], keyIndex), typed_value: null }
+    }
+  }
+
+  // remaining (non-shredded) fields go into binary value
+  const remainingKeys = Object.keys(value).filter(k => !shreddedKeys.has(k))
+  /** @type {Uint8Array | null} */
+  let binaryValue = null
+  if (remainingKeys.length > 0) {
+    /** @type {Record<string, any>} */
+    const remaining = {}
+    for (const k of remainingKeys) {
+      remaining[k] = value[k]
+    }
+    binaryValue = writeVariantValue(remaining, keyIndex)
+  }
+
+  return { metadata, value: binaryValue, typed_value: typedValue }
+}
+
+/**
+ * Check if a JS value matches a BasicType for shredding.
+ *
+ * @param {any} value
+ * @param {BasicType} type
+ * @returns {boolean}
+ */
+function matchesType(value, type) {
+  if (value === null || value === undefined) return false
+  switch (type) {
+  case 'BOOLEAN': return typeof value === 'boolean'
+  case 'INT32': return typeof value === 'number' && Number.isInteger(value) && value >= -2147483648 && value <= 2147483647
+  case 'INT64': return typeof value === 'bigint' && value >= INT64_MIN && value <= INT64_MAX
+  case 'FLOAT': return typeof value === 'number'
+  case 'DOUBLE': return typeof value === 'number'
+  case 'STRING': return typeof value === 'string'
+  case 'TIMESTAMP': return value instanceof Date
+  default: return false
+  }
+}
+
+/**
+ * Auto-detect shredding config by analyzing values for consistent field types.
+ * Scans all object values and finds fields where every non-null occurrence has the same type.
+ *
+ * @param {any[]} values
+ * @returns {Record<string, BasicType> | undefined}
+ */
+export function autoDetectShredding(values) {
+  /** @type {Record<string, string>} field name -> detected JS type */
+  const fieldTypes = {}
+  /** @type {Record<string, boolean>} field name -> has consistent type */
+  const consistent = {}
+  let hasObjects = false
+
+  for (const value of values) {
+    if (value === null || value === undefined) continue
+    if (typeof value !== 'object' || Array.isArray(value) || value instanceof Date || value instanceof Uint8Array) continue
+    hasObjects = true
+    for (const [key, fieldValue] of Object.entries(value)) {
+      if (fieldValue === null || fieldValue === undefined) continue
+      const jsType = fieldValue instanceof Date ? 'date' : typeof fieldValue
+      if (!(key in fieldTypes)) {
+        fieldTypes[key] = jsType
+        consistent[key] = true
+      } else if (fieldTypes[key] !== jsType) {
+        consistent[key] = false
+      }
+    }
+  }
+
+  if (!hasObjects) return undefined
+
+  /** @type {Record<string, BasicType>} */
+  const shredding = {}
+  for (const [key, jsType] of Object.entries(fieldTypes)) {
+    if (!consistent[key]) continue
+    const basicType = jsTypeToBasicType(jsType)
+    if (basicType) shredding[key] = basicType
+  }
+
+  return Object.keys(shredding).length > 0 ? shredding : undefined
+}
+
+/**
+ * Map a JS typeof string to a BasicType for shredding.
+ *
+ * @param {string} jsType
+ * @returns {BasicType | undefined}
+ */
+function jsTypeToBasicType(jsType) {
+  switch (jsType) {
+  case 'boolean': return 'BOOLEAN'
+  case 'string': return 'STRING'
+  case 'number': return 'DOUBLE'
+  case 'bigint': return 'INT64'
+  case 'date': return 'TIMESTAMP'
+  default: return undefined
+  }
 }
 
 /**

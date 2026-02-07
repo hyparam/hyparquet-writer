@@ -19,7 +19,7 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
     num_children: columnData.length,
   }]
 
-  for (const { name, data, type, nullable } of columnData) {
+  for (const { name, data, type, nullable, shredding } of columnData) {
     if (schemaOverrides?.[name]) {
       // use schema override
       const override = schemaOverrides[name]
@@ -40,11 +40,30 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
     } else if (type === 'VARIANT') {
       // variant group with metadata and value children
       const repetition_type = nullable === false ? 'REQUIRED' : 'OPTIONAL'
-      schema.push(
-        { name, repetition_type, num_children: 2, logical_type: { type: 'VARIANT' } },
-        { name: 'metadata', type: 'BYTE_ARRAY', repetition_type: 'REQUIRED' },
-        { name: 'value', type: 'BYTE_ARRAY', repetition_type: 'OPTIONAL' }
-      )
+      const shreddingConfig = typeof shredding === 'object' ? shredding : undefined
+      if (shreddingConfig) {
+        const fieldNames = Object.keys(shreddingConfig)
+        schema.push(
+          { name, repetition_type, num_children: 3, logical_type: { type: 'VARIANT' } },
+          { name: 'metadata', type: 'BYTE_ARRAY', repetition_type: 'REQUIRED' },
+          { name: 'value', type: 'BYTE_ARRAY', repetition_type: 'OPTIONAL' },
+          { name: 'typed_value', repetition_type: 'OPTIONAL', num_children: fieldNames.length }
+        )
+        for (const fieldName of fieldNames) {
+          const fieldType = shreddingConfig[fieldName]
+          schema.push(
+            { name: fieldName, repetition_type: 'REQUIRED', num_children: 2 },
+            { name: 'value', type: 'BYTE_ARRAY', repetition_type: 'OPTIONAL' },
+            shreddedFieldElement(fieldType)
+          )
+        }
+      } else {
+        schema.push(
+          { name, repetition_type, num_children: 2, logical_type: { type: 'VARIANT' } },
+          { name: 'metadata', type: 'BYTE_ARRAY', repetition_type: 'REQUIRED' },
+          { name: 'value', type: 'BYTE_ARRAY', repetition_type: 'OPTIONAL' }
+        )
+      }
     } else if (type) {
       // use provided type
       schema.push(basicTypeToSchemaElement(name, type, nullable))
@@ -55,6 +74,33 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
   }
 
   return schema
+}
+
+/**
+ * Map a BasicType to the inner typed_value SchemaElement for shredded fields.
+ *
+ * @param {BasicType} type
+ * @returns {SchemaElement}
+ */
+function shreddedFieldElement(type) {
+  switch (type) {
+  case 'STRING':
+    return { name: 'typed_value', type: 'BYTE_ARRAY', converted_type: 'UTF8', repetition_type: 'OPTIONAL' }
+  case 'INT32':
+    return { name: 'typed_value', type: 'INT32', repetition_type: 'OPTIONAL' }
+  case 'INT64':
+    return { name: 'typed_value', type: 'INT64', repetition_type: 'OPTIONAL' }
+  case 'DOUBLE':
+    return { name: 'typed_value', type: 'DOUBLE', repetition_type: 'OPTIONAL' }
+  case 'FLOAT':
+    return { name: 'typed_value', type: 'FLOAT', repetition_type: 'OPTIONAL' }
+  case 'BOOLEAN':
+    return { name: 'typed_value', type: 'BOOLEAN', repetition_type: 'OPTIONAL' }
+  case 'TIMESTAMP':
+    return { name: 'typed_value', type: 'INT64', converted_type: 'TIMESTAMP_MICROS', repetition_type: 'OPTIONAL' }
+  default:
+    throw new Error(`unsupported shredded field type: ${type}`)
+  }
 }
 
 /**

@@ -40,6 +40,7 @@ export interface ColumnSource {
   encoding?: Encoding
   columnIndex?: boolean // write column indexes, default false
   offsetIndex?: boolean // write offset indexes, default true
+  shredding?: true | Record<string, BasicType> // variant shredding config
 }
 
 export interface PageData {

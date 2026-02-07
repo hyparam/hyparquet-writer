@@ -66,7 +66,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
 
       // write columns
       for (let j = 0; j < columnData.length; j++) {
-        const { name, data, encoding, columnIndex = false, offsetIndex = true } = columnData[j]
+        const { name, data, encoding, columnIndex = false, offsetIndex = true, shredding } = columnData[j]
 
         // Spec: if ColumnIndex is present, OffsetIndex must also be present
         if (columnIndex && !offsetIndex) {
@@ -82,8 +82,9 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
 
         // For VARIANT logical type, encode JS values into {metadata, value} structs
         const columnElement = columnPath.at(-1)?.element
+        const shreddingConfig = typeof shredding === 'object' ? shredding : undefined
         const rows = columnElement?.logical_type?.type === 'VARIANT'
-          ? encodeVariantColumn(Array.from(groupData))
+          ? encodeVariantColumn(Array.from(groupData), shreddingConfig)
           : groupData
 
         for (const leafPath of leafPaths) {
