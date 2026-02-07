@@ -37,6 +37,14 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
         throw new Error('schema override does not support nested types')
       }
       schema.push(override)
+    } else if (type === 'VARIANT') {
+      // variant group with metadata and value children
+      const repetition_type = nullable === false ? 'REQUIRED' : 'OPTIONAL'
+      schema.push(
+        { name, repetition_type, num_children: 2, logical_type: { type: 'VARIANT' } },
+        { name: 'metadata', type: 'BYTE_ARRAY', repetition_type: 'REQUIRED' },
+        { name: 'value', type: 'BYTE_ARRAY', repetition_type: 'OPTIONAL' }
+      )
     } else if (type) {
       // use provided type
       schema.push(basicTypeToSchemaElement(name, type, nullable))
@@ -51,7 +59,7 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
 
 /**
  * @param {string} name
- * @param {BasicType} type
+ * @param {Exclude<BasicType, 'VARIANT'>} type
  * @param {boolean} [nullable]
  * @returns {SchemaElement}
  */

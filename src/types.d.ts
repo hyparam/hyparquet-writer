@@ -17,7 +17,8 @@ export type BasicType =
   'UUID' |
   'FLOAT16' |
   'GEOMETRY' |
-  'GEOGRAPHY'
+  'GEOGRAPHY' |
+  'VARIANT'
 
 export interface ParquetWriteOptions {
   writer: Writer

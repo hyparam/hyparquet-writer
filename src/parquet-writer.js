@@ -4,6 +4,7 @@ import { encodeNestedValues } from './dremel.js'
 import { writeIndexes } from './indexes.js'
 import { writeMetadata } from './metadata.js'
 import { snappyCompress } from './snappy.js'
+import { encodeVariantColumn } from './variant.js'
 
 /**
  * @import {ColumnChunk, CompressionCodec, FileMetaData, KeyValue, RowGroup, SchemaElement, SchemaTree} from 'hyparquet'
@@ -79,6 +80,12 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
         const columnPath = getSchemaPath(this.schema, [name])
         const leafPaths = getLeafSchemaPaths(columnPath)
 
+        // For VARIANT logical type, encode JS values into {metadata, value} structs
+        const columnElement = columnPath.at(-1)?.element
+        const rows = columnElement?.logical_type?.type === 'VARIANT'
+          ? encodeVariantColumn(Array.from(groupData))
+          : groupData
+
         for (const leafPath of leafPaths) {
           const schemaPath = leafPath.map(node => node.element)
 
@@ -96,7 +103,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
             encoding,
           }
 
-          const pageData = encodeNestedValues(leafPath, groupData)
+          const pageData = encodeNestedValues(leafPath, rows)
           const result = writeColumn({
             writer: this.writer,
             column,
