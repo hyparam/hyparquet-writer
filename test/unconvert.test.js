@@ -68,6 +68,117 @@ describe('unconvert', () => {
     ).toThrow('JSON must be an array')
   })
 
+  it.for([
+    {
+      name: 'DATE passthrough',
+      schema: { name: 'test', converted_type: 'DATE' },
+      input: [20503, 20504],
+      expected: [20503, 20504],
+    },
+    {
+      name: 'TIMESTAMP_MILLIS passthrough',
+      schema: { name: 'test', converted_type: 'TIMESTAMP_MILLIS' },
+      input: [1771544750000n, 1771631150000n],
+      expected: [1771544750000n, 1771631150000n],
+    },
+    {
+      name: 'TIMESTAMP_MILLIS from Date',
+      schema: { name: 'test', converted_type: 'TIMESTAMP_MILLIS' },
+      input: [new Date('2026-02-19T23:45:50Z')],
+      expected: [1771544750000n],
+    },
+    {
+      name: 'TIMESTAMP_MICROS passthrough',
+      schema: { name: 'test', converted_type: 'TIMESTAMP_MICROS' },
+      input: [1771544750000000n, 1771631150000000n],
+      expected: [1771544750000000n, 1771631150000000n],
+    },
+    {
+      name: 'TIMESTAMP_MICROS from Date',
+      schema: { name: 'test', converted_type: 'TIMESTAMP_MICROS' },
+      input: [new Date('2026-02-19T23:45:50Z')],
+      expected: [1771544750000000n],
+    },
+  ])('should unconvert converted_type $name', ({ schema, input, expected }) => {
+    const result = unconvert(schema, input)
+    expect(result).toEqual(expected)
+  })
+
+  it('should handle null values when converted_type = DATE', () => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', converted_type: 'DATE' }
+    const input = [null, new Date('2026-02-19T00:00:00Z'), undefined]
+    const result = unconvert(schema, input)
+    expect(result).toEqual([null, 20503, undefined])
+  })
+
+  it.for([
+    {
+      unit: 'MILLIS',
+      expected: [1771544750000n],
+    },
+    {
+      unit: 'MICROS',
+      expected: [1771544750000000n],
+    },
+    {
+      unit: 'NANOS',
+      expected: [1771544750000000000n],
+    },
+  ])('should convert Date to bigint for logical_type TIMESTAMP $unit', ({ unit, expected }) => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', logical_type: { type: 'TIMESTAMP', isAdjustedToUTC: true, unit } }
+    const input = [new Date('2026-02-19T23:45:50Z')]
+    const result = unconvert(schema, input)
+    expect(result).toEqual(expected)
+  })
+
+  it.for([
+    {
+      unit: 'MILLIS',
+      input: [1771544750000n],
+      expected: [1771544750000n],
+    },
+    {
+      unit: 'MICROS',
+      input: [1771544750000000n],
+      expected: [1771544750000000n],
+    },
+    {
+      unit: 'NANOS',
+      input: [1771544750000000000n],
+      expected: [1771544750000000000n],
+    },
+  ])('should pass through bigint values for logical_type TIMESTAMP $unit', ({ unit, input, expected }) => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', logical_type: { type: 'TIMESTAMP', isAdjustedToUTC: true, unit } }
+    const result = unconvert(schema, input)
+    expect(result).toEqual(expected)
+  })
+
+  it.for([
+    {
+      unit: 'MILLIS',
+      input: [null, 1771544750000n, undefined],
+      expected: [null, 1771544750000n, undefined],
+    },
+    {
+      unit: 'MICROS',
+      input: [null, 1771544750000000n, undefined],
+      expected: [null, 1771544750000000n, undefined],
+    },
+    {
+      unit: 'NANOS',
+      input: [null, 1771544750000000000n, undefined],
+      expected: [null, 1771544750000000000n, undefined],
+    },
+  ])('should handle null values in logical_type TIMESTAMP $unit', ({ unit, input, expected }) => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', logical_type: { type: 'TIMESTAMP', isAdjustedToUTC: true, unit } }
+    const result = unconvert(schema, input)
+    expect(result).toEqual(expected)
+  })
+
   it('should return original values if there is no recognized converted_type', () => {
     const input = [1, 2, 3]
     const result = unconvert({ name: 'test' }, input)
@@ -164,6 +275,68 @@ describe('unconvertMinMax', () => {
     const schema = { name: 'test', type: 'INT64' }
     expect(() => unconvertMinMax(123, schema))
       .toThrow('unsupported type for statistics: INT64 with value 123')
+  })
+
+  it.for([
+    {
+      name: 'bigint TIMESTAMP_MILLIS',
+      schema: { name: 'test', type: 'INT64', converted_type: 'TIMESTAMP_MILLIS' },
+      value: 1771544750000n,
+      expected: 1771544750000n,
+    },
+    {
+      name: 'Date TIMESTAMP_MICROS',
+      schema: { name: 'test', type: 'INT64', converted_type: 'TIMESTAMP_MICROS' },
+      value: new Date('2026-02-19T23:45:50Z'),
+      expected: 1771544750000000n,
+    },
+    {
+      name: 'bigint TIMESTAMP_MICROS',
+      schema: { name: 'test', type: 'INT64', converted_type: 'TIMESTAMP_MICROS' },
+      value: 1771544750000000n,
+      expected: 1771544750000000n,
+    },
+    {
+      name: 'Date logical_type TIMESTAMP MILLIS',
+      schema: { name: 'test', type: 'INT64', logical_type: { type: 'TIMESTAMP', isAdjustedToUTC: true, unit: 'MILLIS' } },
+      value: new Date('2026-02-19T23:45:50Z'),
+      expected: 1771544750000n,
+    },
+    {
+      name: 'bigint logical_type TIMESTAMP MILLIS',
+      schema: { name: 'test', type: 'INT64', logical_type: { type: 'TIMESTAMP', isAdjustedToUTC: true, unit: 'MILLIS' } },
+      value: 1771544750000n,
+      expected: 1771544750000n,
+    },
+    {
+      name: 'Date logical_type TIMESTAMP MICROS',
+      schema: { name: 'test', type: 'INT64', logical_type: { type: 'TIMESTAMP', isAdjustedToUTC: true, unit: 'MICROS' } },
+      value: new Date('2026-02-19T23:45:50Z'),
+      expected: 1771544750000000n,
+    },
+    {
+      name: 'bigint logical_type TIMESTAMP MICROS',
+      schema: { name: 'test', type: 'INT64', logical_type: { type: 'TIMESTAMP', isAdjustedToUTC: true, unit: 'MICROS' } },
+      value: 1771544750000000n,
+      expected: 1771544750000000n,
+    },
+    {
+      name: 'Date logical_type TIMESTAMP NANOS',
+      schema: { name: 'test', type: 'INT64', logical_type: { type: 'TIMESTAMP', isAdjustedToUTC: true, unit: 'NANOS' } },
+      value: new Date('2026-02-19T23:45:50Z'),
+      expected: 1771544750000000000n,
+    },
+    {
+      name: 'bigint logical_type TIMESTAMP NANOS',
+      schema: { name: 'test', type: 'INT64', logical_type: { type: 'TIMESTAMP', isAdjustedToUTC: true, unit: 'NANOS' } },
+      value: 1771544750000000000n,
+      expected: 1771544750000000000n,
+    },
+  ])('should encode $name for INT64', ({ schema, value, expected }) => {
+    const result = unconvertMinMax(value, schema)
+    expect(result).toBeInstanceOf(Uint8Array)
+    const view = new DataView(result.buffer)
+    expect(view.getBigInt64(0, true)).toEqual(expected)
   })
 })
 
