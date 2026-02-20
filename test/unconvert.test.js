@@ -4,7 +4,7 @@ import { convertMetadata } from 'hyparquet/src/metadata.js'
 import { DEFAULT_PARSERS, parseFloat16 } from 'hyparquet/src/convert.js'
 
 /**
- * @import {SchemaElement} from 'hyparquet'
+ * @import {SchemaElement, TimeUnit} from 'hyparquet'
  */
 describe('unconvert', () => {
   it('should return Date objects when converted_type = DATE', () => {
@@ -68,7 +68,8 @@ describe('unconvert', () => {
     ).toThrow('JSON must be an array')
   })
 
-  it.for([
+  /** @type {Array<{name: string, schema: SchemaElement, input: any[], expected: any[]}>} */
+  const convertedTypeConversionCases = [
     {
       name: 'DATE passthrough',
       schema: { name: 'test', converted_type: 'DATE' },
@@ -99,7 +100,8 @@ describe('unconvert', () => {
       input: [new Date('2026-02-19T23:45:50Z')],
       expected: [1771544750000000n],
     },
-  ])('should unconvert converted_type $name', ({ schema, input, expected }) => {
+  ]
+  it.for(convertedTypeConversionCases)('should convert $name via converted_type', ({ schema, input, expected }) => {
     const result = unconvert(schema, input)
     expect(result).toEqual(expected)
   })
@@ -112,7 +114,8 @@ describe('unconvert', () => {
     expect(result).toEqual([null, 20503, undefined])
   })
 
-  it.for([
+  /** @type {Array<{unit: TimeUnit, expected: bigint[]}>} */
+  const dateToTimestampCases = [
     {
       unit: 'MILLIS',
       expected: [1771544750000n],
@@ -125,7 +128,8 @@ describe('unconvert', () => {
       unit: 'NANOS',
       expected: [1771544750000000000n],
     },
-  ])('should convert Date to bigint for logical_type TIMESTAMP $unit', ({ unit, expected }) => {
+  ]
+  it.for(dateToTimestampCases)('should convert Date to bigint for logical_type TIMESTAMP $unit', ({ unit, expected }) => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', logical_type: { type: 'TIMESTAMP', isAdjustedToUTC: true, unit } }
     const input = [new Date('2026-02-19T23:45:50Z')]
@@ -133,7 +137,8 @@ describe('unconvert', () => {
     expect(result).toEqual(expected)
   })
 
-  it.for([
+  /** @type {Array<{unit: TimeUnit, input: bigint[], expected: bigint[]}>} */
+  const bigintPassthroughCases = [
     {
       unit: 'MILLIS',
       input: [1771544750000n],
@@ -149,14 +154,16 @@ describe('unconvert', () => {
       input: [1771544750000000000n],
       expected: [1771544750000000000n],
     },
-  ])('should pass through bigint values for logical_type TIMESTAMP $unit', ({ unit, input, expected }) => {
+  ]
+  it.for(bigintPassthroughCases)('should pass through bigint values for logical_type TIMESTAMP $unit', ({ unit, input, expected }) => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', logical_type: { type: 'TIMESTAMP', isAdjustedToUTC: true, unit } }
     const result = unconvert(schema, input)
     expect(result).toEqual(expected)
   })
 
-  it.for([
+  /** @type {Array<{unit: TimeUnit, input: any[], expected: any[]}>} */
+  const nullTimestampCases = [
     {
       unit: 'MILLIS',
       input: [null, 1771544750000n, undefined],
@@ -172,7 +179,8 @@ describe('unconvert', () => {
       input: [null, 1771544750000000000n, undefined],
       expected: [null, 1771544750000000000n, undefined],
     },
-  ])('should handle null values in logical_type TIMESTAMP $unit', ({ unit, input, expected }) => {
+  ]
+  it.for(nullTimestampCases)('should handle null values in logical_type TIMESTAMP $unit', ({ unit, input, expected }) => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', logical_type: { type: 'TIMESTAMP', isAdjustedToUTC: true, unit } }
     const result = unconvert(schema, input)
@@ -277,7 +285,8 @@ describe('unconvertMinMax', () => {
       .toThrow('unsupported type for statistics: INT64 with value 123')
   })
 
-  it.for([
+  /** @type {Array<{name: string, schema: SchemaElement, value: bigint | Date, expected: bigint}>} */
+  const int64EncodeCases = [
     {
       name: 'bigint TIMESTAMP_MILLIS',
       schema: { name: 'test', type: 'INT64', converted_type: 'TIMESTAMP_MILLIS' },
@@ -332,9 +341,10 @@ describe('unconvertMinMax', () => {
       value: 1771544750000000000n,
       expected: 1771544750000000000n,
     },
-  ])('should encode $name for INT64', ({ schema, value, expected }) => {
+  ]
+  it.for(int64EncodeCases)('should encode $name for INT64', ({ schema, value, expected }) => {
     const result = unconvertMinMax(value, schema)
-    expect(result).toBeInstanceOf(Uint8Array)
+    if (!result) throw new Error('expected result')
     const view = new DataView(result.buffer)
     expect(view.getBigInt64(0, true)).toEqual(expected)
   })
