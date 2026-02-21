@@ -1,8 +1,7 @@
 import { getMaxDefinitionLevel } from './schema.js'
 
 /**
- * @import {SchemaElement} from 'hyparquet'
- * @import {SchemaTree} from 'hyparquet/src/types.js'
+ * @import {DecodedArray, SchemaElement, SchemaTree} from 'hyparquet'
  * @import {PageData} from '../src/types.js'
  */
 
@@ -12,25 +11,22 @@ import { getMaxDefinitionLevel } from './schema.js'
  * leaf values from the nested structure.
  *
  * @param {SchemaElement[]} schemaPath schema elements from root to leaf
- * @param {any[]} rows column data for the current row group
+ * @param {DecodedArray} rows column data for the current row group
  * @returns {PageData}
  */
 export function encodeNestedValues(schemaPath, rows) {
   if (schemaPath.length < 2) throw new Error('parquet schema path must include column')
 
-  const maxDefinitionLevel = getMaxDefinitionLevel(schemaPath)
-
-  // Flat required columns don't need Dremel encoding
-  if (schemaPath.length === 2 && maxDefinitionLevel === 0) {
-    return { values: rows, definitionLevels: [], repetitionLevels: [], numNulls: 0, maxDefinitionLevel: 0 }
-  }
-
-  /** @type {any[]} */
-  const values = []
   /** @type {number[]} */
   const definitionLevels = []
   /** @type {number[]} */
   const repetitionLevels = []
+  const maxDefinitionLevel = getMaxDefinitionLevel(schemaPath)
+
+  // Flat required columns don't need Dremel encoding
+  if (schemaPath.length === 2 && maxDefinitionLevel === 0) {
+    return { values: rows, definitionLevels, repetitionLevels, maxDefinitionLevel }
+  }
 
   // Track repetition depth prior to each level
   const repLevelPrior = new Array(schemaPath.length)
@@ -40,15 +36,15 @@ export function encodeNestedValues(schemaPath, rows) {
     if (schemaPath[i].repetition_type === 'REPEATED') repeatedCount++
   }
 
-  const leafIndex = schemaPath.length - 1
+  /** @type {any[]} */
+  const values = []
+  // const leafIndex = schemaPath.length - 1
 
-  for (let row = 0; row < rows.length; row++) {
-    visit(1, rows[row], 0, 0, false)
+  for (const row of rows) {
+    visit(1, row, 0, 0, false)
   }
 
-  const numNulls = definitionLevels.reduce((count, def) => def === maxDefinitionLevel ? count : count + 1, 0)
-
-  return { values, definitionLevels, repetitionLevels, numNulls, maxDefinitionLevel }
+  return { values, definitionLevels, repetitionLevels, maxDefinitionLevel }
 
   /**
    * Recursively walk the schema path, emitting definition/repetition pairs.
@@ -62,22 +58,19 @@ export function encodeNestedValues(schemaPath, rows) {
   function visit(depth, value, defLevel, repLevel, allowNull) {
     const element = schemaPath[depth]
     const repetition = element.repetition_type || 'REQUIRED'
-    const isLeaf = depth === leafIndex
 
-    if (isLeaf) {
+    // Leaf node
+    if (depth === schemaPath.length - 1) {
       if (value === null || value === undefined) {
         if (repetition === 'REQUIRED' && !allowNull) {
           throw new Error('parquet required value is undefined')
         }
         definitionLevels.push(defLevel)
-        repetitionLevels.push(repLevel)
-        values.push(null)
       } else {
-        const finalDef = repetition === 'REQUIRED' ? defLevel : defLevel + 1
-        definitionLevels.push(finalDef)
-        repetitionLevels.push(repLevel)
-        values.push(value)
+        definitionLevels.push(repetition === 'REQUIRED' ? defLevel : defLevel + 1)
       }
+      repetitionLevels.push(repLevel)
+      values.push(value)
       return
     }
 
@@ -165,7 +158,7 @@ export function encodeNestedValues(schemaPath, rows) {
  * - Maps are converted to arrays of { key, value } entries with normalized key/value
  *
  * @param {SchemaTree} node schema tree node for the column
- * @param {any} value column value
+ * @param {any} value
  * @returns {any}
  */
 export function normalizeValue(node, value) {
@@ -208,6 +201,7 @@ function normalizeMapEntries(node, value) {
   if (!entryNode) throw new Error('parquet map missing entry node')
   const keyNode = entryNode.children[0]
   const valueNode = entryNode.children[1]
+  /** @type {{key: any, value: any}[]} */
   let entries
   if (value instanceof Map) {
     entries = Array.from(value.entries()).map(([key, val]) => ({ key, value: val }))

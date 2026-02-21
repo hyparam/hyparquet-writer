@@ -62,21 +62,18 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
       const { name, data, encoding, columnIndex = false, offsetIndex = true } = columnData[j]
       const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
 
-      const schemaTreePath = getSchemaPath(this.schema, [name])
-      const leafPaths = getLeafSchemaPaths(schemaTreePath)
-      const columnNode = schemaTreePath.at(-1)
-      /** @type {DecodedArray} */
-      const normalizedData = columnNode
-        ? Array.from(groupData, row => normalizeValue(columnNode, row))
-        : Array.from(groupData)
+      const columnPath = getSchemaPath(this.schema, [name])
+      const leafPaths = getLeafSchemaPaths(columnPath)
+      const columnNode = columnPath[columnPath.length - 1]
+
+      // TODO: normalize when encoding nested values
+      const normalizedData = Array.from(groupData, row => normalizeValue(columnNode, row))
 
       for (const leafPath of leafPaths) {
         const schemaPath = leafPath.map(node => node.element)
-        const element = schemaPath.at(-1)
-        if (!element) throw new Error(`parquet column ${name} missing schema element`)
+        const element = schemaPath[schemaPath.length - 1]
 
         const pageData = encodeNestedValues(schemaPath, normalizedData)
-        const columnValues = pageData.values
 
         /** @type {ColumnEncoder} */
         const column = {
@@ -95,7 +92,6 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
         const result = writeColumn({
           writer: this.writer,
           column,
-          values: columnValues,
           pageData,
         })
 
@@ -178,7 +174,7 @@ function groupIterator({ columnDataRows, rowGroupSize }) {
 function getLeafSchemaPaths(schemaPath) {
   /** @type {SchemaTree[][]} */
   const leaves = []
-  dfs([...schemaPath])
+  dfs(schemaPath)
   return leaves
 
   /**

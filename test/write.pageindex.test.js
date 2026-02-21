@@ -339,4 +339,39 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     expect(column0.offset_index_offset).toBeUndefined()
     expect(column0.offset_index_length).toBeUndefined()
   })
+
+  it('keeps first_row_index stable when a repeated row spans multiple pages', () => {
+    const buffer = parquetWriteBuffer({
+      columnData: [{
+        name: 'vals',
+        data: [
+          Array.from({ length: 10 }, (_, i) => i + 1),
+          [11],
+          [12],
+        ],
+      }],
+      schema: [
+        { name: 'root', num_children: 1 },
+        { name: 'vals', repetition_type: 'OPTIONAL', num_children: 1, converted_type: 'LIST' },
+        { name: 'list', repetition_type: 'REPEATED', num_children: 1 },
+        { name: 'element', repetition_type: 'OPTIONAL', type: 'INT32' },
+      ],
+      // Force many small pages so the first list row spans multiple pages.
+      pageSize: 16,
+    })
+
+    const metadata = parquetMetadata(buffer)
+    const column0 = metadata.row_groups[0].columns[0]
+
+    const offsetIndexOffset = Number(column0.offset_index_offset)
+    const offsetIndexLength = Number(column0.offset_index_length)
+    const offsetIndex = readOffsetIndex({
+      view: new DataView(buffer, offsetIndexOffset, offsetIndexLength),
+      offset: 0,
+    })
+
+    // All pages start inside row 0, so first_row_index should stay 0.
+    const firstRowIndexes = offsetIndex.page_locations.map(pl => pl.first_row_index)
+    expect(firstRowIndexes).toEqual([0n, 0n, 0n, 0n])
+  })
 })

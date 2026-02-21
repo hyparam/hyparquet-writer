@@ -10,12 +10,11 @@ import { serializeTCompactProtocol } from './thrift.js'
 /**
  * @param {Object} options
  * @param {Writer} options.writer
- * @param {DecodedArray} options.values
  * @param {ColumnEncoder} options.column
  * @param {Encoding} options.encoding
  * @param {PageData} options.pageData
  */
-export function writeDataPageV2({ writer, values, column, encoding, pageData }) {
+export function writeDataPageV2({ writer, column, encoding, pageData }) {
   const { columnName, element, codec, compressors } = column
   const { type, type_length, repetition_type } = element
 
@@ -32,7 +31,8 @@ export function writeDataPageV2({ writer, values, column, encoding, pageData }) 
     num_rows,
   } = writeLevels(levelWriter, column, pageData)
 
-  const nonnull = values.filter(v => v !== null && v !== undefined)
+  // TODO: skip nulls while writing instead of filtering
+  const nonnull = num_nulls ? pageData.values.filter(v => v !== null && v !== undefined) : pageData.values
 
   // write page data to temp buffer
   const page = new ByteWriter()
@@ -47,7 +47,7 @@ export function writeDataPageV2({ writer, values, column, encoding, pageData }) 
   } else if (encoding === 'PLAIN_DICTIONARY' || encoding === 'RLE_DICTIONARY') {
     // find max bitwidth
     let maxValue = 0
-    for (const v of values) if (v > maxValue) maxValue = v
+    for (const v of nonnull) if (v > maxValue) maxValue = v
     const bitWidth = Math.ceil(Math.log2(maxValue + 1))
     page.appendUint8(bitWidth) // prepend bitWidth
     writeRleBitPackedHybrid(page, nonnull, bitWidth)
@@ -143,16 +143,25 @@ export function writePageHeader(writer, header) {
  * @returns {{
  *   definition_levels_byte_length: number
  *   repetition_levels_byte_length: number
- *   num_nulls: number
  *   num_values: number
+ *   num_nulls: number
  *   num_rows: number
  * }}
  */
 function writeLevels(writer, column, dataPage) {
   const { schemaPath } = column
-  const { values, definitionLevels, repetitionLevels, numNulls, maxDefinitionLevel } = dataPage
-  const num_rows = repetitionLevels.length ? repetitionLevels.reduce((n, r) => r === 0 ? n + 1 : n, 0) : values.length
+  const { values, definitionLevels, repetitionLevels, maxDefinitionLevel } = dataPage
   const num_values = definitionLevels.length || values.length
+  let num_nulls = 0
+  let num_rows = 0
+  if (repetitionLevels.length) {
+    for (let i = 0; i < repetitionLevels.length; i++) {
+      if (repetitionLevels[i] === 0) num_rows++
+      if (definitionLevels[i] < maxDefinitionLevel) num_nulls++
+    }
+  } else {
+    num_rows = values.length
+  }
 
   const maxRepetitionLevel = getMaxRepetitionLevel(schemaPath)
   let repetition_levels_byte_length = 0
@@ -166,5 +175,5 @@ function writeLevels(writer, column, dataPage) {
     const bitWidth = Math.ceil(Math.log2(maxDefinitionLevel + 1))
     definition_levels_byte_length = writeRleBitPackedHybrid(writer, definitionLevels, bitWidth)
   }
-  return { definition_levels_byte_length, repetition_levels_byte_length, num_nulls: numNulls, num_values, num_rows }
+  return { definition_levels_byte_length, repetition_levels_byte_length, num_values, num_nulls, num_rows }
 }
