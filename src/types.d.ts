@@ -45,7 +45,6 @@ export interface PageData {
   values: DecodedArray
   definitionLevels: number[]
   repetitionLevels: number[]
-  numNulls: number
   maxDefinitionLevel: number
 }
 

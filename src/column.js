@@ -10,17 +10,16 @@ import { unconvert, unconvertMinMax } from './unconvert.js'
  * @param {object} options
  * @param {Writer} options.writer
  * @param {ColumnEncoder} options.column
- * @param {DecodedArray} options.values
  * @param {PageData} options.pageData
  * @returns {{ chunk: ColumnChunk, columnIndex?: ColumnIndex, offsetIndex?: OffsetIndex }}
  */
-export function writeColumn({ writer, column, values, pageData }) {
+export function writeColumn({ writer, column, pageData }) {
   const { columnName, element, schemaPath, stats, pageSize, encoding: userEncoding } = column
   const { type, type_length } = element
   if (!type) throw new Error(`column ${columnName} cannot determine type`)
+  const { values, definitionLevels, repetitionLevels, maxDefinitionLevel } = pageData
   const offsetStart = writer.offset
 
-  const num_values = values.length
   /** @type {Encoding[]} */
   const encodings = []
 
@@ -38,9 +37,11 @@ export function writeColumn({ writer, column, values, pageData }) {
   // Determine encoding and prepare values for writing
   /** @type {Encoding} */
   let encoding
+  /** @type {DecodedArray} */
   let writeValues
   if (dictionary) {
     // replace values with dictionary indices
+    /** @type {number[]} */
     const indexes = new Array(values.length)
     for (let i = 0; i < values.length; i++) {
       if (values[i] !== null && values[i] !== undefined) {
@@ -80,30 +81,36 @@ export function writeColumn({ writer, column, values, pageData }) {
 
   // Write data pages
   data_page_offset = BigInt(writer.offset)
-  let firstRowIndex = 0n
+  let first_row_index = 0n
+  let prevStart = 0
   let prevMaxValue
   let ascending = true
   let descending = true
 
   for (const { start, end } of pageBoundaries) {
-    const chunk = createPageChunk(writeValues, pageData, start, end)
     const pageOffset = writer.offset
 
-    writeDataPageV2({ writer, column, encoding, ...chunk })
+    // Slice into subpage and write levels and data
+    const pageChunk = {
+      values: writeValues.slice(start, end),
+      definitionLevels: definitionLevels.slice(start, end),
+      repetitionLevels: repetitionLevels.slice(start, end),
+      maxDefinitionLevel,
+    }
+    writeDataPageV2({ writer, column, encoding, pageData: pageChunk })
 
-    // Track page info for indexes
-    const pageRows = BigInt(end - start)
+    // ColumnIndex construction
     if (columnIndex) {
       const originalSlice = values.slice(start, end)
       const pageStats = getStatistics(originalSlice)
       const nullCount = pageStats.null_count ?? 0n
 
-      columnIndex.null_pages.push(nullCount === pageRows)
+      columnIndex.null_pages.push(nullCount === BigInt(end - start)) // all nulls
       const currMin = unconvertMinMax(pageStats.min_value, element)
       const currMax = unconvertMinMax(pageStats.max_value, element)
-      // Spec: for all-null pages set "byte[0]" whatever the fuck that means
-      columnIndex.min_values.push(currMin ?? 0)
-      columnIndex.max_values.push(currMax ?? 0)
+      // Spec: for all-null pages set "byte[0]"
+      columnIndex.min_values.push(currMin ?? new Uint8Array())
+      columnIndex.max_values.push(currMax ?? new Uint8Array())
       columnIndex.null_counts?.push(nullCount)
 
       // Track boundary order
@@ -113,14 +120,26 @@ export function writeColumn({ writer, column, values, pageData }) {
       }
       prevMaxValue = currMax
     }
+
+    // OffsetIndex construction
     if (offsetIndex) {
+      if (repetitionLevels.length) {
+        // Count row boundaries from previous page
+        for (let i = prevStart + 1; i <= start; i++) {
+          if (repetitionLevels[i] === 0) first_row_index++
+        }
+      } else {
+        first_row_index = BigInt(start) // Flat column
+      }
+
       offsetIndex.page_locations.push({
         offset: BigInt(pageOffset),
         compressed_page_size: writer.offset - pageOffset,
-        first_row_index: BigInt(firstRowIndex),
+        first_row_index,
       })
     }
-    firstRowIndex += pageRows
+
+    prevStart = start
   }
 
   // Set boundary order after all pages are written
@@ -137,9 +156,9 @@ export function writeColumn({ writer, column, values, pageData }) {
         encodings,
         path_in_schema: schemaPath.slice(1).map(s => s.name),
         codec: column.codec ?? 'UNCOMPRESSED',
-        num_values: BigInt(num_values),
+        num_values: BigInt(values.length),
         total_compressed_size: BigInt(writer.offset - offsetStart),
-        total_uncompressed_size: BigInt(writer.offset - offsetStart), // TODO
+        total_uncompressed_size: BigInt(writer.offset - offsetStart), // TODO: uncompressed pages + headers
         data_page_offset,
         dictionary_page_offset,
         statistics,
@@ -192,31 +211,6 @@ function getPageBoundaries(values, type, type_length, pageSize) {
 }
 
 /**
- * Create a page chunk with sliced values and pageData.
- *
- * @param {DecodedArray} values
- * @param {PageData} pageData
- * @param {number} start
- * @param {number} end
- * @returns {{values: DecodedArray, pageData: PageData}}
- */
-function createPageChunk(values, pageData, start, end) {
-  const chunkValues = values.slice(start, end)
-  const defLevels = pageData.definitionLevels.slice(start, end)
-  const { maxDefinitionLevel } = pageData
-  return {
-    values: chunkValues,
-    pageData: {
-      values: chunkValues,
-      definitionLevels: defLevels,
-      repetitionLevels: pageData.repetitionLevels.slice(start, end),
-      numNulls: defLevels.reduce((n, level) => level < maxDefinitionLevel ? n + 1 : n, 0),
-      maxDefinitionLevel,
-    },
-  }
-}
-
-/**
  * Estimate the byte size of a value for page size calculation.
  *
  * @param {any} value
@@ -247,6 +241,7 @@ function estimateValueSize(value, type, type_length) {
 function useDictionary(values, type, encoding) {
   if (encoding && encoding !== 'RLE_DICTIONARY') return
   if (type === 'BOOLEAN') return
+  // TODO: determine uniqueness ratio on a sample
   const unique = new Set(values)
   unique.delete(undefined)
   unique.delete(null)
