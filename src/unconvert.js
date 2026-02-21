@@ -27,7 +27,7 @@ export function unconvert(element, values) {
   }
   if (ctype === 'DATE') {
     return Array.from(values).map(v => {
-      if (v instanceof Date) return v.getTime() / dayMillis
+      if (v instanceof Date) return Math.floor(v.getTime() / dayMillis)
       return v
     })
   }
