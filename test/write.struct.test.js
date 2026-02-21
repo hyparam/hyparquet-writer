@@ -274,7 +274,7 @@ describe('parquetWrite structs', () => {
 
   it('writes map with INT32 keys', async () => {
     const data = [
-      { 1: 'one', 2: 'two' },
+      new Map([[1, 'one'], [2, 'two']]),
       new Map([[3, 'three']]),
     ]
 
@@ -299,7 +299,7 @@ describe('parquetWrite structs', () => {
   it('writes map with INT64 keys', async () => {
     const data = [
       new Map([[1n, 'one'], [2n, 'two']]),
-      { 3: 'three' }, // string key converted to bigint
+      new Map([[3n, 'three']]),
     ]
 
     const buffer = parquetWriteBuffer({
@@ -396,7 +396,7 @@ describe('parquetWrite structs', () => {
         { name: 'key', repetition_type: 'REQUIRED', type: 'INT32' },
         { name: 'value', repetition_type: 'OPTIONAL', type: 'INT32' },
       ],
-    })).toThrow('must be a finite number')
+    })).toThrow('parquet expected integer value')
   })
 
   it('throws error for non-integer INT32 map key', () => {
@@ -409,7 +409,7 @@ describe('parquetWrite structs', () => {
         { name: 'key', repetition_type: 'REQUIRED', type: 'INT32' },
         { name: 'value', repetition_type: 'OPTIONAL', type: 'INT32' },
       ],
-    })).toThrow('32-bit integer')
+    })).toThrow('parquet expected integer value')
   })
 
   it('throws error for out-of-range INT32 map key', () => {
@@ -422,6 +422,6 @@ describe('parquetWrite structs', () => {
         { name: 'key', repetition_type: 'REQUIRED', type: 'INT32' },
         { name: 'value', repetition_type: 'OPTIONAL', type: 'INT32' },
       ],
-    })).toThrow('32-bit integer')
+    })).toThrow('parquet expected integer value')
   })
 })

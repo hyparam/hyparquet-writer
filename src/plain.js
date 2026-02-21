@@ -36,10 +36,11 @@ function writePlainBoolean(writer, values) {
   let currentByte = 0
 
   for (let i = 0; i < values.length; i++) {
-    if (typeof values[i] !== 'boolean') throw new Error('parquet expected boolean value')
+    const value = values[i]
+    if (typeof value !== 'boolean') throw new Error('parquet expected boolean value, got ' + value)
     const bitOffset = i % 8
 
-    if (values[i]) {
+    if (value) {
       currentByte |= 1 << bitOffset
     }
 
@@ -62,7 +63,7 @@ function writePlainBoolean(writer, values) {
  */
 function writePlainInt32(writer, values) {
   for (const value of values) {
-    if (!Number.isSafeInteger(value)) throw new Error('parquet expected integer value')
+    if (!Number.isSafeInteger(value)) throw new Error('parquet expected integer value, got ' + value)
     writer.appendInt32(value)
   }
 }
@@ -73,7 +74,7 @@ function writePlainInt32(writer, values) {
  */
 function writePlainInt64(writer, values) {
   for (const value of values) {
-    if (typeof value !== 'bigint') throw new Error('parquet expected bigint value')
+    if (typeof value !== 'bigint') throw new Error('parquet expected bigint value, got ' + value)
     writer.appendInt64(value)
   }
 }
@@ -84,7 +85,7 @@ function writePlainInt64(writer, values) {
  */
 function writePlainFloat(writer, values) {
   for (const value of values) {
-    if (typeof value !== 'number') throw new Error('parquet expected number value')
+    if (typeof value !== 'number') throw new Error('parquet expected number value, got ' + value)
     writer.appendFloat32(value)
   }
 }
@@ -95,7 +96,7 @@ function writePlainFloat(writer, values) {
  */
 function writePlainDouble(writer, values) {
   for (const value of values) {
-    if (typeof value !== 'number') throw new Error('parquet expected number value')
+    if (typeof value !== 'number') throw new Error('parquet expected number value, got ' + value)
     writer.appendFloat64(value)
   }
 }
@@ -112,7 +113,7 @@ function writePlainByteArray(writer, values) {
       bytes = new TextEncoder().encode(value)
     }
     if (!(bytes instanceof Uint8Array)) {
-      throw new Error('parquet expected Uint8Array value')
+      throw new Error('parquet expected Uint8Array value, got ' + typeof bytes)
     }
     writer.appendUint32(bytes.length)
     writer.appendBytes(bytes)
@@ -126,7 +127,7 @@ function writePlainByteArray(writer, values) {
  */
 function writePlainByteArrayFixed(writer, values, fixedLength) {
   for (const value of values) {
-    if (!(value instanceof Uint8Array)) throw new Error('parquet expected Uint8Array value')
+    if (!(value instanceof Uint8Array)) throw new Error('parquet expected Uint8Array value, got ' + typeof value)
     if (value.length !== fixedLength) throw new Error(`parquet expected Uint8Array of length ${fixedLength}`)
     writer.appendBytes(value)
   }

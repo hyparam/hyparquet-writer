@@ -38,7 +38,6 @@ export function encodeNestedValues(schemaPath, rows) {
 
   /** @type {any[]} */
   const values = []
-  // const leafIndex = schemaPath.length - 1
 
   for (const row of rows) {
     visit(1, row, 0, 0, false)
@@ -165,8 +164,7 @@ export function normalizeValue(node, value) {
   if (value === null || value === undefined) return value
   if (isListLikeNode(node)) {
     if (!Array.isArray(value)) throw new Error(`parquet list field ${node.element.name} must be an array`)
-    const listNode = node.children[0]
-    const elementNode = listNode.children.length === 1 ? listNode.children[0] : listNode
+    const elementNode = node.children[0].children[0]
     return value.map(entry => normalizeValue(elementNode, entry))
   }
   if (isMapLikeNode(node)) {
@@ -180,10 +178,11 @@ export function normalizeValue(node, value) {
     const out = {}
     for (const child of node.children) {
       const childName = child.element.name
-      if (child.element.repetition_type === 'REQUIRED' && (value[childName] === null || value[childName] === undefined)) {
+      const childValue = value[childName]
+      if (child.element.repetition_type === 'REQUIRED' && (childValue === null || childValue === undefined)) {
         throw new Error('parquet required value is undefined')
       }
-      out[childName] = normalizeValue(child, value[childName])
+      out[childName] = normalizeValue(child, childValue)
     }
     return out
   }
@@ -193,69 +192,34 @@ export function normalizeValue(node, value) {
 /**
  * @param {SchemaTree} node
  * @param {any} value
- * @returns {any}
+ * @returns {{key: any, value: any}[]}
  */
 function normalizeMapEntries(node, value) {
   if (value === null || value === undefined) return value
-  const entryNode = node.children[0]
-  if (!entryNode) throw new Error('parquet map missing entry node')
-  const keyNode = entryNode.children[0]
-  const valueNode = entryNode.children[1]
-  /** @type {{key: any, value: any}[]} */
+  /** @type {any[][]} */
   let entries
   if (value instanceof Map) {
-    entries = Array.from(value.entries()).map(([key, val]) => ({ key, value: val }))
+    entries = Array.from(value.entries())
   } else if (Array.isArray(value)) {
     entries = value.map(entry => {
       if (entry && typeof entry === 'object' && 'key' in entry && 'value' in entry) {
-        return { key: entry.key, value: entry.value }
+        return [entry.key, entry.value]
       }
       if (Array.isArray(entry) && entry.length === 2) {
-        return { key: entry[0], value: entry[1] }
+        return entry
       }
       throw new Error('parquet map entry must provide key and value')
     })
   } else if (typeof value === 'object') {
-    entries = Object.entries(value).map(([key, val]) => ({ key, value: val }))
+    entries = Object.entries(value)
   } else {
     throw new Error(`parquet map field ${node.element.name} must be Map, array, or object`)
   }
-  return entries.map(({ key, value: entryValue }) => ({
-    key: convertMapKey(keyNode.element, key),
+  const valueNode = node.children[0].children[1]
+  return entries.map(([key, entryValue]) => ({
+    key,
     value: normalizeValue(valueNode, entryValue),
   }))
-}
-
-/**
- * @param {SchemaElement} element
- * @param {any} key
- * @returns {any}
- */
-function convertMapKey(element, key) {
-  if (key === null || key === undefined) return key
-  if (!element?.type) return key
-  if (element.type === 'INT32') {
-    const min = -2147483648n
-    const max = 2147483647n
-    if (typeof key === 'bigint') {
-      if (key < min || key > max) throw new Error('parquet map key must be a 32-bit integer')
-      return Number(key)
-    }
-    const num = Number(key)
-    if (!Number.isFinite(num)) throw new Error('parquet map key must be a finite number')
-    if (!Number.isInteger(num) || num < Number(min) || num > Number(max)) {
-      throw new Error('parquet map key must be a 32-bit integer')
-    }
-    return num
-  }
-  if (element.type === 'INT64') {
-    try {
-      return typeof key === 'bigint' ? key : BigInt(key)
-    } catch {
-      throw new Error('parquet map key must be a bigint-compatible value')
-    }
-  }
-  return key
 }
 
 /**
@@ -267,7 +231,11 @@ function isListLikeNode(node) {
   if (node.element.converted_type !== 'LIST') return false
   if (node.children.length !== 1) return false
   const listNode = node.children[0]
-  return listNode.element.repetition_type === 'REPEATED'
+  if (listNode.element.name !== 'list') return false
+  if (listNode.children.length !== 1) return false
+  if (listNode.element.repetition_type !== 'REPEATED') return false
+  const elementNode = listNode.children[0]
+  return elementNode.element.name === 'element'
 }
 
 /**
@@ -280,5 +248,7 @@ function isMapLikeNode(node) {
   if (node.children.length !== 1) return false
   const entryNode = node.children[0]
   if (entryNode.children.length !== 2) return false
+  if (entryNode.children[0].element.name !== 'key') return false
+  if (entryNode.children[1].element.name !== 'value') return false
   return entryNode.element.repetition_type === 'REPEATED'
 }
