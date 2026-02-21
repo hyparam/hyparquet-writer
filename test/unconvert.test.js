@@ -15,6 +15,14 @@ describe('unconvert', () => {
     expect(result).toEqual([18262, 18628])
   })
 
+  it('should floor non-midnight Date objects when converted_type = DATE', () => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', converted_type: 'DATE' }
+    const input = [new Date(1000000), new Date(2000000), new Date(3000000)]
+    const result = unconvert(schema, input)
+    expect(result).toEqual([0, 0, 0])
+  })
+
   it('should convert JSON objects to strings when converted_type = JSON', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', converted_type: 'JSON' }
