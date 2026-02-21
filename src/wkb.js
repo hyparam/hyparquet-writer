@@ -1,9 +1,12 @@
 import { ByteWriter } from './bytewriter.js'
 
 /**
+ * @import {Geometry, Position} from 'hyparquet/src/types.js'
+ */
+
+/**
  * Serialize a GeoJSON geometry into ISO WKB.
  *
- * @import {Geometry, Position} from 'hyparquet/src/types.js'
  * @param {Geometry} geometry
  * @returns {Uint8Array}
  */
@@ -18,6 +21,9 @@ export function geojsonToWkb(geometry) {
  * @param {Geometry} geometry
  */
 function writeGeometry(writer, geometry) {
+  if (typeof geometry !== 'object') {
+    throw new Error('geometry values must be GeoJSON geometries')
+  }
   const typeCode = geometryTypeCode(geometry.type)
 
   // infer dimensions

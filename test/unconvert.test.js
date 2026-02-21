@@ -76,6 +76,12 @@ describe('unconvert', () => {
     ).toThrow('JSON must be an array')
   })
 
+  it('should throw on falsy non-null values for GEOMETRY logical type', () => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'geom', logical_type: { type: 'GEOMETRY' } }
+    expect(() => unconvert(schema, [''])).toThrow('GeoJSON')
+  })
+
   /** @type {Array<{name: string, schema: SchemaElement, input: any[], expected: any[]}>} */
   const convertedTypeConversionCases = [
     {

@@ -1,12 +1,13 @@
 import { toJson } from 'hyparquet'
 import { geojsonToWkb } from './wkb.js'
 
-const dayMillis = 86400000 // 1 day in milliseconds
 /**
  * @import {DecodedArray, SchemaElement, Statistics} from 'hyparquet'
  * @import {MinMaxType} from 'hyparquet/src/types.js'
  * @import {ThriftObject} from '../src/types.js'
  */
+
+const dayMillis = 86400000 // 1 day in milliseconds
 
 /**
  * Convert from rich to primitive types.
@@ -80,7 +81,10 @@ export function unconvert(element, values) {
   }
   if (ltype?.type === 'GEOMETRY' || ltype?.type === 'GEOGRAPHY') {
     if (!Array.isArray(values)) throw new Error('geometry must be an array')
-    return values.map(v => v && geojsonToWkb(v))
+    return values.map(v => {
+      if (v === null || v === undefined) return v
+      return geojsonToWkb(v)
+    })
   }
   return values
 }

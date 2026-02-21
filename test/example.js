@@ -1,3 +1,8 @@
+/**
+ * @import {FileMetaData} from 'hyparquet'
+ * @import {ColumnSource} from '../src/types.js'
+ */
+
 /** @type {ColumnSource[]} */
 export const exampleData = [
   { name: 'bool', data: [true, false, true, false] },
@@ -9,11 +14,7 @@ export const exampleData = [
   { name: 'nullable', data: [true, false, null, null] },
 ]
 
-/**
- * @import {FileMetaData} from 'hyparquet'
- * @import {ColumnSource} from '../src/types.js'
- * @type {FileMetaData}
- */
+/** @type {FileMetaData} */
 export const exampleMetadata = {
   version: 2,
   created_by: 'hyparquet',

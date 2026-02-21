@@ -6,10 +6,13 @@ import { writeMetadata } from './metadata.js'
 import { snappyCompress } from './snappy.js'
 
 /**
+ * @import {ColumnChunk, CompressionCodec, DecodedArray, FileMetaData, KeyValue, RowGroup, SchemaElement, SchemaTree} from 'hyparquet'
+ * @import {ColumnEncoder, ColumnSource, Compressors, PageIndexes, Writer} from '../src/types.js'
+ */
+
+/**
  * ParquetWriter class allows incremental writing of parquet files.
  *
- * @import {ColumnChunk, CompressionCodec, DecodedArray, FileMetaData, KeyValue, RowGroup, SchemaElement} from 'hyparquet'
- * @import {ColumnEncoder, ColumnSource, Compressors, PageIndexes, Writer} from '../src/types.js'
  * @param {object} options
  * @param {Writer} options.writer
  * @param {SchemaElement[]} options.schema
@@ -169,7 +172,6 @@ function groupIterator({ columnDataRows, rowGroupSize }) {
 /**
  * Expand a schema path to all primitive leaf nodes under the column.
  *
- * @import {SchemaTree} from 'hyparquet/src/types.js'
  * @param {SchemaTree[]} schemaPath
  * @returns {SchemaTree[][]}
  */

@@ -1,4 +1,9 @@
 /**
+ * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement} from 'hyparquet'
+ * @import {BasicType, ColumnSource} from '../src/types.js'
+ */
+
+/**
  * Infer a schema from column data.
  * Accepts optional schemaOverrides to override the type of columns by name.
  *
@@ -40,8 +45,6 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
 }
 
 /**
- * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement} from 'hyparquet'
- * @import {BasicType, ColumnSource} from '../src/types.js'
  * @param {string} name
  * @param {BasicType} type
  * @param {boolean} [nullable]
