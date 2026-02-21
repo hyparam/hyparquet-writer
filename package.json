@@ -1,14 +1,16 @@
 {
   "name": "hyparquet-writer",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Parquet file writer for JavaScript",
   "author": "Hyperparam",
   "homepage": "https://hyperparam.app",
   "keywords": [
     "ai",
     "data",
+    "dataset",
     "hyperparam",
     "hyparquet",
+    "llm",
     "ml",
     "parquet",
     "snappy",
@@ -52,14 +54,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "hyparquet": "1.24.1"
+    "hyparquet": "1.25.0"
   },
   "devDependencies": {
     "@babel/eslint-parser": "7.28.6",
-    "@types/node": "25.0.10",
+    "@types/node": "25.3.0",
     "@vitest/coverage-v8": "4.0.18",
     "eslint": "9.39.2",
-    "eslint-plugin-jsdoc": "62.4.1",
+    "eslint-plugin-jsdoc": "62.7.0",
     "hysnappy": "1.1.0",
     "typescript": "5.9.3",
     "vitest": "4.0.18"
