@@ -83,6 +83,7 @@ export function writeColumn({ writer, column, pageData }) {
   data_page_offset = BigInt(writer.offset)
   let first_row_index = 0n
   let prevStart = 0
+  let prevMinValue
   let prevMaxValue
   let ascending = true
   let descending = true
@@ -113,12 +114,17 @@ export function writeColumn({ writer, column, pageData }) {
       columnIndex.max_values.push(currMax ?? new Uint8Array())
       columnIndex.null_counts?.push(nullCount)
 
-      // Track boundary order
-      if (prevMaxValue !== undefined && currMin !== undefined) {
-        if (prevMaxValue > currMin) ascending = false
-        if (prevMaxValue < currMin) descending = false
+      // Track boundary order using original JS values
+      if (prevMinValue !== undefined && pageStats.min_value !== undefined) {
+        if (prevMinValue > pageStats.min_value) ascending = false
+        if (prevMinValue < pageStats.min_value) descending = false
       }
-      prevMaxValue = currMax
+      if (prevMaxValue !== undefined && pageStats.max_value !== undefined) {
+        if (prevMaxValue > pageStats.max_value) ascending = false
+        if (prevMaxValue < pageStats.max_value) descending = false
+      }
+      prevMinValue = pageStats.min_value
+      prevMaxValue = pageStats.max_value
     }
 
     // OffsetIndex construction

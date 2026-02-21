@@ -340,6 +340,39 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     expect(column0.offset_index_length).toBeUndefined()
   })
 
+  it('correctly reports ASCENDING boundary order for overlapping page ranges', () => {
+    // Data where each page has overlapping ranges but min/max are ascending
+    // Pages: [1,10], [2,11], [3,12], [4,13]
+    // min_values: [1, 2, 3, 4] ascending
+    // max_values: [10, 11, 12, 13] ascending
+    const data = [1, 10, 2, 11, 3, 12, 4, 13]
+    const buffer = parquetWriteBuffer({
+      columnData: [{
+        name: 'x',
+        data,
+        type: 'INT32',
+        columnIndex: true,
+      }],
+      pageSize: 9, // 2 INT32 values (8 bytes) per page
+    })
+
+    const metadata = parquetMetadata(buffer)
+    const column0 = metadata.row_groups[0].columns[0]
+
+    const columnIndexOffset = Number(column0.column_index_offset)
+    const columnIndexLength = Number(column0.column_index_length)
+    const columnIndexReader = {
+      view: new DataView(buffer, columnIndexOffset, columnIndexLength),
+      offset: 0,
+    }
+    const schemaPath = getSchemaPath(metadata.schema, column0.meta_data?.path_in_schema ?? [])
+    const columnIndex = readColumnIndex(columnIndexReader, schemaPath.at(-1)?.element || { name: '' })
+
+    expect(columnIndex.min_values).toEqual([1, 2, 3, 4])
+    expect(columnIndex.max_values).toEqual([10, 11, 12, 13])
+    expect(columnIndex.boundary_order).toBe('ASCENDING')
+  })
+
   it('keeps first_row_index stable when a repeated row spans multiple pages', () => {
     const buffer = parquetWriteBuffer({
       columnData: [{
