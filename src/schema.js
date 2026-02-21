@@ -164,19 +164,3 @@ export function getMaxRepetitionLevel(schemaPath) {
   }
   return maxLevel
 }
-
-/**
- * Get the max definition level for a given schema path.
- *
- * @param {SchemaElement[]} schemaPath
- * @returns {number} max definition level
- */
-export function getMaxDefinitionLevel(schemaPath) {
-  let maxLevel = 0
-  for (const element of schemaPath.slice(1)) {
-    if (element.repetition_type !== 'REQUIRED') {
-      maxLevel++
-    }
-  }
-  return maxLevel
-}

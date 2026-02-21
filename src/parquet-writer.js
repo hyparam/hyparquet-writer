@@ -1,6 +1,6 @@
 import { getSchemaPath } from 'hyparquet/src/schema.js'
 import { writeColumn } from './column.js'
-import { encodeNestedValues, normalizeValue } from './dremel.js'
+import { encodeNestedValues } from './dremel.js'
 import { writeIndexes } from './indexes.js'
 import { writeMetadata } from './metadata.js'
 import { snappyCompress } from './snappy.js'
@@ -64,16 +64,12 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
 
       const columnPath = getSchemaPath(this.schema, [name])
       const leafPaths = getLeafSchemaPaths(columnPath)
-      const columnNode = columnPath[columnPath.length - 1]
-
-      // TODO: normalize when encoding nested values
-      const normalizedData = Array.from(groupData, row => normalizeValue(columnNode, row))
 
       for (const leafPath of leafPaths) {
         const schemaPath = leafPath.map(node => node.element)
         const element = schemaPath[schemaPath.length - 1]
 
-        const pageData = encodeNestedValues(schemaPath, normalizedData)
+        const pageData = encodeNestedValues(leafPath, groupData)
 
         /** @type {ColumnEncoder} */
         const column = {

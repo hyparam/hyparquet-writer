@@ -334,7 +334,7 @@ describe('parquetWrite structs', () => {
         { name: 'person', repetition_type: 'OPTIONAL', num_children: 1 },
         { name: 'name', repetition_type: 'REQUIRED', type: 'BYTE_ARRAY', converted_type: 'UTF8' },
       ],
-    })).toThrow('required value is undefined')
+    })).toThrow('parquet expected Uint8Array value, got undefined')
   })
 
   it('throws error for non-array list field', () => {
@@ -358,7 +358,7 @@ describe('parquetWrite structs', () => {
         { name: 'x', repetition_type: 'REQUIRED', type: 'INT32' },
         { name: 'y', repetition_type: 'REQUIRED', type: 'INT32' },
       ],
-    })).toThrow('must be an object')
+    })).toThrow('parquet expected struct, got 42')
   })
 
   it('throws error for array struct field', () => {
@@ -370,7 +370,7 @@ describe('parquetWrite structs', () => {
         { name: 'x', repetition_type: 'OPTIONAL', type: 'INT32' },
         { name: 'y', repetition_type: 'OPTIONAL', type: 'INT32' },
       ],
-    })).toThrow('must be an object')
+    })).toThrow('parquet expected struct, got 1,2')
   })
 
   it('throws error for invalid map entry format', () => {

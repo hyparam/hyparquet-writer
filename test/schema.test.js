@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { autoSchemaElement, getMaxDefinitionLevel, getMaxRepetitionLevel, schemaFromColumnData } from '../src/schema.js'
+import { autoSchemaElement, getMaxRepetitionLevel, schemaFromColumnData } from '../src/schema.js'
 
 /**
  * @import {SchemaElement} from 'hyparquet'
@@ -97,9 +97,5 @@ describe('level helpers', () => {
 
   it('computes max repetition level', () => {
     expect(getMaxRepetitionLevel(path)).toBe(2)
-  })
-
-  it('computes max definition level', () => {
-    expect(getMaxDefinitionLevel(path)).toBe(2)
   })
 })
