@@ -26,13 +26,24 @@ export function unconvert(element, values) {
     })
   }
   if (ctype === 'DATE') {
-    return Array.from(values).map(v => v && v.getTime() / dayMillis)
+    return Array.from(values).map(v => {
+      if (v instanceof Date) return v.getTime() / dayMillis
+      return v
+    })
   }
   if (ctype === 'TIMESTAMP_MILLIS') {
-    return Array.from(values).map(v => v && BigInt(v.getTime()))
+    return Array.from(values).map(v => {
+      if (v === null || v === undefined) return v
+      if (v instanceof Date) return BigInt(v.getTime())
+      return BigInt(v)
+    })
   }
   if (ctype === 'TIMESTAMP_MICROS') {
-    return Array.from(values).map(v => v && BigInt(v.getTime() * 1000))
+    return Array.from(values).map(v => {
+      if (v === null || v === undefined) return v
+      if (v instanceof Date) return BigInt(v.getTime() * 1000)
+      return BigInt(v)
+    })
   }
   if (ctype === 'JSON') {
     if (!Array.isArray(values)) throw new Error('JSON must be an array')
@@ -54,6 +65,18 @@ export function unconvert(element, values) {
     if (type !== 'FIXED_LEN_BYTE_ARRAY') throw new Error('UUID must be FIXED_LEN_BYTE_ARRAY type')
     if (element.type_length !== 16) throw new Error('UUID expected type_length to be 16 bytes')
     return values.map(unconvertUuid)
+  }
+  if (ltype?.type === 'TIMESTAMP') {
+    return Array.from(values).map(v => {
+      if (v === null || v === undefined) return v
+      if (v instanceof Date) {
+        const millis = BigInt(v.getTime())
+        if (ltype.unit === 'NANOS') return millis * 1_000_000n
+        if (ltype.unit === 'MICROS') return millis * 1_000n
+        return millis // MILLIS (default)
+      }
+      return BigInt(v)
+    })
   }
   if (ltype?.type === 'GEOMETRY' || ltype?.type === 'GEOGRAPHY') {
     if (!Array.isArray(values)) throw new Error('geometry must be an array')
@@ -144,6 +167,21 @@ export function unconvertMinMax(value, element) {
   if (type === 'INT64' && converted_type === 'TIMESTAMP_MILLIS' && value instanceof Date) {
     const buffer = new ArrayBuffer(8)
     new DataView(buffer).setBigInt64(0, BigInt(value.getTime()), true)
+    return new Uint8Array(buffer)
+  }
+  if (type === 'INT64' && converted_type === 'TIMESTAMP_MICROS' && value instanceof Date) {
+    const buffer = new ArrayBuffer(8)
+    new DataView(buffer).setBigInt64(0, BigInt(value.getTime() * 1000), true)
+    return new Uint8Array(buffer)
+  }
+  if (type === 'INT64' && element.logical_type?.type === 'TIMESTAMP' && value instanceof Date) {
+    const millis = BigInt(value.getTime())
+    const { unit } = element.logical_type
+    let bigintValue = millis
+    if (unit === 'NANOS') bigintValue = millis * 1_000_000n
+    else if (unit === 'MICROS') bigintValue = millis * 1_000n
+    const buffer = new ArrayBuffer(8)
+    new DataView(buffer).setBigInt64(0, bigintValue, true)
     return new Uint8Array(buffer)
   }
   throw new Error(`unsupported type for statistics: ${type} with value ${value}`)
