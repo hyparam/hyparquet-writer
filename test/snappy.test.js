@@ -1,6 +1,6 @@
+import { snappyUncompress } from 'hyparquet'
 import { describe, expect, it } from 'vitest'
 import { snappyCompress } from '../src/snappy.js'
-import { snappyUncompress } from 'hyparquet'
 
 describe('snappy compress', () => {
 
@@ -19,31 +19,34 @@ describe('snappy compress', () => {
       uncompressed: 'hyphyphyphyphyphyphyp',
     },
     {
-      // from rowgroups.parquet
       compressed: [
+        // from rowgroups.parquet:
+        // 80, 4, 1, 0, 9, 1, 0, 2, 9, 7, 4, 0, 3, 13, 8, 0, 4, 13, 8, 0, 5, 13,
+        // 8, 0, 6, 13, 8, 0, 7, 13, 8, 0, 8, 13, 8, 60, 9, 0, 0, 0, 0, 0, 0, 0,
+        // 10, 0, 0, 0, 0, 0, 0, 0,
+
+        // hyparquet-writer snappy is subtly different but decodes the same:
         80, 4, 1, 0, 9, 1, 0, 2, 9, 7, 4, 0, 3, 13, 8, 0, 4, 13, 8, 0, 5, 13,
-        8, 0, 6, 13, 8, 0, 7, 13, 8, 0, 8, 13, 8, 60, 9, 0, 0, 0, 0, 0, 0, 0,
+        8, 0, 6, 13, 8, 0, 7, 13, 8, 0, 8, 13, 8, 0, 9, 13, 8, 28,
         10, 0, 0, 0, 0, 0, 0, 0,
       ],
-      uncompressed: new Uint8Array([
+      uncompressed: [
         1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0,
         0, 4, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0,
         0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0,
         0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0,
-      ]),
+      ],
     },
     // from datapage_v2.snappy.parquet
-    { compressed: [2, 4, 0, 3], uncompressed: new Uint8Array([0, 3]) },
-    { compressed: [ 6, 20, 2, 0, 0, 0, 3, 23], uncompressed: new Uint8Array([2, 0, 0, 0, 3, 23]) },
+    { compressed: [2, 4, 0, 3], uncompressed: [0, 3] },
+    { compressed: [6, 20, 2, 0, 0, 0, 3, 23], uncompressed: [2, 0, 0, 0, 3, 23] },
     // from sample data test
-    {
-      compressed: [1, 0, 5],
-      uncompressed: new Uint8Array([5]),
-    },
-  ])('compresses valid input %p', ({ uncompressed }) => {
+    { compressed: [1, 0, 5], uncompressed: [5] },
+  ])('compresses valid input %p', ({ compressed, uncompressed }) => {
     const encoder = new TextEncoder()
     const input = typeof uncompressed === 'string' ? encoder.encode(uncompressed) : new Uint8Array(uncompressed)
     const output = snappyCompress(input)
+    expect(output).toEqual(new Uint8Array(compressed))
     // verify round-trip: decompress and compare to original
     const decompressed = new Uint8Array(input.length)
     snappyUncompress(output, decompressed)

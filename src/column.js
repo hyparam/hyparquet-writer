@@ -175,12 +175,13 @@ export function writeColumn({ writer, column, pageData }) {
 
 /**
  * Get page boundaries based on estimated byte size.
+ * TODO: split pages on row boundaries
  *
  * @param {DecodedArray} values
  * @param {ParquetType} type
  * @param {number | undefined} type_length
  * @param {number} pageSize
- * @returns {Array<{start: number, end: number}>}
+ * @returns {{start: number, end: number}[]}
  */
 function getPageBoundaries(values, type, type_length, pageSize) {
   // If no pageSize limit, return single page with all values
@@ -256,14 +257,14 @@ function useDictionary(values, type, type_length, encoding, pageSize) {
   const unique = new Map()
   /** @type {number[]} */
   const indexes = new Array(values.length)
-  let size = 0
+  let dictSize = 0
   for (let i = 0; i < values.length; i++) {
     const value = values[i]
     if (value === null || value === undefined) continue
 
     // dictionary cannot exceed page size
-    size += estimateValueSize(value, type, type_length)
-    if (pageSize && size > pageSize) return {}
+    dictSize += estimateValueSize(value, type, type_length)
+    if (pageSize && dictSize > pageSize) return {}
 
     // find index for value in dictionary
     let index = unique.get(value)
@@ -287,30 +288,26 @@ function writeDictionaryPage(writer, column, dictionary) {
   const { element, codec, compressors } = column
   const { type, type_length } = element
   if (!type) throw new Error(`column ${column.columnName} cannot determine type`)
+
+  // write values to temp buffer
   const dictionaryPage = new ByteWriter()
   writePlain(dictionaryPage, dictionary, type, type_length)
+  const dictionaryBytes = dictionaryPage.getBytes()
 
   // compress dictionary page data
-  let compressedDictionaryPage = dictionaryPage
-  const compressor = compressors?.[codec]
-  if (compressor) {
-    const input = new Uint8Array(dictionaryPage.getBuffer())
-    const compressedData = compressor(input)
-    compressedDictionaryPage = new ByteWriter()
-    compressedDictionaryPage.appendBytes(compressedData)
-  }
+  const compressedBytes = compressors[codec]?.(dictionaryBytes) ?? dictionaryBytes
 
   // write dictionary page header
   writePageHeader(writer, {
     type: 'DICTIONARY_PAGE',
-    uncompressed_page_size: dictionaryPage.offset,
-    compressed_page_size: compressedDictionaryPage.offset,
+    uncompressed_page_size: dictionaryBytes.byteLength,
+    compressed_page_size: compressedBytes.byteLength,
     dictionary_page_header: {
       num_values: dictionary.length,
       encoding: 'PLAIN',
     },
   })
-  writer.appendBuffer(compressedDictionaryPage.getBuffer())
+  writer.appendBytes(compressedBytes)
 }
 
 /**

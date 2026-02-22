@@ -5,10 +5,13 @@ import { parquetWrite } from './write.js'
 export * from './index.js'
 
 /**
+ * @import {ParquetWriteOptions, Writer} from '../src/types.js'
+ */
+
+/**
  * Write data as parquet to a local file.
  *
- * @import {ParquetWriteOptions, Writer} from '../src/types.js'
- * @param {Omit<ParquetWriteOptions, 'writer'> & {filename: string}} options
+ * @param {Omit<ParquetWriteOptions, 'writer'> & { filename: string }} options
  */
 export function parquetWriteFile(options) {
   const { filename, ...rest } = options
@@ -30,10 +33,11 @@ export function fileWriter(filename) {
   // create a new file or overwrite existing one
   fs.writeFileSync(filename, '', { flag: 'w' })
 
+  // flush current buffer to file
   function flush() {
-    const chunk = writer.buffer.slice(0, writer.index)
+    const chunk = new Uint8Array(writer.buffer, 0, writer.index)
     // TODO: async
-    fs.writeFileSync(filename, new Uint8Array(chunk), { flag: 'a' })
+    fs.writeFileSync(filename, chunk, { flag: 'a' })
     writer.index = 0
   }
 
@@ -55,6 +59,9 @@ export function fileWriter(filename) {
   }
   writer.getBuffer = function() {
     throw new Error('getBuffer not supported for FileWriter')
+  }
+  writer.getBytes = function() {
+    throw new Error('getBytes not supported for FileWriter')
   }
   writer.finish = function() {
     flush()

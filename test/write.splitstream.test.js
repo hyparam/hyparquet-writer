@@ -6,9 +6,10 @@ describe('BYTE_STREAM_SPLIT encoding', () => {
   it('writes BYTE_STREAM_SPLIT encoding for FLOAT', async () => {
     const data = [1.5, 2.25, 3.125, -4.5, 0.0, 100.75]
     const file = parquetWriteBuffer({
-      columnData: [{ name: 'float', data, encoding: 'BYTE_STREAM_SPLIT' }],
+      columnData: [{ name: 'float', data, type: 'FLOAT', encoding: 'BYTE_STREAM_SPLIT' }],
     })
     const metadata = parquetMetadata(file)
+    expect(metadata.schema[1].type).toBe('FLOAT')
     const columnMetadata = metadata.row_groups[0].columns[0].meta_data
     expect(columnMetadata?.encodings).toEqual(['BYTE_STREAM_SPLIT'])
     const result = await parquetReadObjects({ file })
@@ -21,6 +22,7 @@ describe('BYTE_STREAM_SPLIT encoding', () => {
       columnData: [{ name: 'double', data, type: 'DOUBLE', encoding: 'BYTE_STREAM_SPLIT' }],
     })
     const metadata = parquetMetadata(file)
+    expect(metadata.schema[1].type).toBe('DOUBLE')
     const columnMetadata = metadata.row_groups[0].columns[0].meta_data
     expect(columnMetadata?.encodings).toEqual(['BYTE_STREAM_SPLIT'])
     const result = await parquetReadObjects({ file })
@@ -33,6 +35,7 @@ describe('BYTE_STREAM_SPLIT encoding', () => {
       columnData: [{ name: 'int', data, encoding: 'BYTE_STREAM_SPLIT' }],
     })
     const metadata = parquetMetadata(file)
+    expect(metadata.schema[1].type).toBe('INT32')
     const columnMetadata = metadata.row_groups[0].columns[0].meta_data
     expect(columnMetadata?.encodings).toEqual(['BYTE_STREAM_SPLIT'])
     const result = await parquetReadObjects({ file })
@@ -45,6 +48,7 @@ describe('BYTE_STREAM_SPLIT encoding', () => {
       columnData: [{ name: 'bigint', data, encoding: 'BYTE_STREAM_SPLIT' }],
     })
     const metadata = parquetMetadata(file)
+    expect(metadata.schema[1].type).toBe('INT64')
     const columnMetadata = metadata.row_groups[0].columns[0].meta_data
     expect(columnMetadata?.encodings).toEqual(['BYTE_STREAM_SPLIT'])
     const result = await parquetReadObjects({ file })
@@ -58,7 +62,7 @@ describe('BYTE_STREAM_SPLIT encoding', () => {
     })
     const metadata = parquetMetadata(file)
     const columnMetadata = metadata.row_groups[0].columns[0].meta_data
-    expect(columnMetadata?.encodings).toContain('BYTE_STREAM_SPLIT')
+    expect(columnMetadata?.encodings).toEqual(['BYTE_STREAM_SPLIT'])
     const result = await parquetReadObjects({ file })
     expect(result).toEqual(data.map(float => ({ float })))
   })
@@ -75,7 +79,7 @@ describe('BYTE_STREAM_SPLIT encoding', () => {
     const result = await parquetReadObjects({ file })
     expect(result.length).toBe(1000)
     result.forEach((row, i) => {
-      expect(row.float).toBeCloseTo(i * 0.1, 5)
+      expect(row.float).toBe(i * 0.1)
     })
   })
 })

@@ -18,9 +18,9 @@ export function writeRleBitPackedHybrid(writer, values, bitWidth) {
   writeBitPacked(bitPacked, values, bitWidth)
 
   if (rle.offset < bitPacked.offset) {
-    writer.appendBuffer(rle.getBuffer())
+    writer.appendBytes(rle.getBytes())
   } else {
-    writer.appendBuffer(bitPacked.getBuffer())
+    writer.appendBytes(bitPacked.getBytes())
   }
 
   return writer.offset - offsetStart

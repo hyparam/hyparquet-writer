@@ -35,7 +35,7 @@ export function snappyCompress(input) {
     pos += fragmentSize
   }
 
-  return new Uint8Array(writer.getBuffer())
+  return writer.getBytes()
 }
 
 /**

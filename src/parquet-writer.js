@@ -6,7 +6,7 @@ import { writeMetadata } from './metadata.js'
 import { snappyCompress } from './snappy.js'
 
 /**
- * @import {ColumnChunk, CompressionCodec, DecodedArray, FileMetaData, KeyValue, RowGroup, SchemaElement, SchemaTree} from 'hyparquet'
+ * @import {ColumnChunk, CompressionCodec, FileMetaData, KeyValue, RowGroup, SchemaElement, SchemaTree} from 'hyparquet'
  * @import {ColumnEncoder, ColumnSource, Compressors, PageIndexes, Writer} from '../src/types.js'
  */
 
@@ -60,21 +60,26 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
     // write columns
     for (let j = 0; j < columnData.length; j++) {
       const { name, data, encoding, columnIndex = false, offsetIndex = true } = columnData[j]
-      const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
 
+      // Spec: if ColumnIndex is present, OffsetIndex must also be present
+      if (columnIndex && !offsetIndex) {
+        throw new Error('parquet ColumnIndex cannot be present without OffsetIndex')
+      }
+      if (data.length !== columnDataRows) {
+        throw new Error('parquet columns must have the same length')
+      }
+
+      const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
       const columnPath = getSchemaPath(this.schema, [name])
       const leafPaths = getLeafSchemaPaths(columnPath)
 
       for (const leafPath of leafPaths) {
         const schemaPath = leafPath.map(node => node.element)
-        const element = schemaPath[schemaPath.length - 1]
-
-        const pageData = encodeNestedValues(leafPath, groupData)
 
         /** @type {ColumnEncoder} */
         const column = {
-          columnName: schemaPath.length === 2 ? name : schemaPath.slice(1).map(s => s.name).join('.'),
-          element,
+          columnName: schemaPath.slice(1).map(s => s.name).join('.'),
+          element: schemaPath[schemaPath.length - 1],
           schemaPath,
           codec: this.codec,
           compressors: this.compressors,
@@ -85,6 +90,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
           encoding,
         }
 
+        const pageData = encodeNestedValues(leafPath, groupData)
         const result = writeColumn({
           writer: this.writer,
           column,

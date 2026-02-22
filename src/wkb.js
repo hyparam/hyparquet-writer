@@ -13,7 +13,7 @@ import { ByteWriter } from './bytewriter.js'
 export function geojsonToWkb(geometry) {
   const writer = new ByteWriter()
   writeGeometry(writer, geometry)
-  return new Uint8Array(writer.getBuffer())
+  return writer.getBytes()
 }
 
 /**

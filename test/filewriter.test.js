@@ -20,9 +20,10 @@ describe('FileWriter', () => {
     }
   })
 
-  it('throws an error when calling getBuffer', () => {
+  it('file writer cannot return bytes buffer', () => {
     const writer = fileWriter(filename)
     expect(() => writer.getBuffer()).toThrowError('getBuffer not supported')
+    expect(() => writer.getBytes()).toThrowError('getBytes not supported')
   })
 
   it('writes single byte and flushes on finish', () => {

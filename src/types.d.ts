@@ -71,11 +71,12 @@ export interface PageIndexes {
 export interface Writer {
   buffer: ArrayBuffer
   view: DataView
-  offset: number
+  offset: number // total bytes written
 
   ensure(size: number): void
   finish(): void
   getBuffer(): ArrayBuffer
+  getBytes(): Uint8Array
   appendUint8(value: number): void
   appendUint32(value: number): void
   appendInt32(value: number): void

@@ -2,7 +2,9 @@ import { parquetReadObjects } from 'hyparquet'
 import { describe, expect, it } from 'vitest'
 import { parquetWriteBuffer } from '../src/index.js'
 
-/** @import {ColumnSource} from '../src/types.js' */
+/**
+ * @import {ColumnSource} from '../src/types.js'
+ */
 
 describe('parquetWrite multi-page', () => {
   it('writes with small pageSize and data is still readable', async () => {

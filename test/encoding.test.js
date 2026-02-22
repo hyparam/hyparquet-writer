@@ -1,7 +1,7 @@
+import { readRleBitPackedHybrid } from 'hyparquet/src/encoding.js'
 import { describe, expect, it } from 'vitest'
 import { ByteWriter } from '../src/bytewriter.js'
 import { writeRleBitPackedHybrid } from '../src/encoding.js'
-import { readRleBitPackedHybrid } from 'hyparquet/src/encoding.js'
 
 /**
  * Round-trip serialize and deserialize the given values.
@@ -15,8 +15,7 @@ function roundTripDeserialize(values) {
   // Serialize the values using writeRleBitPackedHybrid
   const writer = new ByteWriter()
   writeRleBitPackedHybrid(writer, values, bitWidth)
-  const buffer = writer.getBuffer()
-  const reader = { view: new DataView(buffer), offset: 0 }
+  const reader = { view: writer.view, offset: 0 }
 
   // Decode the values using readRleBitPackedHybrid from hyparquet
   /** @type {number[]} */

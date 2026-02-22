@@ -301,7 +301,7 @@ describe('parquetWriteBuffer', () => {
     expect(() => parquetWriteBuffer({ columnData: [
       { name: 'col1', data: [1, 2, 3] },
       { name: 'col2', data: [4, 5] },
-    ] })).toThrow('columns must have the same length')
+    ] })).toThrow('parquet columns must have the same length')
   })
 
   it('throws error for unsupported data types', () => {

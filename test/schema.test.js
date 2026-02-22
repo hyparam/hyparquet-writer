@@ -33,17 +33,6 @@ describe('schemaFromColumnData', () => {
     expect(schema[1].repetition_type).toBe('OPTIONAL')
   })
 
-  it('throws when column lengths differ', () => {
-    expect(() =>
-      schemaFromColumnData({
-        columnData: [
-          { name: 'a', data: new Int32Array([1]) },
-          { name: 'b', data: new Int32Array([1, 2]) },
-        ],
-      })
-    ).toThrow(/columns must have the same length/)
-  })
-
   it('rejects override with mismatched name', () => {
     expect(() =>
       schemaFromColumnData({

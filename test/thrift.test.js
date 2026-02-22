@@ -34,7 +34,7 @@ describe('serializeTCompactProtocol', () => {
     expect(result.field_4).toBe(0x7fff)
     expect(result.field_5).toBe(0x7fffffff)
     expect(result.field_6).toBe(BigInt('0x7fffffffffffffff'))
-    expect(result.field_7).toBeCloseTo(123.456)
+    expect(result.field_7).toBe(123.456)
     // Decode the binary back into a string
     const decoder = new TextDecoder()
     expect(decoder.decode(result.field_8)).toBe('Hello, Thrift!')
@@ -66,8 +66,7 @@ describe('serializeTCompactProtocol', () => {
     // The entire buffer should just be [0x00] = STOP
     const writer = new ByteWriter()
     serializeTCompactProtocol(writer, data)
-    const arr = new Uint8Array(writer.getBuffer())
-    expect(arr).toEqual(new Uint8Array([0x00]))
+    expect(writer.getBytes()).toEqual(new Uint8Array([0x00]))
   })
 
   it('serializes field IDs with gaps larger than 15', () => {

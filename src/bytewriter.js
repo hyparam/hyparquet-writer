@@ -1,16 +1,18 @@
+/**
+ * @import {Writer} from '../src/types.js'
+ */
 
 /**
- * Generic buffered writer.
  * Writes data to an auto-expanding ArrayBuffer.
  *
- * @import {Writer} from '../src/types.js'
+ * @param {number} [initalSize]
  * @returns {Writer}
  */
-export function ByteWriter() {
-  this.buffer = new ArrayBuffer(1024)
+export function ByteWriter(initalSize = 1024) {
+  this.buffer = new ArrayBuffer(initalSize)
   this.view = new DataView(this.buffer)
-  this.offset = 0 // bytes written
-  this.index = 0 // index in buffer
+  this.offset = 0 // total bytes written
+  this.index = 0 // index in buffer (may be reset when flushing to file)
   return this
 }
 
@@ -34,6 +36,10 @@ ByteWriter.prototype.finish = function() {
 
 ByteWriter.prototype.getBuffer = function() {
   return this.buffer.slice(0, this.index)
+}
+
+ByteWriter.prototype.getBytes = function() {
+  return new Uint8Array(this.buffer, 0, this.index)
 }
 
 /**

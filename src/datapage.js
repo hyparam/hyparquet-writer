@@ -43,7 +43,7 @@ export function writeDataPageV2({ writer, column, encoding, pageData }) {
     const rleData = new ByteWriter()
     writeRleBitPackedHybrid(rleData, nonnull, 1)
     page.appendUint32(rleData.offset) // prepend byte length
-    page.appendBuffer(rleData.getBuffer())
+    page.appendBytes(rleData.getBytes())
   } else if (encoding === 'PLAIN_DICTIONARY' || encoding === 'RLE_DICTIONARY') {
     // find max bitwidth
     let maxValue = 0
@@ -73,8 +73,8 @@ export function writeDataPageV2({ writer, column, encoding, pageData }) {
   }
 
   // compress page data
-  const pageBuffer = new Uint8Array(page.getBuffer())
-  const compressedBytes = compressors[codec]?.(pageBuffer) ?? pageBuffer
+  const pageBytes = page.getBytes()
+  const compressedBytes = compressors[codec]?.(pageBytes) ?? pageBytes
 
   // write page header
   writePageHeader(writer, {
@@ -94,7 +94,7 @@ export function writeDataPageV2({ writer, column, encoding, pageData }) {
   })
 
   // write levels
-  writer.appendBuffer(levelWriter.getBuffer())
+  writer.appendBytes(levelWriter.getBytes())
 
   // write page data
   writer.appendBytes(compressedBytes)

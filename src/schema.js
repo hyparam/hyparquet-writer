@@ -18,15 +18,8 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
     name: 'root',
     num_children: columnData.length,
   }]
-  let num_rows = 0
 
   for (const { name, data, type, nullable } of columnData) {
-    // check if all columns have the same length
-    num_rows = num_rows || data.length
-    if (num_rows !== data.length) {
-      throw new Error('columns must have the same length')
-    }
-
     if (schemaOverrides?.[name]) {
       // use schema override
       const override = schemaOverrides[name]
