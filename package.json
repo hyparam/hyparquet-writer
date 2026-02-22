@@ -1,12 +1,13 @@
 {
   "name": "hyparquet-writer",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "Parquet file writer for JavaScript",
   "author": "Hyperparam",
   "homepage": "https://hyperparam.app",
   "keywords": [
     "ai",
     "data",
+    "datalake",
     "dataset",
     "hyperparam",
     "hyparquet",
@@ -46,7 +47,7 @@
   },
   "sideEffects": false,
   "scripts": {
-    "build:types": "tsc -p ./tsconfig.build.json",
+    "build:types": "rm -rf types && tsc -p ./tsconfig.build.json",
     "coverage": "vitest run --coverage --coverage.include=src",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
@@ -62,7 +63,7 @@
     "@vitest/coverage-v8": "4.0.18",
     "eslint": "9.39.2",
     "eslint-plugin-jsdoc": "62.7.0",
-    "hysnappy": "1.1.0",
+    "hysnappy": "1.1.1",
     "typescript": "5.9.3",
     "vitest": "4.0.18"
   }
