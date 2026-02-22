@@ -89,6 +89,7 @@ export function writeDataPageV2({ writer, column, encoding, pageData }) {
       definition_levels_byte_length,
       repetition_levels_byte_length,
       is_compressed: !!codec,
+      // is there benefit to page statistics here?
     },
   })
 

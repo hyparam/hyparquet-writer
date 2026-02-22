@@ -1,18 +1,17 @@
 import { deserializeTCompactProtocol } from 'hyparquet/src/thrift.js'
 import { describe, expect, it } from 'vitest'
-import { serializeTCompactProtocol } from '../src/thrift.js'
 import { ByteWriter } from '../src/bytewriter.js'
 import { logicalType } from '../src/metadata.js'
+import { serializeTCompactProtocol } from '../src/thrift.js'
 
 /**
- * Utility to decode a Thrift-serialized buffer and return the parsed object.
- * @param {ArrayBuffer} buf
+ * @param {Record<string, any>} value
  * @returns {Record<string, any>}
  */
-function roundTripDeserialize(buf) {
-  const view = new DataView(buf)
-  const reader = { view, offset: 0 }
-  return deserializeTCompactProtocol(reader)
+function roundTripThrift(value) {
+  const writer = new ByteWriter()
+  serializeTCompactProtocol(writer, value)
+  return deserializeTCompactProtocol({ view: writer.view, offset: 0 })
 }
 
 describe('serializeTCompactProtocol', () => {
@@ -28,11 +27,7 @@ describe('serializeTCompactProtocol', () => {
       field_8: 'Hello, Thrift!',
       field_9: new TextEncoder().encode('Hello, Thrift!'),
     }
-
-    const writer = new ByteWriter()
-    serializeTCompactProtocol(writer, data)
-    const result = roundTripDeserialize(writer.getBuffer())
-
+    const result = roundTripThrift(data)
     expect(result.field_1).toBe(true)
     expect(result.field_2).toBe(false)
     expect(result.field_3).toBe(127)
@@ -55,14 +50,9 @@ describe('serializeTCompactProtocol', () => {
           field_2: false,
         },
       },
-      // List of booleans
       field_2: [true, false, true, false],
     }
-
-    const writer = new ByteWriter()
-    serializeTCompactProtocol(writer, data)
-    const result = roundTripDeserialize(writer.getBuffer())
-
+    const result = roundTripThrift(data)
     expect(result.field_1.field_1).toBe(42)
     expect(result.field_1.field_2.field_1).toBe(true)
     expect(result.field_1.field_2.field_2).toBe(false)
@@ -71,40 +61,52 @@ describe('serializeTCompactProtocol', () => {
 
   it('handles empty object (only STOP)', () => {
     const data = {}
+    expect(roundTripThrift(data)).toEqual({})
+
+    // The entire buffer should just be [0x00] = STOP
     const writer = new ByteWriter()
     serializeTCompactProtocol(writer, data)
     const arr = new Uint8Array(writer.getBuffer())
-    // The entire buffer should just be [0x00] = STOP
     expect(arr).toEqual(new Uint8Array([0x00]))
-
-    // Round-trip: should deserialize to an empty object
-    const result = roundTripDeserialize(writer.getBuffer())
-    expect(result).toEqual({})
-  })
-
-  it('throws on non-monotonic field IDs', () => {
-    const invalidData = {
-      field_2: 2,
-      field_1: 1, // field_1 is out of order (less than field_2)
-    }
-    const writer = new ByteWriter()
-    expect(() => serializeTCompactProtocol(writer, invalidData)).toThrow()
   })
 
   it('serializes field IDs with gaps larger than 15', () => {
     const data = { field_1: 1, field_17: 17 }
-    const writer = new ByteWriter()
-    serializeTCompactProtocol(writer, data)
-    const result = roundTripDeserialize(writer.getBuffer())
+    const result = roundTripThrift(data)
     expect(result.field_1).toBe(1)
     expect(result.field_17).toBe(17)
   })
 
   it('serializes GEOMETRY logicalType struct with field_17', () => {
     const data = { field_1: logicalType({ type: 'GEOMETRY' }) }
-    const writer = new ByteWriter()
-    serializeTCompactProtocol(writer, data)
-    const result = roundTripDeserialize(writer.getBuffer())
+    const result = roundTripThrift(data)
     expect(result.field_1.field_17).toEqual({})
+  })
+
+  it('throws on non-monotonic field IDs', () => {
+    const invalidData = {
+      field_2: 33,
+      field_1: 33, // field_1 is out of order
+    }
+    expect(() => roundTripThrift(invalidData))
+      .toThrow('thrift non-monotonic field ID')
+  })
+
+  it('throws on non-numeric field IDs', () => {
+    const invalidData = {
+      field_1: 33,
+      field_two: 33, // field_two does not match field_N pattern
+    }
+    expect(() => roundTripThrift(invalidData))
+      .toThrow('thrift invalid field name: field_two. Expected "field_###"')
+  })
+
+  it('throws on non-field IDs', () => {
+    const invalidData = {
+      field_1: 33,
+      not_a_field: 33, // not_a_field does not match field_N pattern
+    }
+    expect(() => roundTripThrift(invalidData))
+      .toThrow('thrift invalid field name: not_a_field. Expected "field_###"')
   })
 })

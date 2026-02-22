@@ -6,9 +6,10 @@ import { exampleData, exampleMetadata } from './example.js'
 /**
  * Utility to encode a parquet file and then read it back into a JS object.
  *
+ * @import {SchemaElement} from 'hyparquet'
  * @import {ColumnSource} from '../src/types.js'
  * @param {ColumnSource[]} columnData
- * @param {import('hyparquet').SchemaElement[]} [schema]
+ * @param {SchemaElement[]} [schema]
  * @returns {Promise<Record<string, any>>}
  */
 async function roundTripDeserialize(columnData, schema) {
@@ -103,42 +104,21 @@ describe('parquetWriteBuffer', () => {
   })
 
   it('serializes list types', async () => {
-    const result = await roundTripDeserialize([{
-      name: 'list',
-      data: [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
-    }])
-    expect(result).toEqual([
-      { list: [1, 2, 3] },
-      { list: [4, 5, 6] },
-      { list: [7, 8, 9] },
-      { list: [10, 11, 12] },
-    ])
+    const data = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
+    const result = await roundTripDeserialize([{ name: 'list', data }])
+    expect(result).toEqual(data.map(list => ({ list })))
   })
 
   it('serializes object types', async () => {
-    const result = await roundTripDeserialize([{
-      name: 'obj',
-      data: [{ a: 1, b: 2 }, { a: 3, b: 4 }, { a: 5, b: 6 }, { a: 7, b: 8 }],
-    }])
-    expect(result).toEqual([
-      { obj: { a: 1, b: 2 } },
-      { obj: { a: 3, b: 4 } },
-      { obj: { a: 5, b: 6 } },
-      { obj: { a: 7, b: 8 } },
-    ])
+    const data = [{ a: 1, b: 2 }, { a: 3, b: 4 }, { a: 5, b: 6 }, { a: 7, b: 8 }]
+    const result = await roundTripDeserialize([{ name: 'obj', data }])
+    expect(result).toEqual(data.map(obj => ({ obj })))
   })
 
   it('serializes date types', async () => {
-    const result = await roundTripDeserialize([{
-      name: 'date',
-      data: [new Date(0), new Date(100000), new Date(200000), new Date(300000)],
-    }])
-    expect(result).toEqual([
-      { date: new Date(0) },
-      { date: new Date(100000) },
-      { date: new Date(200000) },
-      { date: new Date(300000) },
-    ])
+    const data = [new Date(0), new Date(100000), new Date(200000), new Date(300000)]
+    const result = await roundTripDeserialize([{ name: 'date', data }])
+    expect(result).toEqual(data.map(date => ({ date })))
   })
 
   it('serializes time types', async () => {
@@ -172,16 +152,9 @@ describe('parquetWriteBuffer', () => {
   })
 
   it('serializes byte array types', async () => {
-    const result = await roundTripDeserialize([{
-      name: 'bytes',
-      data: [Uint8Array.of(1, 2, 3), Uint8Array.of(4, 5, 6), Uint8Array.of(7, 8, 9), Uint8Array.of(10, 11, 12)],
-    }])
-    expect(result).toEqual([
-      { bytes: Uint8Array.of(1, 2, 3) },
-      { bytes: Uint8Array.of(4, 5, 6) },
-      { bytes: Uint8Array.of(7, 8, 9) },
-      { bytes: Uint8Array.of(10, 11, 12) },
-    ])
+    const data = [Uint8Array.of(1, 2, 3), Uint8Array.of(4, 5, 6), Uint8Array.of(7, 8, 9), Uint8Array.of(10, 11, 12)]
+    const result = await roundTripDeserialize([{ name: 'bytes', data }])
+    expect(result).toEqual(data.map(bytes => ({ bytes })))
   })
 
   it('serializes uuid types', async () => {
@@ -215,7 +188,7 @@ describe('parquetWriteBuffer', () => {
     ])
   })
 
-  it('serializes empty column', async () => {
+  it('serializes null column', async () => {
     const result = await roundTripDeserialize([{
       name: 'empty',
       data: [null, null, null, null],
@@ -235,10 +208,9 @@ describe('parquetWriteBuffer', () => {
   })
 
   it('handles special numeric values', async () => {
-    const data = [
+    const result = await roundTripDeserialize([
       { name: 'double', data: [NaN, Infinity, -Infinity, 42, 0, -0] },
-    ]
-    const result = await roundTripDeserialize(data)
+    ])
     expect(result[0].double).toBeNaN()
     expect(result[1].double).toEqual(Infinity)
     expect(result[2].double).toEqual(-Infinity)
@@ -347,11 +319,13 @@ describe('parquetWriteBuffer', () => {
     expect(result).toEqual(data.map(int => ({ int })))
   })
 
-  it('writes BYTE_STREAM_SPLIT encoding', () => {
+  it('writes BYTE_STREAM_SPLIT encoding', async () => {
     const file = parquetWriteBuffer({
       columnData: [{ name: 'float', data: [1.0, 2.0, 3.0], encoding: 'BYTE_STREAM_SPLIT' }],
     })
     const metadata = parquetMetadata(file)
     expect(metadata.row_groups[0].columns[0].meta_data?.encodings).toEqual(['BYTE_STREAM_SPLIT'])
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual([{ float: 1.0 }, { float: 2.0 }, { float: 3.0 }])
   })
 })

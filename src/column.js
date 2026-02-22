@@ -5,6 +5,11 @@ import { writePlain } from './plain.js'
 import { unconvert, unconvertMinMax } from './unconvert.js'
 
 /**
+ * @import {ColumnChunk, ColumnIndex, DecodedArray, Encoding, OffsetIndex, ParquetType, Statistics} from 'hyparquet'
+ * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
+ */
+
+/**
  * Write a column chunk to the writer.
  *
  * @param {object} options
@@ -30,24 +35,17 @@ export function writeColumn({ writer, column, pageData }) {
   const geospatial_statistics = stats && isGeospatial ? geospatialStatistics(values) : undefined
 
   // dictionary encoding
+  /** @type {bigint | undefined} */
   let dictionary_page_offset
-  let data_page_offset = BigInt(writer.offset)
-  const dictionary = useDictionary(values, type, userEncoding)
+  const { dictionary, indexes } = useDictionary(values, type, type_length, userEncoding, pageSize)
 
   // Determine encoding and prepare values for writing
   /** @type {Encoding} */
   let encoding
   /** @type {DecodedArray} */
   let writeValues
-  if (dictionary) {
+  if (dictionary && indexes) {
     // replace values with dictionary indices
-    /** @type {number[]} */
-    const indexes = new Array(values.length)
-    for (let i = 0; i < values.length; i++) {
-      if (values[i] !== null && values[i] !== undefined) {
-        indexes[i] = dictionary.indexOf(values[i])
-      }
-    }
     writeValues = indexes
     encoding = 'RLE_DICTIONARY'
 
@@ -80,7 +78,7 @@ export function writeColumn({ writer, column, pageData }) {
   } : undefined
 
   // Write data pages
-  data_page_offset = BigInt(writer.offset)
+  const data_page_offset = BigInt(writer.offset)
   let first_row_index = 0n
   let prevStart = 0
   let prevMinValue
@@ -107,11 +105,9 @@ export function writeColumn({ writer, column, pageData }) {
       const nullCount = pageStats.null_count ?? 0n
 
       columnIndex.null_pages.push(nullCount === BigInt(end - start)) // all nulls
-      const currMin = unconvertMinMax(pageStats.min_value, element)
-      const currMax = unconvertMinMax(pageStats.max_value, element)
       // Spec: for all-null pages set "byte[0]"
-      columnIndex.min_values.push(currMin ?? new Uint8Array())
-      columnIndex.max_values.push(currMax ?? new Uint8Array())
+      columnIndex.min_values.push(unconvertMinMax(pageStats.min_value, element) ?? new Uint8Array())
+      columnIndex.max_values.push(unconvertMinMax(pageStats.max_value, element) ?? new Uint8Array())
       columnIndex.null_counts?.push(nullCount)
 
       // Track boundary order using original JS values
@@ -183,7 +179,7 @@ export function writeColumn({ writer, column, pageData }) {
  * @param {DecodedArray} values
  * @param {ParquetType} type
  * @param {number | undefined} type_length
- * @param {number | undefined} pageSize
+ * @param {number} pageSize
  * @returns {Array<{start: number, end: number}>}
  */
 function getPageBoundaries(values, type, type_length, pageSize) {
@@ -221,7 +217,7 @@ function getPageBoundaries(values, type, type_length, pageSize) {
  *
  * @param {any} value
  * @param {ParquetType} type
- * @param {number | undefined} type_length
+ * @param {number} [type_length]
  * @returns {number}
  */
 function estimateValueSize(value, type, type_length) {
@@ -241,21 +237,45 @@ function estimateValueSize(value, type, type_length) {
 /**
  * @param {DecodedArray} values
  * @param {ParquetType} type
+ * @param {number | undefined} type_length
  * @param {Encoding | undefined} encoding
- * @returns {any[] | undefined}
+ * @param {number} pageSize
+ * @returns {{ dictionary?: any[], indexes?: number[] }}
  */
-function useDictionary(values, type, encoding) {
-  if (encoding && encoding !== 'RLE_DICTIONARY') return
-  if (type === 'BOOLEAN') return
-  // TODO: determine uniqueness ratio on a sample
-  const unique = new Set(values)
-  unique.delete(undefined)
-  unique.delete(null)
-  if (unique.size === 0) return // all nulls, no dictionary needed
-  if (values.length / unique.size > 2) {
-    // TODO: sort by frequency
-    return Array.from(unique)
+function useDictionary(values, type, type_length, encoding, pageSize) {
+  if (encoding && encoding !== 'RLE_DICTIONARY') return {}
+  if (type === 'BOOLEAN') return {}
+
+  // uniqueness on a sample
+  const sample = values.slice(0, 1000)
+  const sampleUnique = new Set(sample).size
+  if (sampleUnique === 0 || sampleUnique / sample.length > 0.5) return {}
+
+  // build dictionary and indexes
+  /** @type {Map<any, number>} */
+  const unique = new Map()
+  /** @type {number[]} */
+  const indexes = new Array(values.length)
+  let size = 0
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i]
+    if (value === null || value === undefined) continue
+
+    // dictionary cannot exceed page size
+    size += estimateValueSize(value, type, type_length)
+    if (pageSize && size > pageSize) return {}
+
+    // find index for value in dictionary
+    let index = unique.get(value)
+    if (index === undefined) {
+      index = unique.size
+      unique.set(value, index)
+    }
+    indexes[i] = index
   }
+
+  // TODO: sort by frequency?
+  return { dictionary: Array.from(unique.keys()), indexes }
 }
 
 /**
@@ -294,8 +314,6 @@ function writeDictionaryPage(writer, column, dictionary) {
 }
 
 /**
- * @import {ColumnChunk, ColumnIndex, DecodedArray, Encoding, OffsetIndex, ParquetType, SchemaElement, Statistics} from 'hyparquet'
- * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
  * @param {DecodedArray} values
  * @returns {Statistics}
  */

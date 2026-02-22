@@ -3,6 +3,9 @@ import { ByteWriter } from '../src/bytewriter.js'
 import { deltaBinaryPack, deltaByteArray, deltaLengthByteArray } from '../src/delta.js'
 import { deltaBinaryUnpack, deltaByteArray as deltaByteArrayRead, deltaLengthByteArray as deltaLengthByteArrayRead } from 'hyparquet/src/delta.js'
 
+const decoder = new TextDecoder()
+const encoder = new TextEncoder()
+
 /**
  * Round-trip test for deltaBinaryPack with Int32Array output.
  *
@@ -12,9 +15,7 @@ import { deltaBinaryUnpack, deltaByteArray as deltaByteArrayRead, deltaLengthByt
 function roundTripInt32(values) {
   const writer = new ByteWriter()
   deltaBinaryPack(writer, values)
-  const buffer = writer.getBuffer()
-  const reader = { view: new DataView(buffer), offset: 0 }
-
+  const reader = { view: writer.view, offset: 0 }
   const output = new Int32Array(values.length)
   deltaBinaryUnpack(reader, values.length, output)
   return Array.from(output)
@@ -29,9 +30,7 @@ function roundTripInt32(values) {
 function roundTripBigInt(values) {
   const writer = new ByteWriter()
   deltaBinaryPack(writer, values)
-  const buffer = writer.getBuffer()
-  const reader = { view: new DataView(buffer), offset: 0 }
-
+  const reader = { view: writer.view, offset: 0 }
   const output = new BigInt64Array(values.length)
   deltaBinaryUnpack(reader, values.length, output)
   return Array.from(output)
@@ -46,9 +45,7 @@ function roundTripBigInt(values) {
 function roundTripLengthByteArray(values) {
   const writer = new ByteWriter()
   deltaLengthByteArray(writer, values)
-  const buffer = writer.getBuffer()
-  const reader = { view: new DataView(buffer), offset: 0 }
-
+  const reader = { view: writer.view, offset: 0 }
   /** @type {Uint8Array[]} */
   const output = new Array(values.length)
   deltaLengthByteArrayRead(reader, values.length, output)
@@ -64,9 +61,7 @@ function roundTripLengthByteArray(values) {
 function roundTripByteArray(values) {
   const writer = new ByteWriter()
   deltaByteArray(writer, values)
-  const buffer = writer.getBuffer()
-  const reader = { view: new DataView(buffer), offset: 0 }
-
+  const reader = { view: writer.view, offset: 0 }
   /** @type {Uint8Array[]} */
   const output = new Array(values.length)
   deltaByteArrayRead(reader, values.length, output)
@@ -185,10 +180,8 @@ describe('deltaLengthByteArray', () => {
   })
 
   it('should round-trip strings as byte arrays', () => {
-    const encoder = new TextEncoder()
     const original = ['hello', 'world', 'test'].map(s => encoder.encode(s))
     const decoded = roundTripLengthByteArray(original)
-    const decoder = new TextDecoder()
     expect(decoded.map(d => decoder.decode(d))).toEqual(['hello', 'world', 'test'])
   })
 
@@ -212,26 +205,20 @@ describe('deltaByteArray', () => {
   })
 
   it('should round-trip arrays with common prefixes', () => {
-    const encoder = new TextEncoder()
     const original = ['prefix_a', 'prefix_b', 'prefix_c'].map(s => encoder.encode(s))
     const decoded = roundTripByteArray(original)
-    const decoder = new TextDecoder()
     expect(decoded.map(d => decoder.decode(d))).toEqual(['prefix_a', 'prefix_b', 'prefix_c'])
   })
 
   it('should round-trip arrays with no common prefix', () => {
-    const encoder = new TextEncoder()
     const original = ['abc', 'xyz', '123'].map(s => encoder.encode(s))
     const decoded = roundTripByteArray(original)
-    const decoder = new TextDecoder()
     expect(decoded.map(d => decoder.decode(d))).toEqual(['abc', 'xyz', '123'])
   })
 
   it('should round-trip sorted strings efficiently', () => {
-    const encoder = new TextEncoder()
     const original = ['apple', 'application', 'apply', 'banana', 'bandana'].map(s => encoder.encode(s))
     const decoded = roundTripByteArray(original)
-    const decoder = new TextDecoder()
     expect(decoded.map(d => decoder.decode(d))).toEqual(['apple', 'application', 'apply', 'banana', 'bandana'])
   })
 

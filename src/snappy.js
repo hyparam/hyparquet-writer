@@ -6,6 +6,10 @@
 
 import { ByteWriter } from './bytewriter.js'
 
+/**
+ * @import {Writer} from '../src/types.js'
+ */
+
 const BLOCK_LOG = 16
 const BLOCK_SIZE = 1 << BLOCK_LOG
 
@@ -21,17 +25,16 @@ const globalHashTables = new Array(MAX_HASH_TABLE_BITS + 1)
  */
 export function snappyCompress(input) {
   const writer = new ByteWriter()
-  // Write uncompressed length as a varint
-  writer.appendVarInt(input.length)
-  if (input.length === 0) return new Uint8Array(writer.getBuffer())
+  writer.appendVarInt(input.length) // uncompressed length
 
   // Process input in 64K blocks
   let pos = 0
   while (pos < input.length) {
     const fragmentSize = Math.min(input.length - pos, BLOCK_SIZE)
-    compressFragment(input, pos, fragmentSize, writer)
+    compressFragment(writer, input, pos, fragmentSize)
     pos += fragmentSize
   }
+
   return new Uint8Array(writer.getBuffer())
 }
 
@@ -54,7 +57,6 @@ function hashFunc(key, hashFuncShift) {
  * @returns {number}
  */
 function load32(array, pos) {
-  // Expects Uint8Array as `array`
   return (
     array[pos] +
     (array[pos + 1] << 8) +
@@ -82,13 +84,12 @@ function equals32(array, pos1, pos2) {
 
 /**
  * Emit a literal chunk of data.
- * @import {Writer} from '../src/types.js'
+ * @param {Writer} writer
  * @param {Uint8Array} input
  * @param {number} ip
  * @param {number} len
- * @param {Writer} writer
  */
-function emitLiteral(input, ip, len, writer) {
+function emitLiteral(writer, input, ip, len) {
   // The first byte(s) encode the literal length
   if (len <= 60) {
     writer.appendUint8(len - 1 << 2)
@@ -149,23 +150,21 @@ function emitCopy(writer, offset, len) {
 
 /**
  * Compress a fragment of data.
+ * @param {Writer} writer
  * @param {Uint8Array} input
  * @param {number} ip
  * @param {number} inputSize
- * @param {Writer} writer
  */
-function compressFragment(input, ip, inputSize, writer) {
+function compressFragment(writer, input, ip, inputSize) {
   let hashTableBits = 1
   while (1 << hashTableBits <= inputSize && hashTableBits <= MAX_HASH_TABLE_BITS) {
-    hashTableBits += 1
+    hashTableBits++
   }
-  hashTableBits -= 1
+  hashTableBits--
   const hashFuncShift = 32 - hashTableBits
 
   // Initialize the hash table
-  if (typeof globalHashTables[hashTableBits] === 'undefined') {
-    globalHashTables[hashTableBits] = new Uint16Array(1 << hashTableBits)
-  }
+  globalHashTables[hashTableBits] ??= new Uint16Array(1 << hashTableBits)
   const hashTable = globalHashTables[hashTableBits]
   hashTable.fill(0)
 
@@ -184,7 +183,7 @@ function compressFragment(input, ip, inputSize, writer) {
   const INPUT_MARGIN = 15
   if (inputSize >= INPUT_MARGIN) {
     ipLimit = ipEnd - INPUT_MARGIN
-    ip += 1
+    ip++
     nextHash = hashFunc(load32(input, ip), hashFuncShift)
 
     while (flag) {
@@ -194,7 +193,7 @@ function compressFragment(input, ip, inputSize, writer) {
         ip = nextIp
         hash = nextHash
         bytesBetweenHashLookups = skip >>> 5
-        skip += 1
+        skip++
         nextIp = ip + bytesBetweenHashLookups
         if (ip > ipLimit) {
           flag = false
@@ -210,7 +209,7 @@ function compressFragment(input, ip, inputSize, writer) {
       }
 
       // Emit the literal from `nextEmit` to `ip`
-      emitLiteral(input, nextEmit, ip - nextEmit, writer)
+      emitLiteral(writer, input, nextEmit, ip - nextEmit)
 
       // We found a match. Repeatedly match and emit copies
       do {
@@ -242,13 +241,13 @@ function compressFragment(input, ip, inputSize, writer) {
         break
       }
 
-      ip += 1
+      ip++
       nextHash = hashFunc(load32(input, ip), hashFuncShift)
     }
   }
 
   // Emit the last literal (if any)
   if (nextEmit < ipEnd) {
-    emitLiteral(input, nextEmit, ipEnd - nextEmit, writer)
+    emitLiteral(writer, input, nextEmit, ipEnd - nextEmit)
   }
 }
