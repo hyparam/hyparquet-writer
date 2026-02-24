@@ -23,8 +23,17 @@ export function encodeNestedValues(treePath, rows) {
   const repetitionLevels = []
   const maxDefinitionLevel = getMaxDefinitionLevel(treePath)
 
-  // Flat required columns don't need Dremel encoding
+  // Flat required columns don't need dremel encoding
   if (treePath.length === 2 && maxDefinitionLevel === 0) {
+    return { values: rows, definitionLevels, repetitionLevels, maxDefinitionLevel }
+  }
+
+  // Flat optional columns: just compute definition levels
+  if (treePath.length === 2 && maxDefinitionLevel === 1) {
+    const definitionLevels = new Array(rows.length)
+    for (let i = 0; i < rows.length; i++) {
+      definitionLevels[i] = rows[i] === null || rows[i] === undefined ? 0 : 1
+    }
     return { values: rows, definitionLevels, repetitionLevels, maxDefinitionLevel }
   }
 

@@ -158,10 +158,14 @@ function writeLevels(writer, column, dataPage) {
   if (repetitionLevels.length) {
     for (let i = 0; i < repetitionLevels.length; i++) {
       if (repetitionLevels[i] === 0) num_rows++
-      if (definitionLevels[i] < maxDefinitionLevel) num_nulls++
     }
   } else {
     num_rows = values.length
+  }
+  if (definitionLevels.length) {
+    for (let i = 0; i < definitionLevels.length; i++) {
+      if (definitionLevels[i] < maxDefinitionLevel) num_nulls++
+    }
   }
 
   const maxRepetitionLevel = getMaxRepetitionLevel(schemaPath)

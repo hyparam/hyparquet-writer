@@ -29,8 +29,8 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
       // use provided type
       schema.push(basicTypeToSchemaElement(name, type, nullable))
     } else {
-      // auto-detect type
-      schema.push(autoSchemaElement(name, data))
+      // auto-detect type from first 1000 values
+      schema.push(autoSchemaElement(name, data.slice(0, 1000)))
     }
   }
 
@@ -72,8 +72,8 @@ function basicTypeToSchemaElement(name, type, nullable) {
 /**
  * Automatically determine a SchemaElement from an array of values.
  *
- * @param {string} name
- * @param {DecodedArray} values
+ * @param {string} name the column name
+ * @param {DecodedArray} values the column values
  * @returns {SchemaElement}
  */
 export function autoSchemaElement(name, values) {
@@ -82,7 +82,7 @@ export function autoSchemaElement(name, values) {
   /** @type {FieldRepetitionType} */
   let repetition_type = 'REQUIRED'
   /** @type {ConvertedType | undefined} */
-  let converted_type = undefined
+  let converted_type
 
   if (values instanceof Int32Array) return { name, type: 'INT32', repetition_type }
   if (values instanceof BigInt64Array) return { name, type: 'INT64', repetition_type }

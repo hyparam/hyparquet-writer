@@ -61,6 +61,7 @@ export function writeColumn({ writer, column, pageData }) {
   encodings.push(encoding)
 
   // Split values into pages based on pageSize
+  // TODO: wrong type for dictionary encoding since values are indexes
   const pageBoundaries = getPageBoundaries(writeValues, type, type_length, pageSize)
 
   // Initialize index structures if requested
