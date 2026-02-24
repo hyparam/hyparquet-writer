@@ -1,11 +1,16 @@
 import { getSchemaPath } from 'hyparquet/src/schema.js'
-import { CompressionCodecs, ConvertedTypes, Encodings, FieldRepetitionTypes, PageTypes, ParquetTypes } from 'hyparquet/src/constants.js'
+import { CompressionCodecs, ConvertedTypes, EdgeInterpolationAlgorithms, Encodings, FieldRepetitionTypes, PageTypes, ParquetTypes } from 'hyparquet/src/constants.js'
 import { serializeTCompactProtocol } from './thrift.js'
 import { unconvertStatistics } from './unconvert.js'
 
 /**
- * @import {FileMetaData, LogicalType, TimeUnit} from 'hyparquet'
+ * @import {FileMetaData, LogicalType, SchemaElement, TimeUnit} from 'hyparquet'
  * @import {ThriftObject, Writer} from '../src/types.js'
+ */
+
+/**
+ * Write Parquet file metadata as thrift.
+ *
  * @param {Writer} writer
  * @param {FileMetaData} metadata
  */
@@ -13,7 +18,7 @@ export function writeMetadata(writer, metadata) {
   /** @type {ThriftObject} */
   const compact = {
     field_1: metadata.version,
-    field_2: metadata.schema && metadata.schema.map(element => ({
+    field_2: metadata.schema.map(element => ({
       field_1: element.type && ParquetTypes.indexOf(element.type),
       field_2: element.type_length,
       field_3: element.repetition_type && FieldRepetitionTypes.indexOf(element.repetition_type),
@@ -27,7 +32,7 @@ export function writeMetadata(writer, metadata) {
     })),
     field_3: metadata.num_rows,
     field_4: metadata.row_groups.map(rg => ({
-      field_1: rg.columns.map((c, columnIndex) => ({
+      field_1: rg.columns.map(c => ({
         field_1: c.file_path,
         field_2: c.file_offset,
         field_3: c.meta_data && {
@@ -47,7 +52,7 @@ export function writeMetadata(writer, metadata) {
           field_11: c.meta_data.dictionary_page_offset,
           field_12: c.meta_data.statistics && unconvertStatistics(
             c.meta_data.statistics,
-            schemaElement(metadata.schema, c.meta_data.path_in_schema, columnIndex + 1)
+            schemaElement(metadata.schema, c.meta_data.path_in_schema)
           ),
           field_13: c.meta_data.encoding_stats && c.meta_data.encoding_stats.map(es => ({
             field_1: PageTypes.indexOf(es.page_type),
@@ -111,17 +116,13 @@ export function writeMetadata(writer, metadata) {
 /**
  * Resolve schema element for statistics using the stored path.
  *
- * @param {import('hyparquet').SchemaElement[]} schema
- * @param {string[] | undefined} path
- * @param {number} fallbackIndex
- * @returns {import('hyparquet').SchemaElement}
+ * @param {SchemaElement[]} schema
+ * @param {string[]} path
+ * @returns {SchemaElement}
  */
-function schemaElement(schema, path, fallbackIndex) {
-  if (path?.length) {
-    const resolved = getSchemaPath(schema, path).at(-1)?.element
-    if (resolved) return resolved
-  }
-  return schema[fallbackIndex]
+function schemaElement(schema, path) {
+  const tree = getSchemaPath(schema, path)
+  return tree[tree.length - 1].element
 }
 
 /**
@@ -162,7 +163,7 @@ export function logicalType(type) {
   } }
   if (type.type === 'GEOGRAPHY') return { field_18: {
     field_1: type.crs,
-    field_2: type.algorithm && edgeAlgorithm[type.algorithm],
+    field_2: type.algorithm && EdgeInterpolationAlgorithms.indexOf(type.algorithm),
   } }
 }
 
@@ -174,16 +175,4 @@ function timeUnit(unit) {
   if (unit === 'NANOS') return { field_3: {} }
   if (unit === 'MICROS') return { field_2: {} }
   return { field_1: {} }
-}
-
-/**
- * @import {EdgeInterpolationAlgorithm} from 'hyparquet/src/types.js'
- * @type {Record<EdgeInterpolationAlgorithm, number>}
- */
-const edgeAlgorithm = {
-  SPHERICAL: 0,
-  VINCENTY: 1,
-  THOMAS: 2,
-  ANDOYER: 3,
-  KARNEY: 4,
 }

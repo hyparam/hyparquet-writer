@@ -62,7 +62,7 @@ describe('writeMetadata', () => {
           meta_data: {
             type: 'BYTE_ARRAY',
             encodings: ['PLAIN', 'RLE'],
-            path_in_schema: [],
+            path_in_schema: ['geo'],
             codec: 'SNAPPY',
             num_values: 1n,
             total_uncompressed_size: 10n,
@@ -115,7 +115,7 @@ describe('writeMetadata', () => {
         total_compressed_size: 8n,
       }],
       key_value_metadata: [{ key: 'meta', value: 'data' }],
-      metadata_length: 223,
+      metadata_length: 227,
     }
 
     writeMetadata(writer, extendedMetadata)
