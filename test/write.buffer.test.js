@@ -294,7 +294,7 @@ describe('parquetWriteBuffer', () => {
 
   it('throws for mixed types', () => {
     expect(() => parquetWriteBuffer({ columnData: [{ name: 'mixed', data: [1, 2, 3, 'boom'] }] }))
-      .toThrow('mixed types not supported')
+      .toThrow('parquet cannot write mixed types: INT32 and UTF8')
   })
 
   it('throws error when columns have mismatched lengths', () => {

@@ -3,9 +3,12 @@ import { ParquetWriter } from './parquet-writer.js'
 import { schemaFromColumnData } from './schema.js'
 
 /**
+ * @import {ParquetWriteOptions} from '../src/types.js'
+ */
+
+/**
  * Write data as parquet to a file or stream.
  *
- * @import {ParquetWriteOptions} from '../src/types.js'
  * @param {ParquetWriteOptions} options
  */
 export function parquetWrite({

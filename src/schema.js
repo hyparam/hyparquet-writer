@@ -9,7 +9,7 @@
  *
  * @param {object} options
  * @param {ColumnSource[]} options.columnData
- * @param {Record<string,SchemaElement>} [options.schemaOverrides]
+ * @param {Record<string, SchemaElement>} [options.schemaOverrides]
  * @returns {SchemaElement[]}
  */
 export function schemaFromColumnData({ columnData, schemaOverrides }) {
@@ -23,7 +23,19 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
     if (schemaOverrides?.[name]) {
       // use schema override
       const override = schemaOverrides[name]
-      if (override.name !== name) throw new Error('schema override name does not match column name')
+      if (type || nullable !== undefined) {
+        throw new Error(`cannot provide both type and schema override for column ${name}`)
+      }
+      if (override.name !== name) {
+        throw new Error(`schema override for column ${name} must have matching name, got ${override.name}`)
+      }
+      if (override.type === 'FIXED_LEN_BYTE_ARRAY' && !override.type_length) {
+        throw new Error('schema override for FIXED_LEN_BYTE_ARRAY must include type_length')
+      }
+      // TODO: support nested schema overrides
+      if (override.num_children) {
+        throw new Error('schema override does not support nested types')
+      }
       schema.push(override)
     } else if (type) {
       // use provided type
@@ -93,43 +105,41 @@ export function autoSchemaElement(name, values) {
     if (value === null || value === undefined) {
       repetition_type = 'OPTIONAL'
     } else {
-      // value is defined
-      /** @type {ParquetType | undefined} */
-      let valueType = undefined
-      if (value === true || value === false) valueType = 'BOOLEAN'
+      // value is defined, infer type
+      /** @type {ParquetType} */
+      let valueType
+      /** @type {ConvertedType | undefined} */
+      let valueConvertedType
+      if (typeof value === 'boolean') valueType = 'BOOLEAN'
       else if (typeof value === 'bigint') valueType = 'INT64'
       else if (Number.isInteger(value)) valueType = 'INT32'
       else if (typeof value === 'number') valueType = 'DOUBLE'
       else if (value instanceof Uint8Array) valueType = 'BYTE_ARRAY'
       else if (typeof value === 'string') {
         valueType = 'BYTE_ARRAY'
-        // make sure they are all strings
-        if (type && !converted_type) throw new Error('mixed types not supported')
-        converted_type = 'UTF8'
+        valueConvertedType = 'UTF8'
       }
       else if (value instanceof Date) {
         valueType = 'INT64'
-        // make sure they are all dates
-        if (type && !converted_type) throw new Error('mixed types not supported')
-        converted_type = 'TIMESTAMP_MILLIS'
+        valueConvertedType = 'TIMESTAMP_MILLIS'
       }
       else if (typeof value === 'object') {
         // use json (TODO: native list and object types)
-        converted_type = 'JSON'
         valueType = 'BYTE_ARRAY'
+        valueConvertedType = 'JSON'
       }
-      else if (!valueType) throw new Error(`cannot determine parquet type for: ${value}`)
+      else throw new Error(`cannot determine parquet type for: ${value}`)
 
       // expand type if necessary
       if (type === undefined) {
         type = valueType
+        converted_type = valueConvertedType
       } else if (type === 'INT32' && valueType === 'DOUBLE') {
         type = 'DOUBLE'
       } else if (type === 'DOUBLE' && valueType === 'INT32') {
         valueType = 'DOUBLE'
-      }
-      if (type !== valueType) {
-        throw new Error(`parquet cannot write mixed types: ${type} and ${valueType}`)
+      } else if (type !== valueType || converted_type !== valueConvertedType) {
+        throw new Error(`parquet cannot write mixed types: ${converted_type ?? type} and ${valueConvertedType ?? valueType}`)
       }
     }
   }
