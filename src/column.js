@@ -44,9 +44,11 @@ export function writeColumn({ writer, column, pageData }) {
   let encoding
   /** @type {DecodedArray} */
   let writeValues
+  let writeType = type
   if (dictionary && indexes) {
     // replace values with dictionary indices
     writeValues = indexes
+    writeType = 'INT32'
     encoding = 'RLE_DICTIONARY'
 
     // write dictionary page first
@@ -61,12 +63,11 @@ export function writeColumn({ writer, column, pageData }) {
   encodings.push(encoding)
 
   // Split values into pages based on pageSize
-  // TODO: wrong type for dictionary encoding since values are indexes
-  const pageBoundaries = getPageBoundaries(writeValues, type, type_length, pageSize)
+  const pageBoundaries = getPageBoundaries(writeValues, writeType, type_length, pageSize)
 
   // Initialize index structures if requested
   /** @type {ColumnIndex | undefined} */
-  const columnIndex = column.columnIndex ? {
+  const columnIndex = column.columnIndex && pageBoundaries.length > 1 ? {
     null_pages: [],
     min_values: [],
     max_values: [],
@@ -74,7 +75,7 @@ export function writeColumn({ writer, column, pageData }) {
     null_counts: [],
   } : undefined
   /** @type {OffsetIndex | undefined} */
-  const offsetIndex = column.offsetIndex ? {
+  const offsetIndex = column.offsetIndex && pageBoundaries.length > 1 ? {
     page_locations: [],
   } : undefined
 
@@ -101,27 +102,26 @@ export function writeColumn({ writer, column, pageData }) {
 
     // ColumnIndex construction
     if (columnIndex) {
-      const originalSlice = values.slice(start, end)
-      const pageStats = getStatistics(originalSlice)
-      const nullCount = pageStats.null_count ?? 0n
+      const pageValues = values.slice(start, end) // original values not indexes
+      const { min_value, max_value, null_count = 0n } = getStatistics(pageValues)
 
-      columnIndex.null_pages.push(nullCount === BigInt(end - start)) // all nulls
+      columnIndex.null_pages.push(null_count === BigInt(end - start)) // all nulls
       // Spec: for all-null pages set "byte[0]"
-      columnIndex.min_values.push(unconvertMinMax(pageStats.min_value, element) ?? new Uint8Array())
-      columnIndex.max_values.push(unconvertMinMax(pageStats.max_value, element) ?? new Uint8Array())
-      columnIndex.null_counts?.push(nullCount)
+      columnIndex.min_values.push(unconvertMinMax(min_value, element) ?? new Uint8Array())
+      columnIndex.max_values.push(unconvertMinMax(max_value, element) ?? new Uint8Array())
+      columnIndex.null_counts?.push(null_count)
 
       // Track boundary order using original JS values
-      if (prevMinValue !== undefined && pageStats.min_value !== undefined) {
-        if (prevMinValue > pageStats.min_value) ascending = false
-        if (prevMinValue < pageStats.min_value) descending = false
+      if (prevMinValue !== undefined && min_value !== undefined) {
+        if (prevMinValue > min_value) ascending = false
+        if (prevMinValue < min_value) descending = false
       }
-      if (prevMaxValue !== undefined && pageStats.max_value !== undefined) {
-        if (prevMaxValue > pageStats.max_value) ascending = false
-        if (prevMaxValue < pageStats.max_value) descending = false
+      if (prevMaxValue !== undefined && max_value !== undefined) {
+        if (prevMaxValue > max_value) ascending = false
+        if (prevMaxValue < max_value) descending = false
       }
-      prevMinValue = pageStats.min_value
-      prevMaxValue = pageStats.max_value
+      prevMinValue = min_value
+      prevMaxValue = max_value
     }
 
     // OffsetIndex construction
@@ -147,9 +147,8 @@ export function writeColumn({ writer, column, pageData }) {
 
   // Set boundary order after all pages are written
   if (columnIndex) {
-    const numPages = columnIndex.min_values.length
-    columnIndex.boundary_order = numPages < 2 ? 'UNORDERED'
-      : ascending ? 'ASCENDING' : descending ? 'DESCENDING' : 'UNORDERED'
+    if (ascending) columnIndex.boundary_order = 'ASCENDING'
+    else if (descending) columnIndex.boundary_order = 'DESCENDING'
   }
 
   return {
@@ -224,7 +223,7 @@ function getPageBoundaries(values, type, type_length, pageSize) {
  */
 function estimateValueSize(value, type, type_length) {
   if (value === null || value === undefined) return 0
-  if (type === 'BOOLEAN') return 1 // bit, but count as byte for simplicity
+  if (type === 'BOOLEAN') return 0.125
   if (type === 'INT32' || type === 'FLOAT') return 4
   if (type === 'INT64' || type === 'DOUBLE') return 8
   if (type === 'INT96') return 12

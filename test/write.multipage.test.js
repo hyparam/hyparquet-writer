@@ -157,5 +157,8 @@ describe('parquetWrite multi-page', () => {
     expect(rows[1].fruit).toBe('banana')
     expect(rows[2].fruit).toBe('cherry')
     expect(rows[3].fruit).toBe('apple')
+
+    // We should have multiple pages and an offset index
+    expect(column1.offset_index_offset).toBeDefined()
   })
 })
