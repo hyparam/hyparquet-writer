@@ -271,6 +271,30 @@ describe('parquetWriteBuffer', () => {
     expect(result[199]).toEqual({ int: 13 })
   })
 
+  it('serializes uint32 types', async () => {
+    const data = [0, 100, 2147483648, 3000000000, 4294967295]
+    const result = await roundTripDeserialize(
+      [{ name: 'uint32', data }],
+      [
+        { name: 'root', num_children: 1 },
+        { name: 'uint32', type: 'INT32', converted_type: 'UINT_32' },
+      ]
+    )
+    expect(result).toEqual(data.map(uint32 => ({ uint32 })))
+  })
+
+  it('serializes uint64 types', async () => {
+    const data = [0n, 100n, 2147483648n, 3000000000n, 4294967295n, 4294967296n, 9007199254740991n, 18446744073709551615n]
+    const result = await roundTripDeserialize(
+      [{ name: 'uint64', data }],
+      [
+        { name: 'root', num_children: 1 },
+        { name: 'uint64', type: 'INT64', converted_type: 'UINT_64' },
+      ]
+    )
+    expect(result).toEqual(data.map(uint64 => ({ uint64 })))
+  })
+
   it('throws for wrong type specified', () => {
     expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'INT64' }] }))
       .toThrow('parquet expected bigint value')

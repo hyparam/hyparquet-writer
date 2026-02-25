@@ -56,6 +56,17 @@ export function unconvert(element, values) {
     const encoder = new TextEncoder()
     return values.map(v => typeof v === 'string' ? encoder.encode(v) : v)
   }
+  if (ctype === 'UINT_32' || ltype?.type === 'INTEGER' && ltype.bitWidth === 32 && !ltype.isSigned) {
+    if (values instanceof Uint32Array) return values
+    if (values instanceof Int32Array) return new Uint32Array(values.buffer, values.byteOffset, values.length)
+    return Array.from(values).map(v => {
+      if (v === null || v === undefined) return v
+      if (!Number.isSafeInteger(v)) throw new Error('expected integer value, got ' + v)
+      if (v < 0 || v > 4294967295) throw new Error('expected uint32 value, got ' + v)
+      if (v > 2147483647) return v - 4294967296 // convert to signed range
+      return v
+    })
+  }
   if (ltype?.type === 'FLOAT16') {
     if (type !== 'FIXED_LEN_BYTE_ARRAY') throw new Error('FLOAT16 must be FIXED_LEN_BYTE_ARRAY type')
     if (element.type_length !== 2) throw new Error('FLOAT16 expected type_length to be 2 bytes')

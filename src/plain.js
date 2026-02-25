@@ -52,7 +52,7 @@ function writePlainBoolean(writer, values) {
   }
 
   // if the array length is not a multiple of 8, write the leftover bits
-  if (values.length % 8 !== 0) {
+  if (values.length % 8) {
     writer.appendUint8(currentByte)
   }
 }
@@ -64,6 +64,7 @@ function writePlainBoolean(writer, values) {
 function writePlainInt32(writer, values) {
   for (const value of values) {
     if (!Number.isSafeInteger(value)) throw new Error('parquet expected integer value, got ' + value)
+    if (value < -2147483648 || value > 2147483647) throw new Error('parquet expected int32 value, got ' + value)
     writer.appendInt32(value)
   }
 }
