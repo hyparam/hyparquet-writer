@@ -263,13 +263,12 @@ function useDictionary(values, type, type_length, encoding, pageSize) {
     const value = values[i]
     if (value === null || value === undefined) continue
 
-    // dictionary cannot exceed page size
-    dictSize += estimateValueSize(value, type, type_length)
-    if (pageSize && dictSize > pageSize) return {}
-
     // find index for value in dictionary
     let index = unique.get(value)
     if (index === undefined) {
+      // dictionary cannot exceed page size
+      dictSize += estimateValueSize(value, type, type_length)
+      if (pageSize && dictSize > pageSize) return {}
       index = unique.size
       unique.set(value, index)
     }

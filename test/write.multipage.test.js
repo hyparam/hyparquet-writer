@@ -1,4 +1,4 @@
-import { parquetReadObjects } from 'hyparquet'
+import { parquetMetadata, parquetReadObjects } from 'hyparquet'
 import { describe, expect, it } from 'vitest'
 import { parquetWriteBuffer } from '../src/index.js'
 
@@ -146,8 +146,12 @@ describe('parquetWrite multi-page', () => {
       pageSize: 100,
     })
 
-    const rows = await parquetReadObjects({ file: buffer })
+    // should use dictionary encoding
+    const metadata = parquetMetadata(buffer)
+    const column1 = metadata.row_groups[0].columns[1]
+    expect(column1.meta_data?.encodings).toContain('RLE_DICTIONARY')
 
+    const rows = await parquetReadObjects({ file: buffer })
     expect(rows.length).toBe(numRows)
     expect(rows[0].fruit).toBe('apple')
     expect(rows[1].fruit).toBe('banana')
