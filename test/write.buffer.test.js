@@ -37,13 +37,13 @@ describe('parquetWriteBuffer', () => {
   it('serializes a string as a BYTE_ARRAY', () => {
     const data = ['string1', 'string2', 'string3']
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data, type: 'BYTE_ARRAY' }] })
-    expect(file.byteLength).toBe(164)
+    expect(file.byteLength).toBe(173)
   })
 
   it('serializes booleans as RLE', async () => {
     const data = Array(100).fill(true)
     const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data }] })
-    expect(file.byteLength).toBe(131)
+    expect(file.byteLength).toBe(140)
     const metadata = parquetMetadata(file)
     expect(metadata.row_groups[0].columns[0].meta_data?.encodings).toEqual(['RLE'])
     const result = await parquetReadObjects({ file })
@@ -57,9 +57,9 @@ describe('parquetWriteBuffer', () => {
     data[500] = true
     data[9999] = false
     const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data }], rowGroupSize: 10000 })
-    expect(file.byteLength).toBe(159)
+    expect(file.byteLength).toBe(168)
     const metadata = parquetMetadata(file)
-    expect(metadata.metadata_length).toBe(92)
+    expect(metadata.metadata_length).toBe(101)
     const result = await parquetReadObjects({ file })
     expect(result.length).toBe(10000)
     expect(result[0]).toEqual({ bool: null })
@@ -73,14 +73,14 @@ describe('parquetWriteBuffer', () => {
   it('efficiently serializes long string', () => {
     const str = 'a'.repeat(10000)
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data: [str] }] })
-    expect(file.byteLength).toBe(638)
+    expect(file.byteLength).toBe(647)
   })
 
   it('less efficiently serializes string without compression', () => {
     const str = 'a'.repeat(10000)
     const columnData = [{ name: 'string', data: [str] }]
     const file = parquetWriteBuffer({ columnData, codec: 'UNCOMPRESSED' })
-    expect(file.byteLength).toBe(10167)
+    expect(file.byteLength).toBe(10176)
   })
 
   it('efficiently serializes column with few distinct values', async () => {
@@ -99,7 +99,7 @@ describe('parquetWriteBuffer', () => {
   it('writes statistics when enabled', () => {
     const withStats = parquetWriteBuffer({ columnData: exampleData, statistics: true })
     const noStats = parquetWriteBuffer({ columnData: exampleData, statistics: false })
-    expect(withStats.byteLength).toBe(721)
+    expect(withStats.byteLength).toBe(784)
     expect(noStats.byteLength).toBe(611)
   })
 

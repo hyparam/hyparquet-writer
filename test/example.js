@@ -47,6 +47,9 @@ export const exampleMetadata = {
             min_value: false,
             max_value: true,
           },
+          encoding_stats: [
+            { page_type: 'DATA_PAGE_V2', encoding: 'PLAIN', count: 1 },
+          ],
         },
       },
       {
@@ -65,6 +68,9 @@ export const exampleMetadata = {
             min_value: 0,
             max_value: 0x7fffffff,
           },
+          encoding_stats: [
+            { page_type: 'DATA_PAGE_V2', encoding: 'PLAIN', count: 1 },
+          ],
         },
       },
       {
@@ -83,6 +89,9 @@ export const exampleMetadata = {
             min_value: 0n,
             max_value: 0x7fffffffffffffffn,
           },
+          encoding_stats: [
+            { page_type: 'DATA_PAGE_V2', encoding: 'PLAIN', count: 1 },
+          ],
         },
       },
       {
@@ -101,6 +110,9 @@ export const exampleMetadata = {
             min_value: 0,
             max_value: Infinity,
           },
+          encoding_stats: [
+            { page_type: 'DATA_PAGE_V2', encoding: 'PLAIN', count: 1 },
+          ],
         },
       },
       {
@@ -119,6 +131,9 @@ export const exampleMetadata = {
             min_value: 0,
             max_value: 1e100,
           },
+          encoding_stats: [
+            { page_type: 'DATA_PAGE_V2', encoding: 'PLAIN', count: 1 },
+          ],
         },
       },
       {
@@ -137,6 +152,9 @@ export const exampleMetadata = {
             min_value: 'a',
             max_value: 'd',
           },
+          encoding_stats: [
+            { page_type: 'DATA_PAGE_V2', encoding: 'PLAIN', count: 1 },
+          ],
         },
       },
       {
@@ -155,11 +173,14 @@ export const exampleMetadata = {
             min_value: false,
             max_value: true,
           },
+          encoding_stats: [
+            { page_type: 'DATA_PAGE_V2', encoding: 'PLAIN', count: 1 },
+          ],
         },
       },
     ],
     total_byte_size: 264n,
     num_rows: 4n,
   }],
-  metadata_length: 445,
+  metadata_length: 508,
 }

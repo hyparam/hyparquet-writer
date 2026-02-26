@@ -6,6 +6,7 @@ import { unconvert, unconvertMinMax } from './unconvert.js'
 
 /**
  * @import {ColumnChunk, ColumnIndex, DecodedArray, Encoding, OffsetIndex, ParquetType, Statistics} from 'hyparquet'
+ * @import {PageEncodingStats} from 'hyparquet/src/types.js'
  * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
  */
 
@@ -151,6 +152,17 @@ export function writeColumn({ writer, column, pageData }) {
     else if (descending) columnIndex.boundary_order = 'DESCENDING'
   }
 
+  // Build encoding stats
+  /** @type {PageEncodingStats[] | undefined} */
+  let encoding_stats
+  if (stats) {
+    encoding_stats = []
+    if (dictionary_page_offset !== undefined) {
+      encoding_stats.push({ page_type: 'DICTIONARY_PAGE', encoding: 'PLAIN', count: 1 })
+    }
+    encoding_stats.push({ page_type: 'DATA_PAGE_V2', encoding, count: pageBoundaries.length })
+  }
+
   return {
     chunk: {
       meta_data: {
@@ -164,6 +176,7 @@ export function writeColumn({ writer, column, pageData }) {
         data_page_offset,
         dictionary_page_offset,
         statistics,
+        encoding_stats,
         geospatial_statistics,
       },
       file_offset: BigInt(offsetStart),

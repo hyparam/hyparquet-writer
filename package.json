@@ -55,11 +55,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "hyparquet": "1.25.0"
+    "hyparquet": "1.25.1"
   },
   "devDependencies": {
     "@babel/eslint-parser": "7.28.6",
-    "@types/node": "25.3.0",
+    "@types/node": "25.3.1",
     "@vitest/coverage-v8": "4.0.18",
     "eslint": "9.39.2",
     "eslint-plugin-jsdoc": "62.7.1",
