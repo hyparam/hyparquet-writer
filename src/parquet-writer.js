@@ -44,75 +44,92 @@ export function ParquetWriter({ writer, schema, codec = 'SNAPPY', compressors, s
 /**
  * Write data to the file.
  * Will split data into row groups of the specified size.
+ * Calls writer.flush() (if defined) after each row group; if it returns a
+ * Promise, subsequent row groups await it before encoding more data.
  *
  * @param {object} options
  * @param {ColumnSource[]} options.columnData
  * @param {number | number[]} [options.rowGroupSize]
  * @param {number} [options.pageSize]
+ * @returns {void | Promise<void>}
  */
 ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100000], pageSize = 1048576 }) {
   const columnDataRows = columnData[0]?.data?.length || 0
+  /** @type {Promise<void> | undefined} */
+  let pending
   for (const { groupStartIndex, groupSize } of groupIterator({ columnDataRows, rowGroupSize })) {
-    const groupStartOffset = this.writer.offset
-    /** @type {ColumnChunk[]} */
-    const columns = []
+    const writeGroup = () => {
+      const groupStartOffset = this.writer.offset
+      /** @type {ColumnChunk[]} */
+      const columns = []
 
-    // write columns
-    for (let j = 0; j < columnData.length; j++) {
-      const { name, data, encoding, columnIndex = false, offsetIndex = true } = columnData[j]
+      // write columns
+      for (let j = 0; j < columnData.length; j++) {
+        const { name, data, encoding, columnIndex = false, offsetIndex = true } = columnData[j]
 
-      // Spec: if ColumnIndex is present, OffsetIndex must also be present
-      if (columnIndex && !offsetIndex) {
-        throw new Error('parquet ColumnIndex cannot be present without OffsetIndex')
-      }
-      if (data.length !== columnDataRows) {
-        throw new Error('parquet columns must have the same length')
-      }
-
-      const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
-      const columnPath = getSchemaPath(this.schema, [name])
-      const leafPaths = getLeafSchemaPaths(columnPath)
-
-      for (const leafPath of leafPaths) {
-        const schemaPath = leafPath.map(node => node.element)
-
-        /** @type {ColumnEncoder} */
-        const column = {
-          columnName: schemaPath.slice(1).map(s => s.name).join('.'),
-          element: schemaPath[schemaPath.length - 1],
-          schemaPath,
-          codec: this.codec,
-          compressors: this.compressors,
-          stats: this.statistics,
-          pageSize,
-          columnIndex,
-          offsetIndex,
-          encoding,
+        // Spec: if ColumnIndex is present, OffsetIndex must also be present
+        if (columnIndex && !offsetIndex) {
+          throw new Error('parquet ColumnIndex cannot be present without OffsetIndex')
+        }
+        if (data.length !== columnDataRows) {
+          throw new Error('parquet columns must have the same length')
         }
 
-        const pageData = encodeNestedValues(leafPath, groupData)
-        const result = writeColumn({
-          writer: this.writer,
-          column,
-          pageData,
-        })
+        const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
+        const columnPath = getSchemaPath(this.schema, [name])
+        const leafPaths = getLeafSchemaPaths(columnPath)
 
-        columns.push(result.chunk)
-        this.pendingIndexes.push(result)
+        for (const leafPath of leafPaths) {
+          const schemaPath = leafPath.map(node => node.element)
+
+          /** @type {ColumnEncoder} */
+          const column = {
+            columnName: schemaPath.slice(1).map(s => s.name).join('.'),
+            element: schemaPath[schemaPath.length - 1],
+            schemaPath,
+            codec: this.codec,
+            compressors: this.compressors,
+            stats: this.statistics,
+            pageSize,
+            columnIndex,
+            offsetIndex,
+            encoding,
+          }
+
+          const pageData = encodeNestedValues(leafPath, groupData)
+          const result = writeColumn({
+            writer: this.writer,
+            column,
+            pageData,
+          })
+
+          columns.push(result.chunk)
+          this.pendingIndexes.push(result)
+        }
       }
-    }
 
-    this.num_rows += BigInt(groupSize)
-    this.row_groups.push({
-      columns,
-      total_byte_size: BigInt(this.writer.offset - groupStartOffset),
-      num_rows: BigInt(groupSize),
-    })
+      this.num_rows += BigInt(groupSize)
+      this.row_groups.push({
+        columns,
+        total_byte_size: BigInt(this.writer.offset - groupStartOffset),
+        num_rows: BigInt(groupSize),
+      })
+      return this.writer.flush?.()
+    }
+    if (pending) {
+      pending = pending.then(writeGroup)
+    } else {
+      const r = writeGroup()
+      if (r) pending = Promise.resolve(r)
+    }
   }
+  return pending
 }
 
 /**
  * Finish writing the file.
+ *
+ * @returns {void | Promise<void>}
  */
 ParquetWriter.prototype.finish = function() {
   // Write all indexes at end of file
@@ -135,7 +152,7 @@ ParquetWriter.prototype.finish = function() {
 
   // write footer PAR1
   this.writer.appendUint32(0x31524150)
-  this.writer.finish()
+  return this.writer.finish()
 }
 
 /**
