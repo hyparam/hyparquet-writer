@@ -38,12 +38,12 @@ export function parquetWrite({
     statistics,
     kvMetadata,
   })
-  pq.write({
+  const w = pq.write({
     columnData,
     rowGroupSize,
     pageSize,
   })
-  return pq.finish()
+  return w ? w.then(() => pq.finish()) : pq.finish()
 }
 
 /**
