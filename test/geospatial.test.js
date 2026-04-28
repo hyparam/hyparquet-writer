@@ -85,6 +85,52 @@ describe('geospatialStatistics', () => {
     })
   })
 
+  it('skips NaN per-dimension without skipping the whole position', () => {
+    // POINT (1 NaN) should contribute X=1 but no Y (per parquet geospatial spec)
+    const result = geospatialStatistics([
+      { type: 'Point', coordinates: [1, NaN] },
+      { type: 'Point', coordinates: [NaN, 2] },
+      { type: 'Point', coordinates: [3, 4, NaN] },
+    ])
+    expect(result).toEqual({
+      bbox: { xmin: 1, xmax: 3, ymin: 2, ymax: 4 },
+      geospatial_types: [1, 1001],
+    })
+  })
+
+  it('omits Z dimension when all Z values are NaN', () => {
+    const result = geospatialStatistics([
+      { type: 'Point', coordinates: [1, 2, NaN] },
+      { type: 'Point', coordinates: [3, 4, NaN] },
+    ])
+    expect(result).toEqual({
+      bbox: { xmin: 1, xmax: 3, ymin: 2, ymax: 4 },
+      geospatial_types: [1001],
+    })
+  })
+
+  it('drops bbox when X dimension has no finite values', () => {
+    const result = geospatialStatistics([
+      { type: 'Point', coordinates: [NaN, 2] },
+      { type: 'Point', coordinates: [NaN, 5] },
+    ])
+    expect(result).toEqual({
+      bbox: undefined,
+      geospatial_types: [1],
+    })
+  })
+
+  it('drops bbox when Y dimension has no finite values', () => {
+    const result = geospatialStatistics([
+      { type: 'Point', coordinates: [1, NaN] },
+      { type: 'Point', coordinates: [4, NaN] },
+    ])
+    expect(result).toEqual({
+      bbox: undefined,
+      geospatial_types: [1],
+    })
+  })
+
   it('throws on invalid value types and geometry definitions', () => {
     expect(() => geospatialStatistics(['oops'])).toThrow('geospatial column expects GeoJSON geometries')
     expect(() => geospatialStatistics([{ type: 'Unknown', coordinates: [] }])).toThrow('unknown geometry type: Unknown')

@@ -8,16 +8,24 @@
 export function geospatialStatistics(values) {
   /** @type {Set<number>} */
   const typeCodes = new Set()
-  /** @type {BoundingBox | undefined} */
-  let bbox
+  /** @type {Partial<BoundingBox> | undefined} */
+  let partial
 
   for (const value of values) {
     if (value === null || value === undefined) continue
     if (typeof value !== 'object') {
       throw new Error('geospatial column expects GeoJSON geometries')
     }
-    bbox = extendBoundsFromGeometry(bbox, value)
+    partial = extendBoundsFromGeometry(partial, value)
     typeCodes.add(geometryTypeCodeWithDimension(value))
+  }
+
+  // If either the X or Y dimension has no finite values, the bounding box itself is not produced
+  /** @type {BoundingBox | undefined} */
+  let bbox
+  const { xmin, ymin, xmax, ymax } = partial ?? {}
+  if (xmin !== undefined && ymin !== undefined && xmax !== undefined && ymax !== undefined) {
+    bbox = { ...partial, xmin, ymin, xmax, ymax }
   }
 
   if (typeCodes.size || bbox) {
@@ -30,9 +38,9 @@ export function geospatialStatistics(values) {
 }
 
 /**
- * @param {BoundingBox | undefined} bbox
+ * @param {Partial<BoundingBox> | undefined} bbox
  * @param {Geometry} geometry
- * @returns {BoundingBox | undefined}
+ * @returns {Partial<BoundingBox> | undefined}
  */
 function extendBoundsFromGeometry(bbox, geometry) {
   if (geometry.type === 'GeometryCollection') {
@@ -45,13 +53,21 @@ function extendBoundsFromGeometry(bbox, geometry) {
 }
 
 /**
- * @param {BoundingBox | undefined} bbox
+ * Recurse through nested coordinate arrays. At a leaf position [x,y,(z),(m)],
+ * each dimension is filtered independently — a NaN/non-finite value in one
+ * dimension does not skip the others.
+ * @param {Partial<BoundingBox> | undefined} bbox
  * @param {any[]} coordinates
- * @returns {BoundingBox | undefined}
+ * @returns {Partial<BoundingBox> | undefined}
  */
 function extendBoundsFromCoordinates(bbox, coordinates) {
   if (typeof coordinates[0] === 'number') {
-    return grow(bbox, coordinates)
+    // Expand bbox
+    bbox = updateAxis(bbox, 'xmin', 'xmax', coordinates[0])
+    bbox = updateAxis(bbox, 'ymin', 'ymax', coordinates[1])
+    if (coordinates.length > 2) bbox = updateAxis(bbox, 'zmin', 'zmax', coordinates[2])
+    if (coordinates.length > 3) bbox = updateAxis(bbox, 'mmin', 'mmax', coordinates[3])
+    return bbox
   }
   for (const child of coordinates) {
     bbox = extendBoundsFromCoordinates(bbox, child)
@@ -60,38 +76,20 @@ function extendBoundsFromCoordinates(bbox, coordinates) {
 }
 
 /**
- * Initialize or expand bbox with a single position [x,y,(z),(m)].
- * @param {BoundingBox | undefined} bbox
- * @param {number[]} position
- * @returns {BoundingBox | undefined}
- */
-function grow(bbox, position) {
-  const x = position[0]
-  const y = position[1]
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return bbox
-
-  if (!bbox) {
-    bbox = { xmin: x, ymin: y, xmax: x, ymax: y }
-  } else {
-    updateAxis(bbox, 'xmin', 'xmax', x)
-    updateAxis(bbox, 'ymin', 'ymax', y)
-  }
-
-  if (position.length > 2) updateAxis(bbox, 'zmin', 'zmax', position[2])
-  if (position.length > 3) updateAxis(bbox, 'mmin', 'mmax', position[3])
-  return bbox
-}
-
-/**
- * @param {BoundingBox} bbox
+ * @param {Partial<BoundingBox> | undefined} bbox
  * @param {'xmin' | 'ymin' | 'zmin' | 'mmin'} minKey
  * @param {'xmax' | 'ymax' | 'zmax' | 'mmax'} maxKey
  * @param {number | undefined} value
+ * @returns {Partial<BoundingBox> | undefined}
  */
 function updateAxis(bbox, minKey, maxKey, value) {
-  if (value === undefined || !Number.isFinite(value)) return
-  if (bbox[minKey] === undefined || value < bbox[minKey]) bbox[minKey] = value
-  if (bbox[maxKey] === undefined || value > bbox[maxKey]) bbox[maxKey] = value
+  if (value === undefined || !Number.isFinite(value)) return bbox
+  if (!bbox) bbox = {}
+  const min = bbox[minKey]
+  const max = bbox[maxKey]
+  if (min === undefined || value < min) bbox[minKey] = value
+  if (max === undefined || value > max) bbox[maxKey] = value
+  return bbox
 }
 
 /**
