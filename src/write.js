@@ -10,6 +10,7 @@ import { schemaFromColumnData } from './schema.js'
  * Write data as parquet to a file or stream.
  *
  * @param {ParquetWriteOptions} options
+ * @returns {void | Promise<void>}
  */
 export function parquetWrite({
   writer,
@@ -42,7 +43,7 @@ export function parquetWrite({
     rowGroupSize,
     pageSize,
   })
-  pq.finish()
+  return pq.finish()
 }
 
 /**

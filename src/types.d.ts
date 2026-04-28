@@ -74,7 +74,7 @@ export interface Writer {
   offset: number // total bytes written
 
   ensure(size: number): void
-  finish(): void
+  finish(): void | Promise<void>
   getBuffer(): ArrayBuffer
   getBytes(): Uint8Array
   appendUint8(value: number): void

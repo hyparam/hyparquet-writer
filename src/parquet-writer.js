@@ -113,6 +113,8 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
 
 /**
  * Finish writing the file.
+ *
+ * @returns {void | Promise<void>}
  */
 ParquetWriter.prototype.finish = function() {
   // Write all indexes at end of file
@@ -135,7 +137,7 @@ ParquetWriter.prototype.finish = function() {
 
   // write footer PAR1
   this.writer.appendUint32(0x31524150)
-  this.writer.finish()
+  return this.writer.finish()
 }
 
 /**
