@@ -3,6 +3,7 @@ import { ByteWriter } from './bytewriter.js'
 const encoder = new TextEncoder()
 const INT64_MIN = -(2n ** 63n)
 const INT64_MAX = 2n ** 63n - 1n
+const VARIANT_NULL = new Uint8Array([0x00])
 
 /**
  * Encode an array of arbitrary JS values into variant binary format.
@@ -32,9 +33,10 @@ export function encodeVariantColumn(values, shredding, column) {
   }
   if (shredding) {
     const fieldNames = Object.keys(shredding)
+    const shreddedKeys = new Set(fieldNames)
     return values.map(value => {
       if (value === undefined) return null
-      return encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNames)
+      return encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNames, shreddedKeys)
     })
   }
   return values.map(value => {
@@ -53,12 +55,13 @@ export function encodeVariantColumn(values, shredding, column) {
  * @param {Map<string, number>} keyIndex
  * @param {Record<string, BasicType>} shredding
  * @param {string[]} fieldNames
+ * @param {Set<string>} shreddedKeys
  * @returns {Record<string, any>}
  */
-function encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNames) {
+function encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNames, shreddedKeys) {
   // null -> value: variant null, typed_value: null
   if (value === null) {
-    return { metadata, value: new Uint8Array([0x00]), typed_value: null }
+    return { metadata, value: VARIANT_NULL, typed_value: null }
   }
 
   // non-object -> value: binary variant, typed_value: null
@@ -69,7 +72,6 @@ function encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNam
   // object -> split into shredded fields + remaining fields
   /** @type {Record<string, any>} */
   const typedValue = {}
-  const shreddedKeys = new Set(fieldNames)
 
   for (const fieldName of fieldNames) {
     const fieldType = shredding[fieldName]
@@ -78,7 +80,7 @@ function encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNam
       typedValue[fieldName] = { value: null, typed_value: null }
     } else if (value[fieldName] === null || value[fieldName] === undefined) {
       // null field: value is variant null, typed_value null
-      typedValue[fieldName] = { value: new Uint8Array([0x00]), typed_value: null }
+      typedValue[fieldName] = { value: VARIANT_NULL, typed_value: null }
     } else if (fieldType === 'TIMESTAMP' && value[fieldName] instanceof Date) {
       typedValue[fieldName] = { value: writeVariantValue(value[fieldName], keyIndex), typed_value: null }
     } else if (matchesType(value[fieldName], fieldType)) {
@@ -91,17 +93,15 @@ function encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNam
   }
 
   // remaining (non-shredded) fields go into binary value
-  const remainingKeys = Object.keys(value).filter(k => !shreddedKeys.has(k))
-  /** @type {Uint8Array | null} */
-  let binaryValue = null
-  if (remainingKeys.length > 0) {
-    /** @type {Record<string, any>} */
-    const remaining = {}
-    for (const k of remainingKeys) {
-      remaining[k] = value[k]
-    }
-    binaryValue = writeVariantValue(remaining, keyIndex)
+  /** @type {Record<string, any>} */
+  const remaining = {}
+  let hasRemaining = false
+  for (const k of Object.keys(value)) {
+    if (shreddedKeys.has(k)) continue
+    remaining[k] = value[k]
+    hasRemaining = true
   }
+  const binaryValue = hasRemaining ? writeVariantValue(remaining, keyIndex) : null
 
   return { metadata, value: binaryValue, typed_value: typedValue }
 }
