@@ -4,6 +4,7 @@ const encoder = new TextEncoder()
 const INT64_MIN = -(2n ** 63n)
 const INT64_MAX = 2n ** 63n - 1n
 const VARIANT_NULL = new Uint8Array([0x00])
+const RESERVED_SHREDDING_FIELDS = new Set(['value', 'typed_value'])
 
 /**
  * Encode an array of arbitrary JS values into variant binary format.
@@ -24,20 +25,27 @@ export function encodeVariantColumn(values, shredding, column) {
       }
     }
   }
+  const shreddingConfig = shredding && normalizeShreddingConfig(shredding)
+  if (shreddingConfig) {
+    return values.map(value => {
+      if (value === undefined) return null
+      const rowDictionary = buildVariantDictionary([value])
+      const rowMetadata = writeVariantMetadata(rowDictionary)
+      /** @type {Map<string, number>} */
+      const rowKeyIndex = new Map()
+      for (let i = 0; i < rowDictionary.length; i++) {
+        rowKeyIndex.set(rowDictionary[i], i)
+      }
+      return encodeVariantRowShredded(value, rowMetadata, rowKeyIndex, shreddingConfig)
+    })
+  }
+
   const dictionary = buildVariantDictionary(values)
   const metadata = writeVariantMetadata(dictionary)
   /** @type {Map<string, number>} */
   const keyIndex = new Map()
   for (let i = 0; i < dictionary.length; i++) {
     keyIndex.set(dictionary[i], i)
-  }
-  if (shredding) {
-    const fieldNames = Object.keys(shredding)
-    const shreddedKeys = new Set(fieldNames)
-    return values.map(value => {
-      if (value === undefined) return null
-      return encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNames, shreddedKeys)
-    })
   }
   return values.map(value => {
     // Keep top-level null as a present Variant null (0x00). Only undefined is missing.
@@ -54,11 +62,9 @@ export function encodeVariantColumn(values, shredding, column) {
  * @param {Uint8Array} metadata
  * @param {Map<string, number>} keyIndex
  * @param {Record<string, BasicType>} shredding
- * @param {string[]} fieldNames
- * @param {Set<string>} shreddedKeys
  * @returns {Record<string, any>}
  */
-function encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNames, shreddedKeys) {
+function encodeVariantRowShredded(value, metadata, keyIndex, shredding) {
   // null -> value: variant null, typed_value: null
   if (value === null) {
     return { metadata, value: VARIANT_NULL, typed_value: null }
@@ -73,16 +79,13 @@ function encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNam
   /** @type {Record<string, any>} */
   const typedValue = {}
 
-  for (const fieldName of fieldNames) {
-    const fieldType = shredding[fieldName]
+  for (const [fieldName, fieldType] of Object.entries(shredding)) {
     if (!(fieldName in value)) {
-      // missing field: both value and typed_value null
-      typedValue[fieldName] = { value: null, typed_value: null }
+      // missing field: omit the optional field wrapper entirely
+      typedValue[fieldName] = undefined
     } else if (value[fieldName] === null || value[fieldName] === undefined) {
       // null field: value is variant null, typed_value null
       typedValue[fieldName] = { value: VARIANT_NULL, typed_value: null }
-    } else if (fieldType === 'TIMESTAMP' && value[fieldName] instanceof Date) {
-      typedValue[fieldName] = { value: writeVariantValue(value[fieldName], keyIndex), typed_value: null }
     } else if (matchesType(value[fieldName], fieldType)) {
       // type matches: typed_value gets native value, value null
       typedValue[fieldName] = { value: null, typed_value: value[fieldName] }
@@ -97,7 +100,7 @@ function encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNam
   const remaining = {}
   let hasRemaining = false
   for (const k of Object.keys(value)) {
-    if (shreddedKeys.has(k)) continue
+    if (k in shredding) continue
     remaining[k] = value[k]
     hasRemaining = true
   }
@@ -167,7 +170,23 @@ export function autoDetectShredding(values) {
     if (basicType) shredding[key] = basicType
   }
 
-  return Object.keys(shredding).length > 0 ? shredding : undefined
+  return normalizeShreddingConfig(shredding)
+}
+
+/**
+ * Remove field names reserved by the shredded variant wrapper layout.
+ *
+ * @param {Record<string, BasicType>} shredding
+ * @returns {Record<string, BasicType> | undefined}
+ */
+export function normalizeShreddingConfig(shredding) {
+  /** @type {Record<string, BasicType>} */
+  const normalized = {}
+  for (const [key, type] of Object.entries(shredding)) {
+    if (RESERVED_SHREDDING_FIELDS.has(key)) continue
+    normalized[key] = type
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined
 }
 
 /**

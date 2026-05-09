@@ -1,7 +1,7 @@
 import { ByteWriter } from './bytewriter.js'
 import { ParquetWriter } from './parquet-writer.js'
 import { schemaFromColumnData } from './schema.js'
-import { autoDetectShredding } from './variant.js'
+import { autoDetectShredding, normalizeShreddingConfig } from './variant.js'
 
 /**
  * @import {ParquetWriteOptions} from '../src/types.js'
@@ -29,6 +29,10 @@ export function parquetWrite({
     if (col.shredding === true && col.type === 'VARIANT') {
       const detected = autoDetectShredding(Array.from(col.data))
       return detected ? { ...col, shredding: detected } : { ...col, shredding: undefined }
+    }
+    if (typeof col.shredding === 'object' && col.type === 'VARIANT') {
+      const shredding = normalizeShreddingConfig(col.shredding)
+      return shredding ? { ...col, shredding } : { ...col, shredding: undefined }
     }
     return col
   })

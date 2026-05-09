@@ -1,3 +1,5 @@
+import { normalizeShreddingConfig } from './variant.js'
+
 /**
  * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement} from 'hyparquet'
  * @import {BasicType, ColumnSource} from '../src/types.js'
@@ -40,7 +42,7 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
     } else if (type === 'VARIANT') {
       // variant group with metadata and value children
       const repetition_type = nullable === false ? 'REQUIRED' : 'OPTIONAL'
-      const shreddingConfig = typeof shredding === 'object' ? shredding : undefined
+      const shreddingConfig = typeof shredding === 'object' ? normalizeShreddingConfig(shredding) : undefined
       if (shreddingConfig) {
         const fieldNames = Object.keys(shreddingConfig)
         schema.push(
@@ -52,7 +54,7 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
         for (const fieldName of fieldNames) {
           const fieldType = shreddingConfig[fieldName]
           schema.push(
-            { name: fieldName, repetition_type: 'REQUIRED', num_children: 2 },
+            { name: fieldName, repetition_type: 'OPTIONAL', num_children: 2 },
             { name: 'value', type: 'BYTE_ARRAY', repetition_type: 'OPTIONAL' },
             shreddedFieldElement(fieldType)
           )

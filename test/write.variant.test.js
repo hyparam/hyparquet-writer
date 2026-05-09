@@ -1,17 +1,35 @@
-import { parquetReadObjects } from 'hyparquet'
+import { parquetMetadata, parquetReadObjects } from 'hyparquet'
 import { describe, expect, it } from 'vitest'
 import { parquetWriteBuffer } from '../src/index.js'
 import { autoDetectShredding } from '../src/variant.js'
 
 /**
+ * @import {ColumnChunk, FileMetaData} from 'hyparquet'
+ * @import {ColumnSource} from '../src/types.js'
+ */
+
+/**
  * Roundtrip helper: write with parquetWriteBuffer, read back with parquetReadObjects.
  *
- * @param {import('../src/types.js').ColumnSource[]} columnData
+ * @param {ColumnSource[]} columnData
  * @returns {Promise<Record<string, any>[]>}
  */
 async function roundTrip(columnData) {
   const file = parquetWriteBuffer({ columnData })
   return await parquetReadObjects({ file })
+}
+
+/**
+ * @param {FileMetaData} metadata
+ * @param {string[]} path
+ * @returns {ColumnChunk}
+ */
+function physicalColumn(metadata, path) {
+  const column = metadata.row_groups[0].columns.find(column =>
+    column.meta_data?.path_in_schema.join('.') === path.join('.')
+  )
+  if (!column) throw new Error(`column not found: ${path.join('.')}`)
+  return column
 }
 
 describe('variant writing', () => {
@@ -187,15 +205,24 @@ describe('variant shredding', () => {
     expect(result).toEqual(data.map(v => ({ v })))
   })
 
-  it('shreds timestamp fields', async () => {
+  it('shreds timestamp fields into the typed timestamp leaf', async () => {
     const data = [
       { d: new Date('2024-01-15T10:30:00.000Z') },
       { d: new Date('2000-06-01T00:00:00.000Z') },
     ]
-    const result = await roundTrip([{
-      name: 'v', data, type: 'VARIANT',
+    const file = parquetWriteBuffer({ columnData: [{
+      name: 'v',
+      data,
+      type: 'VARIANT',
       shredding: { d: 'TIMESTAMP' },
-    }])
+    }] })
+    const metadata = parquetMetadata(file)
+    const typedLeaf = physicalColumn(metadata, ['v', 'typed_value', 'd', 'typed_value'])
+    const fallbackLeaf = physicalColumn(metadata, ['v', 'typed_value', 'd', 'value'])
+    expect(typedLeaf.meta_data?.statistics?.null_count).toBe(0n)
+    expect(fallbackLeaf.meta_data?.statistics?.null_count).toBe(BigInt(data.length))
+
+    const result = await parquetReadObjects({ file })
     expect(result).toEqual(data.map(v => ({ v })))
   })
 
@@ -253,18 +280,25 @@ describe('variant shredding', () => {
     expect(result).toEqual(data.map(v => ({ v })))
   })
 
-  it('handles missing shredded fields', async () => {
+  it('preserves absent shredded fields', async () => {
     const data = [
       { event_type: 'login', count: 1 },
       { event_type: 'click' },
+      { event_type: 'purchase', count: null },
     ]
-    const result = await roundTrip([{
+    const file = parquetWriteBuffer({ columnData: [{
       name: 'v', data, type: 'VARIANT',
       shredding: { event_type: 'STRING', count: 'INT32' },
-    }])
+    }] })
+    const metadata = parquetMetadata(file)
+    const countGroup = metadata.schema.find(element => element.name === 'count' && element.num_children === 2)
+    expect(countGroup?.repetition_type).toBe('OPTIONAL')
+
+    const result = await parquetReadObjects({ file })
     expect(result[0].v).toEqual({ event_type: 'login', count: 1 })
-    // Reader returns null for missing shredded fields (both value and typed_value are null)
-    expect(result[1].v).toEqual({ event_type: 'click', count: null })
+    expect(result[1].v).toEqual({ event_type: 'click' })
+    expect(result[1].v).not.toHaveProperty('count')
+    expect(result[2].v).toEqual({ event_type: 'purchase', count: null })
   })
 
   it('handles null values in variant column', async () => {
@@ -307,8 +341,7 @@ describe('variant shredding', () => {
       shredding: { event_type: 'STRING' },
     }])
     expect(result[0].v).toEqual({ event_type: 'login' })
-    // Reader returns null for missing shredded fields
-    expect(result[1].v).toEqual({ event_type: null })
+    expect(result[1].v).toEqual({})
   })
 
   it('auto-detects shredding config', async () => {
@@ -319,6 +352,30 @@ describe('variant shredding', () => {
     const result = await roundTrip([{
       name: 'v', data, type: 'VARIANT',
       shredding: true,
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('does not auto-shred reserved variant wrapper fields', async () => {
+    const data = [
+      { value: 'x' },
+      { typed_value: 'y' },
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: true,
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('does not explicitly shred reserved variant wrapper fields', async () => {
+    const data = [
+      { value: 'x', typed_value: 'y', name: 'Alice' },
+      { value: 'z', typed_value: 'w', name: 'Bob' },
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: { value: 'STRING', typed_value: 'STRING', name: 'STRING' },
     }])
     expect(result).toEqual(data.map(v => ({ v })))
   })
@@ -401,6 +458,15 @@ describe('variant shredding', () => {
     const values = [
       { name: 'Alice', score: 100 },
       { name: 'Bob', score: 'high' },
+    ]
+    const config = autoDetectShredding(values)
+    expect(config).toEqual({ name: 'STRING' })
+  })
+
+  it('autoDetectShredding excludes reserved variant wrapper fields', () => {
+    const values = [
+      { value: 'x', typed_value: 'y', name: 'Alice' },
+      { value: 'z', typed_value: 'w', name: 'Bob' },
     ]
     const config = autoDetectShredding(values)
     expect(config).toEqual({ name: 'STRING' })
