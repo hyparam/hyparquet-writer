@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.15.0]
+ - Variant logical type with shredding support (#29)
+
 ## [0.14.0]
  - Async-capable `Writer` with `finish()` and `flush()` (#28)
 
