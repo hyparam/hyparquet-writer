@@ -11,10 +11,18 @@ const INT64_MAX = 2n ** 63n - 1n
  *
  * @import {BasicType} from '../src/types.js'
  * @param {any[]} values
- * @param {Record<string, BasicType>} [shredding]
+ * @param {Record<string, BasicType> | undefined} shredding
+ * @param {{ name: string, required: boolean }} [column]
  * @returns {Array<Record<string, any> | null>}
  */
-export function encodeVariantColumn(values, shredding) {
+export function encodeVariantColumn(values, shredding, column) {
+  if (column?.required) {
+    for (let i = 0; i < values.length; i++) {
+      if (values[i] === undefined) {
+        throw new Error(`required variant column ${column.name} has undefined value at index ${i}`)
+      }
+    }
+  }
   const dictionary = buildVariantDictionary(values)
   const metadata = writeVariantMetadata(dictionary)
   /** @type {Map<string, number>} */

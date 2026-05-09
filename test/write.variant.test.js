@@ -154,6 +154,12 @@ describe('variant writing', () => {
     const result = await roundTrip([{ name: 'v', data, type: 'VARIANT', nullable: false }])
     expect(result).toEqual([{ v: null }])
   })
+
+  it('rejects undefined rows in required variant columns', () => {
+    expect(() => parquetWriteBuffer({
+      columnData: [{ name: 'v', data: [undefined], type: 'VARIANT', nullable: false }],
+    })).toThrow(/variant.*required|required.*variant/i)
+  })
 })
 
 describe('variant shredding', () => {
