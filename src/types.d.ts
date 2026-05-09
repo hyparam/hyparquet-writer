@@ -17,7 +17,8 @@ export type BasicType =
   'UUID' |
   'FLOAT16' |
   'GEOMETRY' |
-  'GEOGRAPHY'
+  'GEOGRAPHY' |
+  'VARIANT'
 
 export interface ParquetWriteOptions {
   writer: Writer
@@ -39,6 +40,7 @@ export interface ColumnSource {
   encoding?: Encoding
   columnIndex?: boolean // write column indexes, default false
   offsetIndex?: boolean // write offset indexes, default true
+  shredding?: true | Record<string, BasicType> // variant shredding config
 }
 
 export interface PageData {

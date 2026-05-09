@@ -47,6 +47,7 @@ Note: if `type` is not provided, the type will be guessed from the data. The sup
 | `FLOAT16` | `{ type: 'FIXED_LEN_BYTE_ARRAY', type_length: 2, logical_type: { type: 'FLOAT16' } }` |
 | `GEOMETRY` | `{ type: 'BYTE_ARRAY', logical_type: { type: 'GEOMETRY' } }` |
 | `GEOGRAPHY` | `{ type: 'BYTE_ARRAY', logical_type: { type: 'GEOGRAPHY' } }` |
+| `VARIANT` | variant group with `metadata` + `value` (and optional shredded `typed_value`) |
 
 More types are supported but require defining the `schema` explicitly. See the [advanced usage](#advanced-usage) section for more details.
 
@@ -99,6 +100,7 @@ interface ColumnSource {
   encoding?: Encoding // parquet encoding (PLAIN, RLE, DELTA_BINARY_PACKED, BYTE_STREAM_SPLIT, etc)
   columnIndex?: boolean // enable page-level column index (default false)
   offsetIndex?: boolean // enable page-level offset index (default true)
+  shredding?: true | Record<string, BasicType> // shredding config for VARIANT columns
 }
 ```
 
@@ -193,6 +195,31 @@ parquetWrite({
   }),
 })
 ```
+
+### Variant
+
+The `VARIANT` type stores semi-structured JSON-like values (primitives, arrays, nested objects) in the Parquet variant binary format. Pass any JS values as `data`:
+
+```javascript
+parquetWriteBuffer({
+  columnData: [
+    {
+      name: 'event',
+      data: [{ type: 'login', user: 'alice' }, { type: 'click', x: 10 }],
+      type: 'VARIANT',
+    },
+  ],
+})
+```
+
+For object columns, you can opt into **shredding** to promote frequently-used fields into typed sub-columns for better compression and predicate pushdown. Pass an explicit map, or `true` to auto-detect from the data:
+
+```javascript
+{ name: 'event', data, type: 'VARIANT', shredding: { type: 'STRING', user: 'STRING' } }
+{ name: 'event', data, type: 'VARIANT', shredding: true } // auto-detect
+```
+
+Supported shredded field types: `BOOLEAN`, `INT32`, `INT64`, `FLOAT`, `DOUBLE`, `STRING`, `TIMESTAMP`.
 
 ## References
 
