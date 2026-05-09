@@ -187,6 +187,18 @@ describe('variant shredding', () => {
     expect(result).toEqual(data.map(v => ({ v })))
   })
 
+  it('shreds timestamp fields', async () => {
+    const data = [
+      { d: new Date('2024-01-15T10:30:00.000Z') },
+      { d: new Date('2000-06-01T00:00:00.000Z') },
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: { d: 'TIMESTAMP' },
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
   it('falls back to binary value for int32 fields outside int32 range', async () => {
     const data = [
       { count: 2147483647 },
@@ -303,6 +315,18 @@ describe('variant shredding', () => {
     const data = [
       { event_type: 'login', count: 1.5 },
       { event_type: 'signup', count: 2.0 },
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: true,
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('auto-detects timestamp shredding config', async () => {
+    const data = [
+      { d: new Date('2024-01-15T10:30:00.000Z') },
+      { d: new Date('2000-06-01T00:00:00.000Z') },
     ]
     const result = await roundTrip([{
       name: 'v', data, type: 'VARIANT',

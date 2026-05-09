@@ -79,6 +79,8 @@ function encodeVariantRowShredded(value, metadata, keyIndex, shredding, fieldNam
     } else if (value[fieldName] === null || value[fieldName] === undefined) {
       // null field: value is variant null, typed_value null
       typedValue[fieldName] = { value: new Uint8Array([0x00]), typed_value: null }
+    } else if (fieldType === 'TIMESTAMP' && value[fieldName] instanceof Date) {
+      typedValue[fieldName] = { value: writeVariantValue(value[fieldName], keyIndex), typed_value: null }
     } else if (matchesType(value[fieldName], fieldType)) {
       // type matches: typed_value gets native value, value null
       typedValue[fieldName] = { value: null, typed_value: value[fieldName] }
