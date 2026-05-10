@@ -54,7 +54,7 @@ function extendBoundsFromGeometry(bbox, geometry) {
 
 /**
  * Recurse through nested coordinate arrays. At a leaf position [x,y,(z),(m)],
- * each dimension is filtered independently — a NaN/non-finite value in one
+ * each dimension is filtered independently. NaN/non-finite values in one
  * dimension does not skip the others.
  * @param {Partial<BoundingBox> | undefined} bbox
  * @param {any[]} coordinates

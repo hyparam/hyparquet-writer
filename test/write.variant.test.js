@@ -66,6 +66,12 @@ describe('variant writing', () => {
     }
   })
 
+  it('throws on unsupported values', () => {
+    expect(() => parquetWriteBuffer({
+      columnData: [{ name: 'v', data: [() => {}], type: 'VARIANT' }],
+    })).toThrow(/variant cannot encode value/)
+  })
+
   it('encodes doubles', async () => {
     const data = [3.14, -0.001, 1e100, Number.MIN_VALUE]
     const result = await roundTrip([{ name: 'v', data, type: 'VARIANT' }])
@@ -140,6 +146,19 @@ describe('variant writing', () => {
 
   it('encodes empty objects and arrays', async () => {
     const data = [{}, []]
+    const result = await roundTrip([{ name: 'v', data, type: 'VARIANT' }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('encodes large objects and arrays', async () => {
+    const largeObject = Object.fromEntries(
+      Array.from({ length: 300 }, (_, i) => [`field_${i}`, i])
+    )
+    const data = [
+      largeObject,
+      Array.from({ length: 300 }, (_, i) => i),
+      ['x'.repeat(70_000)],
+    ]
     const result = await roundTrip([{ name: 'v', data, type: 'VARIANT' }])
     expect(result).toEqual(data.map(v => ({ v })))
   })
@@ -325,6 +344,15 @@ describe('variant shredding', () => {
     expect(result[2].v).toEqual({ event_type: 'logout' })
   })
 
+  it('treats undefined as missing in shredded variant columns', async () => {
+    const data = [undefined, { event_type: 'login' }]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: { event_type: 'STRING' },
+    }])
+    expect(result).toEqual([{ v: undefined }, { v: { event_type: 'login' } }])
+  })
+
   it('handles non-object values alongside objects', async () => {
     const data = [
       { event_type: 'login' },
@@ -338,6 +366,59 @@ describe('variant shredding', () => {
     expect(result[0].v).toEqual({ event_type: 'login' })
     expect(result[1].v).toEqual('not an object')
     expect(result[2].v).toEqual(42)
+  })
+
+  it('handles top-level arrays containing objects', async () => {
+    const data = [[{ a: 1 }]]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: { a: 'INT32' },
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('handles nested object keys inside top-level arrays', async () => {
+    const data = [[{ a: { b: 1 } }, [{ c: 2 }]]]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: { unused: 'STRING' },
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('handles mixed top-level objects and arrays with object elements', async () => {
+    const data = [
+      { event_type: 'login' },
+      [{ a: 1 }],
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: { event_type: 'STRING' },
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('falls back for mismatched shredded fields containing objects and arrays', async () => {
+    const data = [
+      { payload: { a: 1 } },
+      { payload: [{ b: 2 }] },
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: { payload: 'STRING' },
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('handles unshredded array-of-objects fields', async () => {
+    const data = [
+      { event_type: 'login', payload: [{ a: 1 }] },
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: { event_type: 'STRING' },
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
   })
 
   it('handles empty objects', async () => {
@@ -413,6 +494,18 @@ describe('variant shredding', () => {
     expect(result).toEqual(data.map(v => ({ v })))
   })
 
+  it('shreds float fields', async () => {
+    const data = [
+      { score: 1.5 },
+      { score: -2.25 },
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: { score: 'FLOAT' },
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
   it('shreds double fields', async () => {
     const data = [
       { score: 3.14 },
@@ -461,6 +554,15 @@ describe('variant shredding', () => {
     ]
     const config = autoDetectShredding(values)
     expect(config).toEqual({ name: 'STRING', age: 'DOUBLE' })
+  })
+
+  it('autoDetectShredding detects boolean and bigint fields only', () => {
+    const values = [
+      { active: true, count: 1n, missing: null, nested: { a: 1 }, list: [1] },
+      { active: false, count: 2n, missing: undefined, nested: { b: 2 }, list: [2] },
+    ]
+    const config = autoDetectShredding(values)
+    expect(config).toEqual({ active: 'BOOLEAN', count: 'INT64' })
   })
 
   it('autoDetectShredding excludes mixed-type fields', () => {

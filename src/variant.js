@@ -5,6 +5,9 @@ const INT64_MIN = -(2n ** 63n)
 const INT64_MAX = 2n ** 63n - 1n
 const VARIANT_NULL = new Uint8Array([0x00])
 const RESERVED_SHREDDING_FIELDS = new Set(['value', 'typed_value'])
+/** @type {Map<string, number>} */
+const EMPTY_KEY_INDEX = new Map()
+const EMPTY_METADATA = writeVariantMetadata([])
 
 /**
  * Encode an array of arbitrary JS values into variant binary format.
@@ -27,16 +30,13 @@ export function encodeVariantColumn(values, shredding, column) {
   }
   const shreddingConfig = shredding && normalizeShreddingConfig(shredding)
   if (shreddingConfig) {
+    // Cache (metadata, keyIndex) by sorted-dictionary signature so rows with
+    // the same set of keys share a single Uint8Array + Map.
+    /** @type {Map<string, { metadata: Uint8Array, keyIndex: Map<string, number> }>} */
+    const metadataCache = new Map()
     return values.map(value => {
       if (value === undefined) return null
-      const rowDictionary = buildVariantDictionary([value])
-      const rowMetadata = writeVariantMetadata(rowDictionary)
-      /** @type {Map<string, number>} */
-      const rowKeyIndex = new Map()
-      for (let i = 0; i < rowDictionary.length; i++) {
-        rowKeyIndex.set(rowDictionary[i], i)
-      }
-      return encodeVariantRowShredded(value, rowMetadata, rowKeyIndex, shreddingConfig)
+      return encodeVariantRowShredded(value, shreddingConfig, metadataCache)
     })
   }
 
@@ -58,55 +58,113 @@ export function encodeVariantColumn(values, shredding, column) {
  * Encode a single row with variant shredding.
  * Splits object fields into shredded typed_value columns and remaining binary value.
  *
+ * The hyparquet reader uses the metadata dictionary to determine which shredded
+ * fields are present (vs. absent), so every present key in the row must appear
+ * in the dictionary. We still skip recursion into shredded-matched primitive
+ * values, and skip the keyIndex Map when no binary encoding is needed.
+ *
  * @param {any} value
- * @param {Uint8Array} metadata
- * @param {Map<string, number>} keyIndex
  * @param {Record<string, BasicType>} shredding
+ * @param {Map<string, { metadata: Uint8Array, keyIndex: Map<string, number> }>} metadataCache
  * @returns {Record<string, any>}
  */
-function encodeVariantRowShredded(value, metadata, keyIndex, shredding) {
+function encodeVariantRowShredded(value, shredding, metadataCache) {
   // null -> value: variant null, typed_value: null
   if (value === null) {
-    return { metadata, value: VARIANT_NULL, typed_value: null }
+    return { metadata: EMPTY_METADATA, value: VARIANT_NULL, typed_value: null }
   }
 
-  // non-object -> value: binary variant, typed_value: null
-  if (typeof value !== 'object' || Array.isArray(value) || value instanceof Date || value instanceof Uint8Array) {
+  // scalar -> value: binary variant, typed_value: null (no dictionary needed)
+  if (typeof value !== 'object' || value instanceof Date || value instanceof Uint8Array) {
+    return { metadata: EMPTY_METADATA, value: writeVariantValue(value, EMPTY_KEY_INDEX), typed_value: null }
+  }
+
+  if (Array.isArray(value)) {
+    /** @type {Set<string>} */
+    const keys = new Set()
+    collectKeys(value, keys)
+    const { metadata, keyIndex } = getVariantRowMetadata(keys, metadataCache)
     return { metadata, value: writeVariantValue(value, keyIndex), typed_value: null }
   }
 
-  // object -> split into shredded fields + remaining fields
+  // Single pass: collect dictionary keys and partition fields.
+  // Recurse into mismatched-shredded and remaining values only.
+  // Matched shredded primitive values don't contribute keys to the dictionary.
+  /** @type {Set<string>} */
+  const keys = new Set()
+  /** @type {string[]} */
+  const remainingKeys = []
+  /** @type {Set<string>} */
+  const mismatchedShredded = new Set()
+  for (const k of Object.keys(value)) {
+    keys.add(k)
+    if (k in shredding) {
+      const v = value[k]
+      if (v !== null && v !== undefined && !matchesType(v, shredding[k])) {
+        mismatchedShredded.add(k)
+        collectKeys(v, keys)
+      }
+    } else {
+      remainingKeys.push(k)
+      collectKeys(value[k], keys)
+    }
+  }
+
+  const { metadata, keyIndex } = getVariantRowMetadata(keys, metadataCache)
+
+  // Build typed_value
   /** @type {Record<string, any>} */
   const typedValue = {}
-
-  for (const [fieldName, fieldType] of Object.entries(shredding)) {
+  for (const fieldName of Object.keys(shredding)) {
     if (!(fieldName in value)) {
       // missing field: omit the optional field wrapper entirely
       typedValue[fieldName] = undefined
     } else if (value[fieldName] === null || value[fieldName] === undefined) {
-      // null field: value is variant null, typed_value null
       typedValue[fieldName] = { value: VARIANT_NULL, typed_value: null }
-    } else if (matchesType(value[fieldName], fieldType)) {
-      // type matches: typed_value gets native value, value null
-      typedValue[fieldName] = { value: null, typed_value: value[fieldName] }
-    } else {
-      // type mismatch: value gets binary variant, typed_value null
+    } else if (mismatchedShredded.has(fieldName)) {
       typedValue[fieldName] = { value: writeVariantValue(value[fieldName], keyIndex), typed_value: null }
+    } else {
+      typedValue[fieldName] = { value: null, typed_value: value[fieldName] }
     }
   }
 
-  // remaining (non-shredded) fields go into binary value
-  /** @type {Record<string, any>} */
-  const remaining = {}
-  let hasRemaining = false
-  for (const k of Object.keys(value)) {
-    if (k in shredding) continue
-    remaining[k] = value[k]
-    hasRemaining = true
+  // Build binary value from remaining fields
+  let binaryValue = null
+  if (remainingKeys.length > 0) {
+    /** @type {Record<string, any>} */
+    const remaining = {}
+    for (const k of remainingKeys) remaining[k] = value[k]
+    binaryValue = writeVariantValue(remaining, keyIndex)
   }
-  const binaryValue = hasRemaining ? writeVariantValue(remaining, keyIndex) : null
 
   return { metadata, value: binaryValue, typed_value: typedValue }
+}
+
+/**
+ * Build metadata and keyIndex, sharing across rows with the same dictionary.
+ *
+ * @param {Set<string>} keys
+ * @param {Map<string, { metadata: Uint8Array, keyIndex: Map<string, number> }>} metadataCache
+ * @returns {{ metadata: Uint8Array, keyIndex: Map<string, number> }}
+ */
+function getVariantRowMetadata(keys, metadataCache) {
+  if (keys.size === 0) {
+    return { metadata: EMPTY_METADATA, keyIndex: EMPTY_KEY_INDEX }
+  }
+
+  const dictionary = [...keys].sort()
+  const cacheKey = dictionary.join('\0')
+  const cached = metadataCache.get(cacheKey)
+  if (cached) {
+    return cached
+  }
+
+  const metadata = writeVariantMetadata(dictionary)
+  const keyIndex = new Map()
+  for (let i = 0; i < dictionary.length; i++) keyIndex.set(dictionary[i], i)
+  const rowMetadata = { metadata, keyIndex }
+  metadataCache.set(cacheKey, rowMetadata)
+  return rowMetadata
 }
 
 /**
@@ -249,9 +307,16 @@ function collectKeys(value, keys) {
  * @returns {Uint8Array}
  */
 function writeVariantMetadata(dictionary) {
-  // Encode all strings first to compute offsets
-  const encoded = dictionary.map(s => encoder.encode(s))
-  const totalStringBytes = encoded.reduce((sum, e) => sum + e.length, 0)
+  // Encode strings and compute total byte length in one pass
+  const n = dictionary.length
+  /** @type {Uint8Array[]} */
+  const encoded = new Array(n)
+  let totalStringBytes = 0
+  for (let i = 0; i < n; i++) {
+    const e = encoder.encode(dictionary[i])
+    encoded[i] = e
+    totalStringBytes += e.length
+  }
 
   // Determine offset size: max offset is totalStringBytes
   const offsetSize = byteWidth(totalStringBytes)
@@ -259,35 +324,29 @@ function writeVariantMetadata(dictionary) {
   // Header: version=1, sorted=1, offsetSize
   const header = 1 | 1 << 4 | offsetSize - 1 << 6
 
-  // Total size: 1 (header) + offsetSize (dict size) + (dict.length + 1) * offsetSize (offsets) + totalStringBytes
-  const totalSize = 1 + offsetSize + (dictionary.length + 1) * offsetSize + totalStringBytes
-  const buffer = new ArrayBuffer(totalSize)
-  const view = new DataView(buffer)
-  const bytes = new Uint8Array(buffer)
+  // Total size: 1 (header) + offsetSize (dict size) + (n + 1) * offsetSize (offsets) + totalStringBytes
+  const totalSize = 1 + offsetSize + (n + 1) * offsetSize + totalStringBytes
+  const bytes = new Uint8Array(totalSize)
   let offset = 0
 
-  // Write header
-  view.setUint8(offset++, header)
+  bytes[offset++] = header
 
-  // Write dictionary size
-  writeUnsigned(view, offset, dictionary.length, offsetSize)
-  offset += offsetSize
+  // Dictionary size
+  for (let j = 0; j < offsetSize; j++) bytes[offset++] = n >> j * 8 & 0xff
 
-  // Write string offsets
+  // String offsets
   let strOffset = 0
-  for (let i = 0; i < dictionary.length; i++) {
-    writeUnsigned(view, offset, strOffset, offsetSize)
-    offset += offsetSize
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < offsetSize; j++) bytes[offset++] = strOffset >> j * 8 & 0xff
     strOffset += encoded[i].length
   }
   // Final offset
-  writeUnsigned(view, offset, strOffset, offsetSize)
-  offset += offsetSize
+  for (let j = 0; j < offsetSize; j++) bytes[offset++] = strOffset >> j * 8 & 0xff
 
-  // Write string data
-  for (const enc of encoded) {
-    bytes.set(enc, offset)
-    offset += enc.length
+  // String data
+  for (let i = 0; i < n; i++) {
+    bytes.set(encoded[i], offset)
+    offset += encoded[i].length
   }
 
   return bytes
@@ -466,20 +525,6 @@ function byteWidth(maxValue) {
   if (maxValue <= 0xffff) return 2
   if (maxValue <= 0xffffff) return 3
   return 4
-}
-
-/**
- * Write an unsigned integer in little-endian format into a DataView.
- *
- * @param {DataView} view
- * @param {number} offset
- * @param {number} value
- * @param {number} width byte width (1-4)
- */
-function writeUnsigned(view, offset, value, width) {
-  for (let i = 0; i < width; i++) {
-    view.setUint8(offset + i, value >> i * 8 & 0xff)
-  }
 }
 
 /**
