@@ -397,7 +397,7 @@ function writeValue(val, writer, keyIndex) {
  * @param {Map<string, number>} keyIndex
  */
 function writeVariantObject(obj, writer, keyIndex) {
-  const entries = Object.keys(obj).map(key => {
+  const entries = Object.keys(obj).filter(key => obj[key] !== undefined).map(key => {
     const id = keyIndex.get(key)
     if (id === undefined) throw new Error(`variant key not in dictionary: ${key}`)
     return { id, key }

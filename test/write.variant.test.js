@@ -167,6 +167,15 @@ describe('variant writing', () => {
     expect(result).toEqual([{ v: undefined }, { v: { key: 1 } }])
   })
 
+  // A key whose value is `undefined` inside a variant object
+  // should be omitted on round-trip not returned with null value
+  it('omits undefined-valued keys inside variant objects', async () => {
+    const data = [{ only_null: null, missing_key: undefined }]
+    const result = await roundTrip([{ name: 'v', data, type: 'VARIANT' }])
+    expect(result[0].v).toEqual({ only_null: null })
+    expect(Object.prototype.hasOwnProperty.call(result[0].v, 'missing_key')).toBe(false)
+  })
+
   it('allows top-level null in required variant columns', async () => {
     const data = [null]
     const result = await roundTrip([{ name: 'v', data, type: 'VARIANT', nullable: false }])
