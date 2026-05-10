@@ -1,5 +1,9 @@
 # Hyparquet-writer Changelog
 
+## [0.15.1]
+ - Omit undefined values from variant objects
+ - Optimize variant writing performance
+
 ## [0.15.0]
  - Variant logical type with shredding support (#29)
 
