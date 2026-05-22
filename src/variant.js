@@ -362,7 +362,7 @@ function writeVariantMetadata(dictionary) {
 function writeVariantValue(value, keyIndex) {
   const writer = new ByteWriter(8)
   writeValue(value, writer, keyIndex)
-  return new Uint8Array(writer.getBuffer())
+  return writer.getBytes()
 }
 
 /**
