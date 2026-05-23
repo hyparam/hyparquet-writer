@@ -107,7 +107,7 @@ export const exampleMetadata = {
           data_page_offset: 110n,
           statistics: {
             null_count: 0n,
-            min_value: 0,
+            min_value: -0,
             max_value: Infinity,
           },
           encoding_stats: [
@@ -128,7 +128,7 @@ export const exampleMetadata = {
           data_page_offset: 149n,
           statistics: {
             null_count: 0n,
-            min_value: 0,
+            min_value: -0,
             max_value: 1e100,
           },
           encoding_stats: [

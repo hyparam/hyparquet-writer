@@ -220,6 +220,25 @@ describe('parquetWriteBuffer', () => {
     expect(result[5].double).not.toEqual(0)
   })
 
+  it('omits NaN and normalizes signed zero in float stats', () => {
+    // Parquet spec: NaNs must not be written to min/max; zero min must be -0, zero max must be +0
+    const file = parquetWriteBuffer({
+      columnData: [
+        { name: 'nan_only', data: new Float64Array([NaN, NaN, NaN, NaN]) },
+        { name: 'with_nan', data: new Float64Array([NaN, 1.5, -2.5, NaN]) },
+        { name: 'zeros', data: new Float64Array([0, -0, 0, -0]) },
+      ],
+      statistics: true,
+    })
+    const stats = parquetMetadata(file).row_groups[0].columns.map(c => c.meta_data?.statistics)
+    expect(stats[0]?.min_value).toBeUndefined()
+    expect(stats[0]?.max_value).toBeUndefined()
+    expect(stats[1]?.min_value).toBe(-2.5)
+    expect(stats[1]?.max_value).toBe(1.5)
+    expect(Object.is(stats[2]?.min_value, -0)).toBe(true)
+    expect(Object.is(stats[2]?.max_value, 0)).toBe(true)
+  })
+
   it('splits row groups with default sizes', async () => {
     // Default rowGroupSize is [1000, 100000], repeating 100000
     const data = Array(250000).fill(13)

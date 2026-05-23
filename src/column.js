@@ -336,8 +336,12 @@ function getStatistics(values) {
       continue
     }
     if (typeof value === 'object') continue // skip objects
+    if (typeof value === 'number' && Number.isNaN(value)) continue // skip NaN per parquet spec
     if (min_value === undefined || value < min_value) min_value = value
     if (max_value === undefined || value > max_value) max_value = value
   }
+  // Normalize signed zero per parquet spec: min becomes -0, max becomes +0
+  if (min_value === 0) min_value = -0
+  if (max_value === 0) max_value = 0
   return { min_value, max_value, null_count }
 }
