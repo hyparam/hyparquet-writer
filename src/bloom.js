@@ -8,7 +8,7 @@ import { serializeTCompactProtocol } from './thrift.js'
 
 /**
  * @import {SchemaElement} from 'hyparquet'
- * @import {Writer} from '../src/types.js'
+ * @import {PageIndexes, Writer} from '../src/types.js'
  */
 
 const SALT = new Uint32Array([
@@ -189,5 +189,24 @@ export function writeBloomFilter(writer, blocks) {
   })
   for (let i = 0; i < blocks.length; i++) {
     writer.appendUint32(blocks[i])
+  }
+}
+
+/**
+ * Write all pending bloom filters in a contiguous block and patch each chunk's
+ * meta_data.bloom_filter_offset / bloom_filter_length so readers can find them.
+ * Clustering matches parquet-mr's tail placement: a reader fetching the footer
+ * region can pull every bloom in one range request.
+ *
+ * @param {Writer} writer
+ * @param {PageIndexes[]} pageIndexes
+ */
+export function writeBlooms(writer, pageIndexes) {
+  for (const { chunk, bloomFilter } of pageIndexes) {
+    if (!bloomFilter || !chunk.meta_data) continue
+    const offset = writer.offset
+    writeBloomFilter(writer, bloomFilter)
+    chunk.meta_data.bloom_filter_offset = BigInt(offset)
+    chunk.meta_data.bloom_filter_length = writer.offset - offset
   }
 }

@@ -41,6 +41,7 @@ export interface ColumnSource {
   columnIndex?: boolean // write column indexes, default false
   offsetIndex?: boolean // write offset indexes, default true
   shredding?: true | Record<string, BasicType> // variant shredding config
+  bloomFilter?: boolean | BloomFilterOptions // write bloom filter, default false
 }
 
 export interface PageData {
@@ -48,6 +49,11 @@ export interface PageData {
   definitionLevels: number[]
   repetitionLevels: number[]
   maxDefinitionLevel: number
+}
+
+export interface BloomFilterOptions {
+  fpp?: number // false positive probability, default 0.01
+  maxBytes?: number // skip emission above this size, default 1 MiB
 }
 
 export interface ColumnEncoder {
@@ -62,12 +68,14 @@ export interface ColumnEncoder {
   columnIndex: boolean
   offsetIndex: boolean
   encoding?: Encoding // user-specified encoding
+  bloomFilter?: boolean | BloomFilterOptions
 }
 
 export interface PageIndexes {
   chunk: ColumnChunk
   columnIndex?: ColumnIndex
   offsetIndex?: OffsetIndex
+  bloomFilter?: Uint32Array // finalized SBBF blocks
 }
 
 export interface Writer {

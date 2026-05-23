@@ -1,3 +1,4 @@
+import { BloomBuilder } from './bloom.js'
 import { ByteWriter } from './bytewriter.js'
 import { writeDataPageV2, writePageHeader } from './datapage.js'
 import { geospatialStatistics } from './geospatial.js'
@@ -17,7 +18,7 @@ import { unconvert, unconvertMinMax } from './unconvert.js'
  * @param {Writer} options.writer
  * @param {ColumnEncoder} options.column
  * @param {PageData} options.pageData
- * @returns {{ chunk: ColumnChunk, columnIndex?: ColumnIndex, offsetIndex?: OffsetIndex }}
+ * @returns {{ chunk: ColumnChunk, columnIndex?: ColumnIndex, offsetIndex?: OffsetIndex, bloomFilter?: Uint32Array }}
  */
 export function writeColumn({ writer, column, pageData }) {
   const { columnName, element, schemaPath, stats, pageSize, encoding: userEncoding } = column
@@ -34,6 +35,15 @@ export function writeColumn({ writer, column, pageData }) {
   // Compute statistics
   const statistics = stats ? getStatistics(values) : undefined
   const geospatial_statistics = stats && isGeospatial ? geospatialStatistics(values) : undefined
+
+  // Build bloom filter from original values (hashParquetValue reads schema info from element)
+  let bloomFilter
+  if (column.bloomFilter) {
+    const opts = typeof column.bloomFilter === 'object' ? column.bloomFilter : undefined
+    const builder = new BloomBuilder(element, opts)
+    for (const v of values) builder.insert(v)
+    bloomFilter = builder.finalize()
+  }
 
   // dictionary encoding
   /** @type {bigint | undefined} */
@@ -183,6 +193,7 @@ export function writeColumn({ writer, column, pageData }) {
     },
     columnIndex,
     offsetIndex,
+    bloomFilter,
   }
 }
 
