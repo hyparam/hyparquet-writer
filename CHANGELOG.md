@@ -1,5 +1,9 @@
 # Hyparquet-writer Changelog
 
+## [0.15.2]
+ - Bloom filter support (#30)
+ - Fix -0/+0 spec behavior in statistics
+
 ## [0.15.1]
  - Omit undefined values from variant objects
  - Optimize variant writing performance
