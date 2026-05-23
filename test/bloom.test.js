@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { hashParquetValue } from 'hyparquet/src/bloom.js'
+import { hashParquetValue, readBloomFilter } from 'hyparquet/src/bloom.js'
 import { xxhash64 } from 'hyparquet/src/xxhash.js'
-import { createBloomFilter, optimalNumBytes, sbbfContains, sbbfInsert } from '../src/bloom.js'
+import { ByteWriter } from '../src/bytewriter.js'
+import { createBloomFilter, optimalNumBytes, sbbfContains, sbbfInsert, writeBloomFilter } from '../src/bloom.js'
 
 const textEncoder = new TextEncoder()
 
@@ -84,6 +85,38 @@ describe('sbbfInsert / sbbfContains', () => {
     const bf = createBloomFilter(100, 0.01)
     expect(sbbfContains(bf, 0n)).toBe(false)
     expect(sbbfContains(bf, 0xdeadbeefdeadbeefn)).toBe(false)
+  })
+})
+
+describe('writeBloomFilter', () => {
+  it('round-trips through hyparquet readBloomFilter', () => {
+    const bf = createBloomFilter(1000, 0.01)
+    /** @type {bigint[]} */
+    const hashes = []
+    for (let i = 0; i < 200; i++) {
+      const h = xxhash64(textEncoder.encode(`v-${i}`))
+      hashes.push(h)
+      sbbfInsert(bf, h)
+    }
+    const writer = new ByteWriter()
+    writeBloomFilter(writer, bf)
+
+    const bytes = writer.getBytes()
+    const reader = { view: new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), offset: 0 }
+    const parsed = readBloomFilter(reader)
+
+    expect(parsed).toBeDefined()
+    expect(parsed?.numBytes).toBe(bf.byteLength)
+    expect(reader.offset).toBe(bytes.byteLength)
+    expect(parsed?.blocks).toEqual(bf)
+    for (const h of hashes) {
+      expect(sbbfContains(parsed?.blocks ?? new Uint32Array(0), h)).toBe(true)
+    }
+  })
+
+  it('rejects block arrays that are not a multiple of 8 words', () => {
+    const writer = new ByteWriter()
+    expect(() => writeBloomFilter(writer, new Uint32Array(7))).toThrow()
   })
 })
 

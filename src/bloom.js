@@ -3,6 +3,12 @@
 // Insertion sets one bit per word, chosen by salting the low 32 bits of an xxhash64.
 // Membership requires all 8 bits to be set; misses are exact, hits are probabilistic.
 
+import { serializeTCompactProtocol } from './thrift.js'
+
+/**
+ * @import {Writer} from '../src/types.js'
+ */
+
 const SALT = new Uint32Array([
   0x47b6137b, 0x44974d91, 0x8824ad5b, 0xa2b7289d,
   0x705495c7, 0x2df1424b, 0x9efc4947, 0x5c6bfb31,
@@ -117,4 +123,27 @@ export function optimalNumBytes(ndv, fpp) {
 export function createBloomFilter(ndv, fpp = 0.01) {
   const numBytes = optimalNumBytes(ndv, fpp)
   return new Uint32Array(numBytes >> 2)
+}
+
+/**
+ * Write a parquet bloom filter: BloomFilterHeader thrift struct followed by
+ * the raw little-endian bytes of the SBBF blocks. Always uses BLOCK / XXHASH /
+ * UNCOMPRESSED, the only variants parquet currently defines.
+ *
+ * @param {Writer} writer
+ * @param {Uint32Array} blocks bloom filter words (8 * numBlocks long)
+ */
+export function writeBloomFilter(writer, blocks) {
+  if (blocks.length % 8 !== 0) {
+    throw new Error(`bloom filter block count must be a multiple of 8 uint32 words, got ${blocks.length}`)
+  }
+  serializeTCompactProtocol(writer, {
+    field_1: blocks.byteLength, // numBytes
+    field_2: { field_1: {} }, // algorithm: SplitBlockAlgorithm
+    field_3: { field_1: {} }, // hash: XxHash
+    field_4: { field_1: {} }, // compression: Uncompressed
+  })
+  for (let i = 0; i < blocks.length; i++) {
+    writer.appendUint32(blocks[i])
+  }
 }
