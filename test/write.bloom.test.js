@@ -1,5 +1,7 @@
-import { parquetMetadata } from 'hyparquet'
+import { parquetMetadata, parquetReadObjects } from 'hyparquet'
 import { hashParquetValue, readBloomFilter } from 'hyparquet/src/bloom.js'
+import { parquetSchema } from 'hyparquet/src/metadata.js'
+import { parquetPlan, prefetchBloomFilters } from 'hyparquet/src/plan.js'
 import { describe, expect, it } from 'vitest'
 import { sbbfContains } from '../src/bloom.js'
 import { ByteWriter } from '../src/bytewriter.js'
@@ -146,5 +148,52 @@ describe('parquetWriteBuffer bloom filter end-to-end', () => {
       expect(rg.columns[0].meta_data?.bloom_filter_offset).toBeDefined()
       expect(rg.columns[0].meta_data?.bloom_filter_length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('bloom pushdown via hyparquet', () => {
+  // RG0 holds {10,90}, RG1 holds {30,70}. Stats ranges [10,90] and [30,70] both
+  // contain 30, so stats alone can't prune. Only the bloom proves 30 absent in RG0.
+  const rg0 = Array.from({ length: 200 }, (_, i) => i % 2 ? 90 : 10)
+  const rg1 = Array.from({ length: 200 }, (_, i) => i % 2 ? 70 : 30)
+  const data = [...rg0, ...rg1]
+
+  function writeFile() {
+    return parquetWriteBuffer({
+      columnData: [{ name: 'code', data, type: 'INT32', bloomFilter: true }],
+      rowGroupSize: 200,
+    })
+  }
+
+  it('parquetPlan prunes a row group that stats cannot', async () => {
+    const file = writeFile()
+    const metadata = parquetMetadata(file)
+    const filter = { code: { $eq: 30 } }
+
+    // Stats-only: both row groups survive.
+    const statsPlan = parquetPlan({ file, metadata, filter })
+    expect(statsPlan.groups.map(g => g.groupStart)).toEqual([0, 200])
+
+    // With bloom: RG0's bloom proves 30 absent → only RG1 remains.
+    const bloomFiltersByGroup = await prefetchBloomFilters({ file, metadata, filter })
+    const schemaTree = parquetSchema(metadata)
+    /** @type {Record<string, SchemaElement>} */
+    const schemaElements = {}
+    for (const child of schemaTree.children) schemaElements[child.element.name] = child.element
+    const bloomPlan = parquetPlan({ file, metadata, filter, bloomFiltersByGroup, schemaElements })
+    expect(bloomPlan.groups.map(g => g.groupStart)).toEqual([200])
+  })
+
+  it('parquetReadObjects with useBloomFilters returns the right rows', async () => {
+    const file = writeFile()
+    const rows = await parquetReadObjects({ file, filter: { code: { $eq: 30 } }, useBloomFilters: true })
+    expect(rows.length).toBe(100) // half of RG1
+    expect(rows.every(r => r.code === 30)).toBe(true)
+  })
+
+  it('bloom proves absence for a value missing from every row group', async () => {
+    const file = writeFile()
+    const rows = await parquetReadObjects({ file, filter: { code: { $eq: 50 } }, useBloomFilters: true })
+    expect(rows).toEqual([])
   })
 })
