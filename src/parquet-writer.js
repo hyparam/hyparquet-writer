@@ -1,4 +1,5 @@
 import { getSchemaPath } from 'hyparquet/src/schema.js'
+import { writeBlooms } from './bloom.js'
 import { writeColumn } from './column.js'
 import { encodeNestedValues } from './dremel.js'
 import { writeIndexes } from './indexes.js'
@@ -66,7 +67,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
 
       // write columns
       for (let j = 0; j < columnData.length; j++) {
-        const { name, data, encoding, columnIndex = false, offsetIndex = true, shredding } = columnData[j]
+        const { name, data, encoding, columnIndex = false, offsetIndex = true, shredding, bloomFilter } = columnData[j]
 
         // Spec: if ColumnIndex is present, OffsetIndex must also be present
         if (columnIndex && !offsetIndex) {
@@ -104,6 +105,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
             columnIndex,
             offsetIndex,
             encoding,
+            bloomFilter,
           }
 
           const pageData = encodeNestedValues(leafPath, rows)
@@ -144,6 +146,8 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
 ParquetWriter.prototype.finish = function() {
   // Write all indexes at end of file
   writeIndexes(this.writer, this.pendingIndexes)
+  // Bloom filters cluster after indexes so pushdown readers fetch them in one range
+  writeBlooms(this.writer, this.pendingIndexes)
 
   // write metadata
   /** @type {FileMetaData} */
