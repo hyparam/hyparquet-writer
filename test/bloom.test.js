@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { hashParquetValue, readBloomFilter } from 'hyparquet/src/bloom.js'
 import { xxhash64 } from 'hyparquet/src/xxhash.js'
 import { ByteWriter } from '../src/bytewriter.js'
-import { createBloomFilter, optimalNumBytes, sbbfContains, sbbfInsert, writeBloomFilter } from '../src/bloom.js'
+import { BloomBuilder, createBloomFilter, optimalNumBytes, sbbfContains, sbbfInsert, writeBloomFilter } from '../src/bloom.js'
 
 const textEncoder = new TextEncoder()
 
@@ -117,6 +117,59 @@ describe('writeBloomFilter', () => {
   it('rejects block arrays that are not a multiple of 8 words', () => {
     const writer = new ByteWriter()
     expect(() => writeBloomFilter(writer, new Uint32Array(7))).toThrow()
+  })
+})
+
+describe('BloomBuilder', () => {
+  it('collects values and finalizes to a filter containing each', () => {
+    const builder = new BloomBuilder({ name: 's', type: 'BYTE_ARRAY' })
+    const values = ['alpha', 'beta', 'gamma', 'beta', 'delta']
+    for (const v of values) builder.insert(v)
+    const blocks = builder.finalize()
+    expect(blocks).toBeDefined()
+    for (const v of values) {
+      const h = hashParquetValue(v, { name: 's', type: 'BYTE_ARRAY' }) ?? 0n
+      expect(sbbfContains(blocks ?? new Uint32Array(0), h)).toBe(true)
+    }
+  })
+
+  it('skips null and undefined without disabling the filter', () => {
+    const builder = new BloomBuilder({ name: 'i', type: 'INT32' })
+    builder.insert(null)
+    builder.insert(undefined)
+    builder.insert(1)
+    builder.insert(2)
+    const blocks = builder.finalize()
+    expect(blocks).toBeDefined()
+  })
+
+  it('sizes the filter for the distinct count, not the insert count', () => {
+    const builder = new BloomBuilder({ name: 'i', type: 'INT32' }, { fpp: 0.01 })
+    for (let i = 0; i < 10000; i++) builder.insert(i % 50) // 50 distinct
+    const blocks = builder.finalize()
+    expect(blocks?.byteLength).toBe(optimalNumBytes(50, 0.01))
+  })
+
+  it('returns undefined when no values were inserted', () => {
+    const builder = new BloomBuilder({ name: 's', type: 'BYTE_ARRAY' })
+    expect(builder.finalize()).toBeUndefined()
+  })
+
+  it('returns undefined when any non-null value is unhashable (would be a false negative)', () => {
+    // INT32 column with a non-integer JS value — hashParquetValue returns undefined
+    const builder = new BloomBuilder({ name: 'i', type: 'INT32' })
+    builder.insert(1)
+    builder.insert(1.5) // unhashable for INT32
+    expect(builder.finalize()).toBeUndefined()
+  })
+
+  it('returns undefined when sizing exceeds maxBytes', () => {
+    const builder = new BloomBuilder(
+      { name: 's', type: 'BYTE_ARRAY' },
+      { fpp: 0.001, maxBytes: 256 }
+    )
+    for (let i = 0; i < 1000; i++) builder.insert(`v-${i}`)
+    expect(builder.finalize()).toBeUndefined()
   })
 })
 

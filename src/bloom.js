@@ -3,9 +3,11 @@
 // Insertion sets one bit per word, chosen by salting the low 32 bits of an xxhash64.
 // Membership requires all 8 bits to be set; misses are exact, hits are probabilistic.
 
+import { hashParquetValue } from 'hyparquet/src/bloom.js'
 import { serializeTCompactProtocol } from './thrift.js'
 
 /**
+ * @import {SchemaElement} from 'hyparquet'
  * @import {Writer} from '../src/types.js'
  */
 
@@ -123,6 +125,48 @@ export function optimalNumBytes(ndv, fpp) {
 export function createBloomFilter(ndv, fpp = 0.01) {
   const numBytes = optimalNumBytes(ndv, fpp)
   return new Uint32Array(numBytes >> 2)
+}
+
+/**
+ * Collects distinct hashes of column values and finalizes them into an SBBF
+ * sized for the actual distinct count. `finalize` returns `undefined` if any
+ * non-null value was unhashable (the filter would have false negatives), if
+ * no values were seen, or if the optimal size exceeds `maxBytes`.
+ */
+export class BloomBuilder {
+  /**
+   * @param {SchemaElement} element
+   * @param {{ fpp?: number, maxBytes?: number }} [options]
+   */
+  constructor(element, { fpp = 0.01, maxBytes = 1024 * 1024 } = {}) {
+    this.element = element
+    this.fpp = fpp
+    this.maxBytes = maxBytes
+    /** @type {Set<bigint>} */
+    this.hashes = new Set()
+    this.skipped = 0
+  }
+
+  /** @param {any} value */
+  insert(value) {
+    if (value === null || value === undefined) return
+    const h = hashParquetValue(value, this.element)
+    if (h === undefined) {
+      this.skipped++
+      return
+    }
+    this.hashes.add(h)
+  }
+
+  /** @returns {Uint32Array | undefined} */
+  finalize() {
+    if (this.skipped > 0 || this.hashes.size === 0) return undefined
+    const numBytes = optimalNumBytes(this.hashes.size, this.fpp)
+    if (numBytes > this.maxBytes) return undefined
+    const blocks = new Uint32Array(numBytes >> 2)
+    for (const h of this.hashes) sbbfInsert(blocks, h)
+    return blocks
+  }
 }
 
 /**
