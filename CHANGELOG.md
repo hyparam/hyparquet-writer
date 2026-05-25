@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.15.3]
+ - Per-column compression option
+
 ## [0.15.2]
  - Bloom filter support (#30)
  - Fix -0/+0 spec behavior in statistics
