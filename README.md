@@ -98,6 +98,7 @@ interface ColumnSource {
   type?: BasicType
   nullable?: boolean // allow nulls (default true)
   encoding?: Encoding // parquet encoding (PLAIN, RLE, DELTA_BINARY_PACKED, BYTE_STREAM_SPLIT, etc)
+  codec?: CompressionCodec // per-column codec override (default ParquetWriteOptions.codec)
   columnIndex?: boolean // enable page-level column index (default false)
   offsetIndex?: boolean // enable page-level offset index (default true)
   shredding?: true | Record<string, BasicType> // shredding config for VARIANT columns

@@ -67,7 +67,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
 
       // write columns
       for (let j = 0; j < columnData.length; j++) {
-        const { name, data, encoding, columnIndex = false, offsetIndex = true, shredding, bloomFilter } = columnData[j]
+        const { name, data, encoding, codec = this.codec, columnIndex = false, offsetIndex = true, shredding, bloomFilter } = columnData[j]
 
         // Spec: if ColumnIndex is present, OffsetIndex must also be present
         if (columnIndex && !offsetIndex) {
@@ -98,7 +98,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
             columnName: schemaPath.slice(1).map(s => s.name).join('.'),
             element: schemaPath[schemaPath.length - 1],
             schemaPath,
-            codec: this.codec,
+            codec,
             compressors: this.compressors,
             stats: this.statistics,
             pageSize,

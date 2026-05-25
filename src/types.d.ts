@@ -38,6 +38,7 @@ export interface ColumnSource {
   type?: BasicType
   nullable?: boolean
   encoding?: Encoding
+  codec?: CompressionCodec // per-column codec override, default ParquetWriteOptions.codec
   columnIndex?: boolean // write column indexes, default false
   offsetIndex?: boolean // write offset indexes, default true
   shredding?: true | Record<string, BasicType> // variant shredding config

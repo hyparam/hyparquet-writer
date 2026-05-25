@@ -83,6 +83,21 @@ describe('parquetWriteBuffer', () => {
     expect(file.byteLength).toBe(10176)
   })
 
+  it('honors per-column codec override', async () => {
+    const str = 'a'.repeat(10000)
+    /** @type {import('../src/types.js').ColumnSource[]} */
+    const columnData = [
+      { name: 'compressed', data: [str] },
+      { name: 'raw', data: [str], codec: 'UNCOMPRESSED' },
+    ]
+    const file = parquetWriteBuffer({ columnData })
+    const metadata = parquetMetadata(file)
+    expect(metadata.row_groups[0].columns[0].meta_data?.codec).toBe('SNAPPY')
+    expect(metadata.row_groups[0].columns[1].meta_data?.codec).toBe('UNCOMPRESSED')
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual([{ compressed: str, raw: str }])
+  })
+
   it('efficiently serializes column with few distinct values', async () => {
     const data = Array(100000)
       .fill('aaaa', 0, 50000)
