@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.15.5]
+ - Variant array shredding
+
 ## [0.15.4]
  - Fix dictionary encoding of byte arrays
 
