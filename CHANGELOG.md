@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.15.4]
+ - Fix dictionary encoding of byte arrays
+
 ## [0.15.3]
  - Per-column compression option
 
