@@ -639,6 +639,39 @@ describe('variant shredding', () => {
     ]
     expect(autoDetectShredding(values)).toEqual([{ id: 'INT64', name: 'STRING' }])
   })
+
+  it('autoDetectShredding bounds nesting depth, leaving deep containers as fallback', () => {
+    const values = [
+      { id: 1n, meta: { tag: 'x', sub: { deep: { y: 1n } } } },
+      { id: 2n, meta: { tag: 'y', sub: { deep: { y: 2n } } } },
+    ]
+    // shallow fields shred; `sub` nests a container past the depth cap, so it
+    // (and everything under it) is left in the binary value fallback
+    expect(autoDetectShredding(values)).toEqual({ id: 'INT64', meta: { tag: 'STRING' } })
+  })
+
+  it('autoDetectShredding leaves very wide schemas unshredded', () => {
+    /** @type {Record<string, number>} */
+    const wide = {}
+    for (let i = 0; i < 300; i++) wide['f' + i] = i // exceeds the leaf-count cap
+    expect(autoDetectShredding([wide])).toBeUndefined()
+  })
+
+  it('auto-detect does not explode columns on a deeply nested variant', async () => {
+    // mirrors a tool-definitions column: a name plus a deep JSON-schema object
+    /** @type {Record<string, any>} */
+    const properties = {}
+    for (let i = 0; i < 40; i++) properties['p' + i] = { type: 'string', description: 'd' + i }
+    const data = Array.from({ length: 5 }, () => ({ name: 'tool', input_schema: { type: 'object', properties } }))
+
+    const file = parquetWriteBuffer({ columnData: [{ name: 'v', data, type: 'VARIANT', shredding: true }] })
+    const metadata = parquetMetadata(file)
+    // deep `properties.*` stay in the binary fallback instead of a column per leaf
+    expect(metadata.row_groups[0].columns.length).toBeLessThan(16)
+
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
 })
 
 describe('variant array shredding', () => {

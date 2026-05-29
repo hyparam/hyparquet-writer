@@ -194,30 +194,61 @@ function matchesType(value, type) {
   }
 }
 
+// Conservative defaults for auto-detected shredding. Shredding is a query
+// optimization, not a compression one: each shredded leaf is a full column
+// (page headers, dictionary page, offset index), so deep/wide structures
+// auto-shred into hundreds of columns and bloat the file. Auto-detect only
+// descends a couple of container levels and bails on very wide schemas,
+// leaving the rest in the binary value fallback. Explicit configs are unbounded.
+const MAX_SHRED_DEPTH = 3
+const MAX_SHRED_LEAVES = 256
+
 /**
  * Auto-detect a shredding config by recursively analyzing values for consistent
  * structure. Detects scalar fields, nested objects, and arrays. Only structured
  * top-level values (objects/arrays) are shredded; a column of bare scalars is
- * left unshredded.
+ * left unshredded. Descent is bounded (see MAX_SHRED_DEPTH/MAX_SHRED_LEAVES) to
+ * avoid exploding deeply nested variants into a column per leaf.
  *
  * @param {any[]} values
  * @returns {ShredType | undefined}
  */
 export function autoDetectShredding(values) {
-  const detected = detectShred(values)
+  const detected = detectShred(values, 0)
   // Top level: only shred structured values (objects/arrays), not bare scalars.
   if (detected === undefined || typeof detected !== 'object') return undefined
-  return normalizeShreddingConfig(detected)
+  const normalized = normalizeShreddingConfig(detected)
+  // Leave pathologically wide schemas as a single binary value.
+  if (normalized === undefined || countShredLeaves(normalized) > MAX_SHRED_LEAVES) return undefined
+  return normalized
+}
+
+/**
+ * Count the typed leaf columns a shred type expands into (per array element).
+ *
+ * @param {ShredType} shredType
+ * @returns {number}
+ */
+function countShredLeaves(shredType) {
+  if (Array.isArray(shredType)) return shredType.length ? countShredLeaves(shredType[0]) : 0
+  if (shredType && typeof shredType === 'object') {
+    let leaves = 0
+    for (const key of Object.keys(shredType)) leaves += countShredLeaves(shredType[key])
+    return leaves
+  }
+  return 1 // scalar leaf
 }
 
 /**
  * Recursively detect a shred type from a pool of sample values at one position.
- * Returns undefined when the values are not consistently shreddable.
+ * Returns undefined when the values are not consistently shreddable, or when a
+ * container is nested deeper than MAX_SHRED_DEPTH (left as binary fallback).
  *
  * @param {any[]} values
+ * @param {number} depth container nesting levels already descended
  * @returns {ShredType | undefined}
  */
-function detectShred(values) {
+function detectShred(values, depth) {
   /** @type {any[]} */
   const nonNull = []
   for (const v of values) {
@@ -228,6 +259,7 @@ function detectShred(values) {
   // Object shred: any plain object present. Non-objects are ignored here and
   // fall back to binary at encode time.
   if (nonNull.some(isPlainObject)) {
+    if (depth >= MAX_SHRED_DEPTH) return undefined
     /** @type {Map<string, any[]>} field name -> its present values */
     const fieldValues = new Map()
     for (const v of nonNull) {
@@ -242,7 +274,7 @@ function detectShred(values) {
     /** @type {Record<string, ShredType>} */
     const shredding = {}
     for (const [key, vals] of fieldValues) {
-      const fieldShred = detectShred(vals)
+      const fieldShred = detectShred(vals, depth + 1)
       if (fieldShred !== undefined) shredding[key] = fieldShred
     }
     return Object.keys(shredding).length > 0 ? shredding : undefined
@@ -250,10 +282,11 @@ function detectShred(values) {
 
   // Array shred: every value is an array. Pool all elements and recurse.
   if (nonNull.every(Array.isArray)) {
+    if (depth >= MAX_SHRED_DEPTH) return undefined
     /** @type {any[]} */
     const elements = []
     for (const arr of nonNull) for (const el of arr) elements.push(el)
-    const elemShred = detectShred(elements)
+    const elemShred = detectShred(elements, depth + 1)
     return elemShred === undefined ? undefined : [elemShred]
   }
 
