@@ -1,8 +1,7 @@
 import { BloomBuilder } from './bloom.js'
-import { ByteWriter } from './bytewriter.js'
-import { writeDataPageV2, writePageHeader } from './datapage.js'
+import { writeDataPageV2 } from './datapage.js'
+import { estimateValueSize, useDictionary, writeDictionaryPage } from './dictionary.js'
 import { geospatialStatistics } from './geospatial.js'
-import { writePlain } from './plain.js'
 import { unconvert, unconvertMinMax } from './unconvert.js'
 
 /**
@@ -235,102 +234,6 @@ function getPageBoundaries(values, type, type_length, pageSize) {
   }
 
   return boundaries
-}
-
-/**
- * Estimate the byte size of a value for page size calculation.
- *
- * @param {any} value
- * @param {ParquetType} type
- * @param {number} [type_length]
- * @returns {number}
- */
-function estimateValueSize(value, type, type_length) {
-  if (value === null || value === undefined) return 0
-  if (type === 'BOOLEAN') return 0.125
-  if (type === 'INT32' || type === 'FLOAT') return 4
-  if (type === 'INT64' || type === 'DOUBLE') return 8
-  if (type === 'INT96') return 12
-  if (type === 'FIXED_LEN_BYTE_ARRAY') return type_length ?? 0
-  if (type === 'BYTE_ARRAY') {
-    if (value instanceof Uint8Array) return value.byteLength
-    if (typeof value === 'string') return value.length
-  }
-  return 0
-}
-
-/**
- * @param {DecodedArray} values
- * @param {ParquetType} type
- * @param {number | undefined} type_length
- * @param {Encoding | undefined} encoding
- * @param {number} pageSize
- * @returns {{ dictionary?: any[], indexes?: number[] }}
- */
-function useDictionary(values, type, type_length, encoding, pageSize) {
-  if (encoding && encoding !== 'RLE_DICTIONARY') return {}
-  if (type === 'BOOLEAN') return {}
-
-  // uniqueness on a sample
-  const sample = values.slice(0, 1000)
-  const sampleUnique = new Set(sample).size
-  if (sampleUnique === 0 || sampleUnique / sample.length > 0.5) return {}
-
-  // build dictionary and indexes
-  /** @type {Map<any, number>} */
-  const unique = new Map()
-  /** @type {number[]} */
-  const indexes = new Array(values.length)
-  let dictSize = 0
-  for (let i = 0; i < values.length; i++) {
-    const value = values[i]
-    if (value === null || value === undefined) continue
-
-    // find index for value in dictionary
-    let index = unique.get(value)
-    if (index === undefined) {
-      // dictionary cannot exceed page size
-      dictSize += estimateValueSize(value, type, type_length)
-      if (pageSize && dictSize > pageSize) return {}
-      index = unique.size
-      unique.set(value, index)
-    }
-    indexes[i] = index
-  }
-
-  // TODO: sort by frequency?
-  return { dictionary: Array.from(unique.keys()), indexes }
-}
-
-/**
- * @param {Writer} writer
- * @param {ColumnEncoder} column
- * @param {DecodedArray} dictionary
- */
-function writeDictionaryPage(writer, column, dictionary) {
-  const { element, codec, compressors } = column
-  const { type, type_length } = element
-  if (!type) throw new Error(`column ${column.columnName} cannot determine type`)
-
-  // write values to temp buffer
-  const dictionaryPage = new ByteWriter()
-  writePlain(dictionaryPage, dictionary, type, type_length)
-  const dictionaryBytes = dictionaryPage.getBytes()
-
-  // compress dictionary page data
-  const compressedBytes = compressors[codec]?.(dictionaryBytes) ?? dictionaryBytes
-
-  // write dictionary page header
-  writePageHeader(writer, {
-    type: 'DICTIONARY_PAGE',
-    uncompressed_page_size: dictionaryBytes.byteLength,
-    compressed_page_size: compressedBytes.byteLength,
-    dictionary_page_header: {
-      num_values: dictionary.length,
-      encoding: 'PLAIN',
-    },
-  })
-  writer.appendBytes(compressedBytes)
 }
 
 /**
