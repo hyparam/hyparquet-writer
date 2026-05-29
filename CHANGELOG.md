@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.15.6]
+ - Bound auto-detected variant shredding depth and width
+
 ## [0.15.5]
  - Variant array shredding
 
