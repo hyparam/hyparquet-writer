@@ -14,9 +14,9 @@ const EMPTY_METADATA = writeVariantMetadata([])
  * Each row becomes { metadata, value } (or null for missing values).
  * When shredding is provided, produces { metadata, value, typed_value } per row.
  *
- * @import {BasicType} from '../src/types.js'
+ * @import {BasicType, ShredType} from '../src/types.js'
  * @param {any[]} values
- * @param {Record<string, BasicType> | undefined} shredding
+ * @param {ShredType | undefined} shredding
  * @param {{ name: string, required: boolean }} [column]
  * @returns {Array<Record<string, any> | null>}
  */
@@ -35,8 +35,16 @@ export function encodeVariantColumn(values, shredding, column) {
     /** @type {Map<string, { metadata: Uint8Array, keyIndex: Map<string, number> }>} */
     const metadataCache = new Map()
     return values.map(value => {
+      // undefined is a missing row; null is a present Variant null.
       if (value === undefined) return null
-      return encodeVariantRowShredded(value, shreddingConfig, metadataCache)
+      // Build the metadata dictionary from every nested key in the row. The
+      // reader uses dictionary membership to decide which object fields are
+      // present, so all present keys (shredded or not) must be in the dictionary.
+      /** @type {Set<string>} */
+      const keys = new Set()
+      collectKeys(value, keys)
+      const { metadata, keyIndex } = getVariantRowMetadata(keys, metadataCache)
+      return { metadata, ...encodeShredded(value, shreddingConfig, keyIndex, true) }
     })
   }
 
@@ -55,89 +63,87 @@ export function encodeVariantColumn(values, shredding, column) {
 }
 
 /**
- * Encode a single row with variant shredding.
- * Splits object fields into shredded typed_value columns and remaining binary value.
+ * Recursively encode a value against a shred type into a { value, typed_value }
+ * shredded group (the metadata wrapper is added by the caller at the top level).
  *
- * The hyparquet reader uses the metadata dictionary to determine which shredded
- * fields are present (vs. absent), so every present key in the row must appear
- * in the dictionary. We still skip recursion into shredded-matched primitive
- * values, and skip the keyIndex Map when no binary encoding is needed.
+ * Shape rules (per the Variant shredding spec):
+ * - scalar: matches the type -> typed_value holds the value, value is null;
+ *   otherwise fall back to a binary variant in value.
+ * - object: shredded fields go into the typed_value struct (absent fields are
+ *   omitted), remaining fields are packed into a binary value.
+ * - array: each element is recursively shredded into the typed_value LIST, value
+ *   is null. A non-array value falls back to a binary value.
  *
  * @param {any} value
- * @param {Record<string, BasicType>} shredding
- * @param {Map<string, { metadata: Uint8Array, keyIndex: Map<string, number> }>} metadataCache
- * @returns {Record<string, any>}
+ * @param {ShredType} shredType
+ * @param {Map<string, number>} keyIndex
+ * @param {boolean} allowPartialObjects
+ * @returns {{ value: Uint8Array | null, typed_value: any }}
  */
-function encodeVariantRowShredded(value, shredding, metadataCache) {
-  // null -> value: variant null, typed_value: null
-  if (value === null) {
-    return { metadata: EMPTY_METADATA, value: VARIANT_NULL, typed_value: null }
+function encodeShredded(value, shredType, keyIndex, allowPartialObjects) {
+  // Present Variant null: value holds variant null, typed_value is null.
+  if (value === null || value === undefined) {
+    return { value: VARIANT_NULL, typed_value: null }
   }
 
-  // scalar -> value: binary variant, typed_value: null (no dictionary needed)
-  if (typeof value !== 'object' || value instanceof Date || value instanceof Uint8Array) {
-    return { metadata: EMPTY_METADATA, value: writeVariantValue(value, EMPTY_KEY_INDEX), typed_value: null }
-  }
-
-  if (Array.isArray(value)) {
-    /** @type {Set<string>} */
-    const keys = new Set()
-    collectKeys(value, keys)
-    const { metadata, keyIndex } = getVariantRowMetadata(keys, metadataCache)
-    return { metadata, value: writeVariantValue(value, keyIndex), typed_value: null }
-  }
-
-  // Single pass: collect dictionary keys and partition fields.
-  // Recurse into mismatched-shredded and remaining values only.
-  // Matched shredded primitive values don't contribute keys to the dictionary.
-  /** @type {Set<string>} */
-  const keys = new Set()
-  /** @type {string[]} */
-  const remainingKeys = []
-  /** @type {Set<string>} */
-  const mismatchedShredded = new Set()
-  for (const k of Object.keys(value)) {
-    keys.add(k)
-    if (k in shredding) {
-      const v = value[k]
-      if (v !== null && v !== undefined && !matchesType(v, shredding[k])) {
-        mismatchedShredded.add(k)
-        collectKeys(v, keys)
-      }
-    } else {
-      remainingKeys.push(k)
-      collectKeys(value[k], keys)
+  // Array shred type
+  if (Array.isArray(shredType)) {
+    if (!Array.isArray(value)) {
+      // Not an array: typed_value must be null, store the value as binary.
+      return { value: writeVariantValue(value, keyIndex), typed_value: null }
     }
+    const elemShred = shredType[0]
+    return { value: null, typed_value: value.map(el => encodeShredded(el, elemShred, keyIndex, false)) }
   }
 
-  const { metadata, keyIndex } = getVariantRowMetadata(keys, metadataCache)
-
-  // Build typed_value
-  /** @type {Record<string, any>} */
-  const typedValue = {}
-  for (const fieldName of Object.keys(shredding)) {
-    if (!(fieldName in value)) {
-      // missing field: omit the optional field wrapper entirely
-      typedValue[fieldName] = undefined
-    } else if (value[fieldName] === null || value[fieldName] === undefined) {
-      typedValue[fieldName] = { value: VARIANT_NULL, typed_value: null }
-    } else if (mismatchedShredded.has(fieldName)) {
-      typedValue[fieldName] = { value: writeVariantValue(value[fieldName], keyIndex), typed_value: null }
-    } else {
-      typedValue[fieldName] = { value: null, typed_value: value[fieldName] }
+  // Object shred type
+  if (typeof shredType === 'object') {
+    // Not a plain object: fall back to a binary value.
+    if (typeof value !== 'object' || Array.isArray(value) || value instanceof Date || value instanceof Uint8Array) {
+      return { value: writeVariantValue(value, keyIndex), typed_value: null }
     }
-  }
 
-  // Build binary value from remaining fields
-  let binaryValue = null
-  if (remainingKeys.length > 0) {
+    // Remaining (non-shredded) fields are packed into a binary value.
     /** @type {Record<string, any>} */
     const remaining = {}
-    for (const k of remainingKeys) remaining[k] = value[k]
-    binaryValue = writeVariantValue(remaining, keyIndex)
+    let hasRemaining = false
+    for (const k of Object.keys(value)) {
+      if (k in shredType || value[k] === undefined) continue
+      remaining[k] = value[k]
+      hasRemaining = true
+    }
+    if (hasRemaining && !allowPartialObjects) {
+      return { value: writeVariantValue(value, keyIndex), typed_value: null }
+    }
+
+    const fieldNames = Object.keys(shredType)
+    const hasMissingFieldConflict = fieldNames.some(fieldName =>
+      (!Object.prototype.hasOwnProperty.call(value, fieldName) || value[fieldName] === undefined) &&
+      keyIndex.has(fieldName)
+    )
+    if (hasMissingFieldConflict) {
+      return { value: writeVariantValue(value, keyIndex), typed_value: null }
+    }
+
+    /** @type {Record<string, any>} */
+    const typedValue = {}
+    for (const fieldName of fieldNames) {
+      if (!Object.prototype.hasOwnProperty.call(value, fieldName) || value[fieldName] === undefined) {
+        // missing field: omit the optional field wrapper entirely
+        continue
+      }
+      typedValue[fieldName] = encodeShredded(value[fieldName], shredType[fieldName], keyIndex, false)
+    }
+    const binaryValue = hasRemaining ? writeVariantValue(remaining, keyIndex) : null
+
+    return { value: binaryValue, typed_value: typedValue }
   }
 
-  return { metadata, value: binaryValue, typed_value: typedValue }
+  // Scalar shred type
+  if (matchesType(value, shredType)) {
+    return { value: null, typed_value: value }
+  }
+  return { value: writeVariantValue(value, keyIndex), typed_value: null }
 }
 
 /**
@@ -189,62 +195,115 @@ function matchesType(value, type) {
 }
 
 /**
- * Auto-detect shredding config by analyzing values for consistent field types.
- * Scans all object values and finds fields where every non-null occurrence has the same type.
+ * Auto-detect a shredding config by recursively analyzing values for consistent
+ * structure. Detects scalar fields, nested objects, and arrays. Only structured
+ * top-level values (objects/arrays) are shredded; a column of bare scalars is
+ * left unshredded.
  *
  * @param {any[]} values
- * @returns {Record<string, BasicType> | undefined}
+ * @returns {ShredType | undefined}
  */
 export function autoDetectShredding(values) {
-  /** @type {Record<string, string>} field name -> detected JS type */
-  const fieldTypes = {}
-  /** @type {Record<string, boolean>} field name -> has consistent type */
-  const consistent = {}
-  let hasObjects = false
-
-  for (const value of values) {
-    if (value === null || value === undefined) continue
-    if (typeof value !== 'object' || Array.isArray(value) || value instanceof Date || value instanceof Uint8Array) continue
-    hasObjects = true
-    for (const [key, fieldValue] of Object.entries(value)) {
-      if (fieldValue === null || fieldValue === undefined) continue
-      const jsType = fieldValue instanceof Date ? 'date' : typeof fieldValue
-      if (!(key in fieldTypes)) {
-        fieldTypes[key] = jsType
-        consistent[key] = true
-      } else if (fieldTypes[key] !== jsType) {
-        consistent[key] = false
-      }
-    }
-  }
-
-  if (!hasObjects) return undefined
-
-  /** @type {Record<string, BasicType>} */
-  const shredding = {}
-  for (const [key, jsType] of Object.entries(fieldTypes)) {
-    if (!consistent[key]) continue
-    const basicType = jsTypeToBasicType(jsType)
-    if (basicType) shredding[key] = basicType
-  }
-
-  return normalizeShreddingConfig(shredding)
+  const detected = detectShred(values)
+  // Top level: only shred structured values (objects/arrays), not bare scalars.
+  if (detected === undefined || typeof detected !== 'object') return undefined
+  return normalizeShreddingConfig(detected)
 }
 
 /**
- * Remove field names reserved by the shredded variant wrapper layout.
+ * Recursively detect a shred type from a pool of sample values at one position.
+ * Returns undefined when the values are not consistently shreddable.
  *
- * @param {Record<string, BasicType>} shredding
- * @returns {Record<string, BasicType> | undefined}
+ * @param {any[]} values
+ * @returns {ShredType | undefined}
+ */
+function detectShred(values) {
+  /** @type {any[]} */
+  const nonNull = []
+  for (const v of values) {
+    if (v !== null && v !== undefined) nonNull.push(v)
+  }
+  if (!nonNull.length) return undefined
+
+  // Object shred: any plain object present. Non-objects are ignored here and
+  // fall back to binary at encode time.
+  if (nonNull.some(isPlainObject)) {
+    /** @type {Map<string, any[]>} field name -> its present values */
+    const fieldValues = new Map()
+    for (const v of nonNull) {
+      if (!isPlainObject(v)) continue
+      for (const [key, fieldValue] of Object.entries(v)) {
+        if (fieldValue === undefined) continue
+        const arr = fieldValues.get(key)
+        if (arr) arr.push(fieldValue)
+        else fieldValues.set(key, [fieldValue])
+      }
+    }
+    /** @type {Record<string, ShredType>} */
+    const shredding = {}
+    for (const [key, vals] of fieldValues) {
+      const fieldShred = detectShred(vals)
+      if (fieldShred !== undefined) shredding[key] = fieldShred
+    }
+    return Object.keys(shredding).length > 0 ? shredding : undefined
+  }
+
+  // Array shred: every value is an array. Pool all elements and recurse.
+  if (nonNull.every(Array.isArray)) {
+    /** @type {any[]} */
+    const elements = []
+    for (const arr of nonNull) for (const el of arr) elements.push(el)
+    const elemShred = detectShred(elements)
+    return elemShred === undefined ? undefined : [elemShred]
+  }
+
+  // Scalar shred: every value is the same basic JS type.
+  /** @type {string | undefined} */
+  let jsType
+  for (const v of nonNull) {
+    if (Array.isArray(v)) return undefined // mixed array + scalar
+    const t = v instanceof Date ? 'date' : typeof v
+    if (jsType === undefined) jsType = t
+    else if (jsType !== t) return undefined
+  }
+  return jsType ? jsTypeToBasicType(jsType) : undefined
+}
+
+/**
+ * True for plain objects (not null, array, Date, or Uint8Array).
+ *
+ * @param {any} v
+ * @returns {boolean}
+ */
+function isPlainObject(v) {
+  return typeof v === 'object' && v !== null &&
+    !Array.isArray(v) && !(v instanceof Date) && !(v instanceof Uint8Array)
+}
+
+/**
+ * Recursively strip field names reserved by the shredded variant wrapper layout
+ * (`value`, `typed_value`). Returns undefined when an object level empties out.
+ *
+ * @param {ShredType} shredding
+ * @returns {ShredType | undefined}
  */
 export function normalizeShreddingConfig(shredding) {
-  /** @type {Record<string, BasicType>} */
-  const normalized = {}
-  for (const [key, type] of Object.entries(shredding)) {
-    if (RESERVED_SHREDDING_FIELDS.has(key)) continue
-    normalized[key] = type
+  if (Array.isArray(shredding)) {
+    const elem = shredding.length ? normalizeShreddingConfig(shredding[0]) : undefined
+    return elem === undefined ? undefined : [elem]
   }
-  return Object.keys(normalized).length > 0 ? normalized : undefined
+  if (typeof shredding === 'object') {
+    /** @type {Record<string, ShredType>} */
+    const normalized = {}
+    for (const [key, type] of Object.entries(shredding)) {
+      if (RESERVED_SHREDDING_FIELDS.has(key)) continue
+      const norm = normalizeShreddingConfig(type)
+      if (norm !== undefined) normalized[key] = norm
+    }
+    return Object.keys(normalized).length > 0 ? normalized : undefined
+  }
+  // scalar
+  return shredding
 }
 
 /**

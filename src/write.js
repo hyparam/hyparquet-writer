@@ -30,7 +30,7 @@ export function parquetWrite({
       const detected = autoDetectShredding(Array.from(col.data))
       return detected ? { ...col, shredding: detected } : { ...col, shredding: undefined }
     }
-    if (typeof col.shredding === 'object' && col.type === 'VARIANT') {
+    if (col.shredding !== undefined && col.shredding !== true && col.type === 'VARIANT') {
       const shredding = normalizeShreddingConfig(col.shredding)
       return shredding ? { ...col, shredding } : { ...col, shredding: undefined }
     }

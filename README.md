@@ -220,7 +220,31 @@ For object columns, you can opt into **shredding** to promote frequently-used fi
 { name: 'event', data, type: 'VARIANT', shredding: true } // auto-detect
 ```
 
-Supported shredded field types: `BOOLEAN`, `INT32`, `INT64`, `FLOAT`, `DOUBLE`, `STRING`, `TIMESTAMP`.
+Supported shredded scalar types: `BOOLEAN`, `INT32`, `INT64`, `FLOAT`, `DOUBLE`, `STRING`, `TIMESTAMP`.
+
+The shredding config is recursive: a string is a scalar type, a plain object shreds
+object fields, and a **single-element array** shreds an array of that element type.
+This nests to any depth, so arrays of objects (and beyond) get typed sub-columns:
+
+```javascript
+{
+  name: 'order',
+  data,
+  type: 'VARIANT',
+  shredding: {
+    order_id: 'INT64',
+    customer: 'STRING',
+    items: [{ sku: 'STRING', qty: 'INT32', tags: ['STRING'] }], // array of objects
+  },
+}
+
+// a whole column that is an array of objects:
+{ name: 'rows', data, type: 'VARIANT', shredding: [{ id: 'INT64', name: 'STRING' }] }
+```
+
+`true` auto-detects scalar, nested-object, and array fields. Any value that does not
+match its declared shred type (e.g. a non-array where an array is expected, or an
+element of the wrong type) safely falls back to the binary `value` encoding.
 
 ## References
 

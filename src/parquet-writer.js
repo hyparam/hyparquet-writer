@@ -83,7 +83,7 @@ ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100
 
         // For VARIANT logical type, encode JS values into {metadata, value} structs
         const columnElement = columnPath.at(-1)?.element
-        const shreddingConfig = typeof shredding === 'object' ? shredding : undefined
+        const shreddingConfig = shredding && shredding !== true ? shredding : undefined
         const isVariant = columnElement?.logical_type?.type === 'VARIANT'
         const isRequired = columnElement?.repetition_type === 'REQUIRED'
         const rows = isVariant

@@ -20,6 +20,11 @@ export type BasicType =
   'GEOGRAPHY' |
   'VARIANT'
 
+// Recursive variant shredding config: a scalar BasicType, an array of one
+// element shred type ([elem] = array-of-elem), or an object mapping field names
+// to shred types. The single-element array is a shape template; only index 0 is read.
+export type ShredType = BasicType | ShredType[] | { [field: string]: ShredType }
+
 export interface ParquetWriteOptions {
   writer: Writer
   columnData: ColumnSource[]
@@ -41,7 +46,7 @@ export interface ColumnSource {
   codec?: CompressionCodec // per-column codec override, default ParquetWriteOptions.codec
   columnIndex?: boolean // write column indexes, default false
   offsetIndex?: boolean // write offset indexes, default true
-  shredding?: true | Record<string, BasicType> // variant shredding config
+  shredding?: true | ShredType // variant shredding config (true = auto-detect)
   bloomFilter?: boolean | BloomFilterOptions // write bloom filter, default false
 }
 

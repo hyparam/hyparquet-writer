@@ -446,6 +446,45 @@ describe('variant shredding', () => {
     expect(result).toEqual(data.map(v => ({ v })))
   })
 
+  it('preserves nested fallback fields with auto-detected shredding', async () => {
+    const data = [
+      { payload: { a: 'x', raw: new Uint8Array([1]) } },
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: true,
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('preserves absent fields in nested shredded objects', async () => {
+    const data = [
+      { child: { a: 1 }, other: { b: 2 } },
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: { child: { a: 'INT32', b: 'INT32' } },
+    }])
+    expect(result[0].v.child).toEqual({ a: 1 })
+    expect(Object.prototype.hasOwnProperty.call(result[0].v.child, 'b')).toBe(false)
+    expect(result[0].v.other).toEqual({ b: 2 })
+  })
+
+  it('honors scalar shredding configs at the column root', async () => {
+    const data = ['login', 'logout']
+    const file = parquetWriteBuffer({ columnData: [{
+      name: 'v', data, type: 'VARIANT',
+      shredding: 'STRING',
+    }] })
+    const metadata = parquetMetadata(file)
+    physicalColumn(metadata, ['v', 'typed_value'])
+    const fallbackLeaf = physicalColumn(metadata, ['v', 'value'])
+    expect(fallbackLeaf.meta_data?.statistics?.null_count).toBe(BigInt(data.length))
+
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
   it('does not auto-shred reserved variant wrapper fields', async () => {
     const data = [
       { value: 'x' },
@@ -556,13 +595,18 @@ describe('variant shredding', () => {
     expect(config).toEqual({ name: 'STRING', age: 'DOUBLE' })
   })
 
-  it('autoDetectShredding detects boolean and bigint fields only', () => {
+  it('autoDetectShredding detects scalar, nested object, and array fields', () => {
     const values = [
       { active: true, count: 1n, missing: null, nested: { a: 1 }, list: [1] },
       { active: false, count: 2n, missing: undefined, nested: { b: 2 }, list: [2] },
     ]
     const config = autoDetectShredding(values)
-    expect(config).toEqual({ active: 'BOOLEAN', count: 'INT64' })
+    expect(config).toEqual({
+      active: 'BOOLEAN',
+      count: 'INT64',
+      nested: { a: 'DOUBLE', b: 'DOUBLE' },
+      list: ['DOUBLE'],
+    })
   })
 
   it('autoDetectShredding excludes mixed-type fields', () => {
@@ -586,5 +630,167 @@ describe('variant shredding', () => {
   it('autoDetectShredding returns undefined for non-objects', () => {
     expect(autoDetectShredding([1, 2, 3])).toBeUndefined()
     expect(autoDetectShredding([null, null])).toBeUndefined()
+  })
+
+  it('autoDetectShredding detects a top-level array of objects', () => {
+    const values = [
+      [{ id: 1n, name: 'a' }],
+      [{ id: 2n, name: 'b' }, { id: 3n, name: 'c' }],
+    ]
+    expect(autoDetectShredding(values)).toEqual([{ id: 'INT64', name: 'STRING' }])
+  })
+})
+
+describe('variant array shredding', () => {
+  it('shreds a top-level array of scalars', async () => {
+    const data = [['a', 'b'], ['c'], []]
+    const file = parquetWriteBuffer({ columnData: [{
+      name: 'v', data, type: 'VARIANT', shredding: ['STRING'],
+    }] })
+    const metadata = parquetMetadata(file)
+    // typed list leaf exists (throws if not), and the group-level binary value
+    // is null for every row because the arrays are shredded into typed_value
+    physicalColumn(metadata, ['v', 'typed_value', 'list', 'element', 'typed_value'])
+    const groupValue = physicalColumn(metadata, ['v', 'value'])
+    expect(groupValue.meta_data?.statistics?.null_count).toBe(BigInt(data.length))
+
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('shreds a top-level array of objects', async () => {
+    const data = [
+      [{ sku: 'A1', qty: 2 }, { sku: 'B7', qty: 1 }],
+      [{ sku: 'C3', qty: 5 }],
+    ]
+    const file = parquetWriteBuffer({ columnData: [{
+      name: 'v', data, type: 'VARIANT', shredding: [{ sku: 'STRING', qty: 'INT32' }],
+    }] })
+    const metadata = parquetMetadata(file)
+    physicalColumn(metadata, ['v', 'typed_value', 'list', 'element', 'typed_value', 'sku', 'typed_value'])
+    physicalColumn(metadata, ['v', 'typed_value', 'list', 'element', 'typed_value', 'qty', 'typed_value'])
+
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('preserves absent fields in sparse arrays of shredded objects', async () => {
+    const data = [
+      [{ a: 1 }, { b: 2 }],
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: [{ a: 'INT32', b: 'INT32' }],
+    }])
+    expect(result[0].v[0]).toEqual({ a: 1 })
+    expect(Object.prototype.hasOwnProperty.call(result[0].v[0], 'b')).toBe(false)
+    expect(result[0].v[1]).toEqual({ b: 2 })
+    expect(Object.prototype.hasOwnProperty.call(result[0].v[1], 'a')).toBe(false)
+  })
+
+  it('shreds an array-of-objects field inside an object', async () => {
+    const data = [
+      { order_id: 1001n, items: [{ sku: 'A1', qty: 2 }, { sku: 'B7', qty: 1 }] },
+      { order_id: 1002n, items: [{ sku: 'C3', qty: 5 }] },
+    ]
+    const file = parquetWriteBuffer({ columnData: [{
+      name: 'order', data, type: 'VARIANT',
+      shredding: { order_id: 'INT64', items: [{ sku: 'STRING', qty: 'INT32' }] },
+    }] })
+    const metadata = parquetMetadata(file)
+    physicalColumn(metadata, ['order', 'typed_value', 'items', 'typed_value', 'list', 'element', 'typed_value', 'sku', 'typed_value'])
+
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual(data.map(v => ({ order: v })))
+  })
+
+  it('shreds an array-of-strings field inside an object', async () => {
+    const data = [
+      { name: 'a', tags: ['x', 'y'] },
+      { name: 'b', tags: [] },
+      { name: 'c', tags: ['z'] },
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: { name: 'STRING', tags: ['STRING'] },
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('shreds nested arrays', async () => {
+    const data = [[[1, 2], [3]], [[4]]]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT', shredding: [['INT32']],
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('shreds a deeply nested object/array/array mix', async () => {
+    const data = [
+      { a: [{ b: [1n, 2n] }, { b: [3n] }] },
+      { a: [{ b: [] }] },
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT',
+      shredding: { a: [{ b: ['INT64'] }] },
+    }])
+    expect(result).toEqual(data.map(v => ({ v })))
+  })
+
+  it('preserves null elements inside a shredded array', async () => {
+    const data = [['horror', null, 'comedy']]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT', shredding: ['STRING'],
+    }])
+    expect(result).toEqual([{ v: ['horror', null, 'comedy'] }])
+  })
+
+  it('falls back to binary when a shredded array field is not an array', async () => {
+    const data = [
+      { tags: ['x', 'y'] },
+      { tags: 'oops' },
+      { tags: null },
+    ]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT', shredding: { tags: ['STRING'] },
+    }])
+    expect(result[0].v).toEqual({ tags: ['x', 'y'] })
+    expect(result[1].v).toEqual({ tags: 'oops' })
+    expect(result[2].v).toEqual({ tags: null })
+  })
+
+  it('falls back per-element when an element does not match the element type', async () => {
+    const data = [['a', 5, 'b']]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT', shredding: ['STRING'],
+    }])
+    expect(result).toEqual([{ v: ['a', 5, 'b'] }])
+  })
+
+  it('round-trips a non-array value in a top-level array-shredded column', async () => {
+    const data = [['a', 'b'], 'scalar', { obj: 1 }, null]
+    const result = await roundTrip([{
+      name: 'v', data, type: 'VARIANT', shredding: ['STRING'],
+    }])
+    expect(result[0].v).toEqual(['a', 'b'])
+    expect(result[1].v).toEqual('scalar')
+    expect(result[2].v).toEqual({ obj: 1 })
+    expect(result[3].v).toEqual(null)
+  })
+
+  it('auto-detects and shreds an array-of-objects field', async () => {
+    const data = [
+      { order_id: 1001n, items: [{ sku: 'A1', qty: 2n }] },
+      { order_id: 1002n, items: [{ sku: 'C3', qty: 5n }, { sku: 'D4', qty: 1n }] },
+    ]
+    const file = parquetWriteBuffer({ columnData: [{
+      name: 'order', data, type: 'VARIANT', shredding: true,
+    }] })
+    const metadata = parquetMetadata(file)
+    // auto-detect produced a typed array leaf for items.sku
+    physicalColumn(metadata, ['order', 'typed_value', 'items', 'typed_value', 'list', 'element', 'typed_value', 'sku', 'typed_value'])
+
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual(data.map(v => ({ order: v })))
   })
 })

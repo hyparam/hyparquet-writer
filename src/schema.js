@@ -2,7 +2,7 @@ import { normalizeShreddingConfig } from './variant.js'
 
 /**
  * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement} from 'hyparquet'
- * @import {BasicType, ColumnSource} from '../src/types.js'
+ * @import {BasicType, ColumnSource, ShredType} from '../src/types.js'
  */
 
 /**
@@ -42,23 +42,14 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
     } else if (type === 'VARIANT') {
       // variant group with metadata and value children
       const repetition_type = nullable === false ? 'REQUIRED' : 'OPTIONAL'
-      const shreddingConfig = typeof shredding === 'object' ? normalizeShreddingConfig(shredding) : undefined
+      const shreddingConfig = shredding && shredding !== true ? normalizeShreddingConfig(shredding) : undefined
       if (shreddingConfig) {
-        const fieldNames = Object.keys(shreddingConfig)
         schema.push(
           { name, repetition_type, num_children: 3, logical_type: { type: 'VARIANT' } },
           { name: 'metadata', type: 'BYTE_ARRAY', repetition_type: 'REQUIRED' },
           { name: 'value', type: 'BYTE_ARRAY', repetition_type: 'OPTIONAL' },
-          { name: 'typed_value', repetition_type: 'OPTIONAL', num_children: fieldNames.length }
+          ...buildVariantTypedValue(shreddingConfig)
         )
-        for (const fieldName of fieldNames) {
-          const fieldType = shreddingConfig[fieldName]
-          schema.push(
-            { name: fieldName, repetition_type: 'OPTIONAL', num_children: 2 },
-            { name: 'value', type: 'BYTE_ARRAY', repetition_type: 'OPTIONAL' },
-            shreddedFieldElement(fieldType)
-          )
-        }
       } else {
         schema.push(
           { name, repetition_type, num_children: 2, logical_type: { type: 'VARIANT' } },
@@ -79,12 +70,53 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
 }
 
 /**
- * Map a BasicType to the inner typed_value SchemaElement for shredded fields.
+ * Build the flat preorder SchemaElement subtree for a shredded variant
+ * `typed_value` node, recursively, from a shred type. The first returned element
+ * is always named `typed_value`. Supports scalars, object structs, and LIST arrays.
+ *
+ * @param {ShredType} shredType
+ * @returns {SchemaElement[]}
+ */
+function buildVariantTypedValue(shredType) {
+  // Array shred type: single-element array template -> 3-level LIST
+  if (Array.isArray(shredType)) {
+    return [
+      { name: 'typed_value', repetition_type: 'OPTIONAL', converted_type: 'LIST', num_children: 1 },
+      { name: 'list', repetition_type: 'REPEATED', num_children: 1 },
+      { name: 'element', repetition_type: 'REQUIRED', num_children: 2 },
+      { name: 'value', type: 'BYTE_ARRAY', repetition_type: 'OPTIONAL' },
+      ...buildVariantTypedValue(shredType[0]),
+    ]
+  }
+
+  // Object shred type: struct with one optional group per field
+  if (typeof shredType === 'object') {
+    const fieldNames = Object.keys(shredType)
+    /** @type {SchemaElement[]} */
+    const elements = [
+      { name: 'typed_value', repetition_type: 'OPTIONAL', num_children: fieldNames.length },
+    ]
+    for (const fieldName of fieldNames) {
+      elements.push(
+        { name: fieldName, repetition_type: 'OPTIONAL', num_children: 2 },
+        { name: 'value', type: 'BYTE_ARRAY', repetition_type: 'OPTIONAL' },
+        ...buildVariantTypedValue(shredType[fieldName])
+      )
+    }
+    return elements
+  }
+
+  // Scalar shred type: typed leaf
+  return [shreddedLeafElement(shredType)]
+}
+
+/**
+ * Map a BasicType to the typed_value leaf SchemaElement for shredded scalars.
  *
  * @param {BasicType} type
  * @returns {SchemaElement}
  */
-function shreddedFieldElement(type) {
+function shreddedLeafElement(type) {
   switch (type) {
   case 'STRING':
     return { name: 'typed_value', type: 'BYTE_ARRAY', converted_type: 'UTF8', repetition_type: 'OPTIONAL' }
