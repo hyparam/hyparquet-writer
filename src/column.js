@@ -117,8 +117,8 @@ export function writeColumn({ writer, column, pageData }) {
 
       columnIndex.null_pages.push(null_count === BigInt(end - start)) // all nulls
       // Spec: for all-null pages set "byte[0]"
-      columnIndex.min_values.push(unconvertMinMax(min_value, element) ?? new Uint8Array())
-      columnIndex.max_values.push(unconvertMinMax(max_value, element) ?? new Uint8Array())
+      columnIndex.min_values.push(unconvertMinMax(min_value, element, false) ?? new Uint8Array())
+      columnIndex.max_values.push(unconvertMinMax(max_value, element, true) ?? new Uint8Array())
       columnIndex.null_counts?.push(null_count)
 
       // Track boundary order using original JS values

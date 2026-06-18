@@ -122,17 +122,69 @@ function unconvertUuid(value) {
   throw new Error('UUID must be a string or Uint8Array')
 }
 
+// Statistics min/max values are truncated to this many bytes to bound footer size.
+const STATS_TRUNCATE_LENGTH = 16
+
+/**
+ * Truncate a byte-array statistic to STATS_TRUNCATE_LENGTH bytes.
+ *
+ * A truncated prefix is a valid lower bound (min) but not a valid upper bound:
+ * for a max we must round the prefix up to the smallest byte string that is
+ * still >= the original. We do that by incrementing the last byte that is
+ * < 0xFF, dropping any trailing 0xFF bytes first. If every prefix byte is 0xFF
+ * there is no shorter upper bound, so the max is omitted (returns undefined).
+ *
+ * @param {Uint8Array} bytes
+ * @param {boolean} isMax
+ * @returns {Uint8Array | undefined}
+ */
+function truncateStatistic(bytes, isMax) {
+  if (bytes.length <= STATS_TRUNCATE_LENGTH) return bytes
+  const prefix = bytes.slice(0, STATS_TRUNCATE_LENGTH)
+  if (!isMax) return prefix // a prefix is a valid lower bound
+  let i = prefix.length - 1
+  while (i >= 0 && prefix[i] === 0xff) i-- // drop trailing 0xFF
+  if (i < 0) return undefined // all 0xFF: no valid shorter upper bound
+  const rounded = prefix.slice(0, i + 1)
+  rounded[i] += 1
+  return rounded
+}
+
+/**
+ * Returns false when a min/max value had to be truncated, otherwise undefined.
+ *
+ * We only emit the (optional) exactness flag when it is false; an absent flag
+ * means the value is exact, which keeps the footer small for untruncated columns.
+ *
+ * @param {MinMaxType | undefined} value
+ * @param {SchemaElement} element
+ * @returns {boolean | undefined}
+ */
+function minMaxIsExact(value, element) {
+  if (value === undefined || value === null) return undefined
+  const { type } = element
+  // only byte-array statistics are ever truncated
+  if (type !== 'BYTE_ARRAY' && type !== 'FIXED_LEN_BYTE_ARRAY') return undefined
+  if (element.logical_type?.type === 'UUID') return undefined // exactly 16 bytes, never truncated
+  const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(value.toString())
+  return bytes.length > STATS_TRUNCATE_LENGTH ? false : undefined
+}
+
 /**
  * Uncovert from rich type to byte array for metadata statistics.
  *
  * @param {MinMaxType | undefined} value
  * @param {SchemaElement} element
+ * @param {boolean} [isMax] whether this is a max value (rounds truncation up)
  * @returns {Uint8Array | undefined}
  */
-export function unconvertMinMax(value, element) {
+export function unconvertMinMax(value, element, isMax = false) {
   if (value === undefined || value === null) return undefined
   const { type, converted_type } = element
   if (type === 'BOOLEAN') return new Uint8Array([value ? 1 : 0])
+  if (element.logical_type?.type === 'UUID' && (typeof value === 'string' || value instanceof Uint8Array)) {
+    return unconvertUuid(value)
+  }
   if (converted_type === 'DECIMAL') {
     if (typeof value !== 'number') throw new Error('DECIMAL must be a number')
     const factor = 10 ** (element.scale || 0)
@@ -150,9 +202,8 @@ export function unconvertMinMax(value, element) {
     }
   }
   if (type === 'BYTE_ARRAY' || type === 'FIXED_LEN_BYTE_ARRAY') {
-    // truncate byte arrays to 16 bytes for statistics
-    if (value instanceof Uint8Array) return value.slice(0, 16)
-    return new TextEncoder().encode(value.toString().slice(0, 16))
+    const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(value.toString())
+    return truncateStatistic(bytes, isMax)
   }
   if (type === 'FLOAT' && typeof value === 'number') {
     const buffer = new ArrayBuffer(4)
@@ -209,14 +260,14 @@ export function unconvertMinMax(value, element) {
  */
 export function unconvertStatistics(stats, element) {
   return {
-    field_1: unconvertMinMax(stats.max, element),
-    field_2: unconvertMinMax(stats.min, element),
+    field_1: unconvertMinMax(stats.max, element, true),
+    field_2: unconvertMinMax(stats.min, element, false),
     field_3: stats.null_count,
     field_4: stats.distinct_count,
-    field_5: unconvertMinMax(stats.max_value, element),
-    field_6: unconvertMinMax(stats.min_value, element),
-    field_7: stats.is_max_value_exact,
-    field_8: stats.is_min_value_exact,
+    field_5: unconvertMinMax(stats.max_value, element, true),
+    field_6: unconvertMinMax(stats.min_value, element, false),
+    field_7: stats.is_max_value_exact ?? minMaxIsExact(stats.max_value ?? stats.max, element),
+    field_8: stats.is_min_value_exact ?? minMaxIsExact(stats.min_value ?? stats.min, element),
   }
 }
 
