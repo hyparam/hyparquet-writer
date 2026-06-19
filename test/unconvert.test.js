@@ -6,6 +6,22 @@ import { DEFAULT_PARSERS, parseFloat16 } from 'hyparquet/src/convert.js'
 /**
  * @import {SchemaElement, TimeUnit} from 'hyparquet'
  */
+
+/**
+ * Unsigned byte-wise comparison (parquet BYTE_ARRAY sort order).
+ * @param {Uint8Array | undefined} a
+ * @param {Uint8Array} b
+ * @returns {number} negative if a < b, 0 if equal, positive if a > b
+ */
+function compareBytes(a, b) {
+  if (!a) throw new Error('expected a Uint8Array')
+  const len = Math.min(a.length, b.length)
+  for (let i = 0; i < len; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i]
+  }
+  return a.length - b.length
+}
+
 describe('unconvert', () => {
   it('should return Date objects when converted_type = DATE', () => {
     /** @type {SchemaElement} */
@@ -212,14 +228,14 @@ describe('unconvertMinMax', () => {
   it('should return undefined if value is undefined or null', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', type: 'INT32' }
-    expect(unconvertMinMax(undefined, schema)).toBeUndefined()
+    expect(unconvertMinMax(undefined, schema, false)).toBeUndefined()
   })
 
   it('should handle BOOLEAN type', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', type: 'BOOLEAN' }
-    expect(unconvertMinMax(true, schema)).toEqual(new Uint8Array([1]))
-    expect(unconvertMinMax(false, schema)).toEqual(new Uint8Array([0]))
+    expect(unconvertMinMax(true, schema, false)).toEqual(new Uint8Array([1]))
+    expect(unconvertMinMax(false, schema, false)).toEqual(new Uint8Array([0]))
   })
 
   it('should truncate BYTE_ARRAY or FIXED_LEN_BYTE_ARRAY to 16 bytes', () => {
@@ -228,21 +244,75 @@ describe('unconvertMinMax', () => {
     const longStrUint8 = new TextEncoder().encode(longStr)
 
     // value is a Uint8Array
-    const result1 = unconvertMinMax(longStrUint8, { name: 'test', type: 'BYTE_ARRAY' })
+    const result1 = unconvertMinMax(longStrUint8, { name: 'test', type: 'BYTE_ARRAY' }, false)
     expect(result1).toBeInstanceOf(Uint8Array)
     expect(result1?.length).toBe(16)
 
     // value is a string
-    const result2 = unconvertMinMax(longStr, { name: 'test', type: 'FIXED_LEN_BYTE_ARRAY' })
+    const result2 = unconvertMinMax(longStr, { name: 'test', type: 'FIXED_LEN_BYTE_ARRAY' }, false)
     expect(result2).toBeInstanceOf(Uint8Array)
     expect(result2?.length).toBe(16)
+  })
+
+  it('should truncate a min value to a plain 16-byte prefix', () => {
+    const longStr = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    // min (isMax = false): a prefix is a valid lower bound, no rounding
+    const min = unconvertMinMax(longStr, { name: 'test', type: 'BYTE_ARRAY' }, false)
+    expect(min).toEqual(new TextEncoder().encode('ABCDEFGHIJKLMNOP'))
+  })
+
+  it('should round a truncated max value up so it stays a valid upper bound', () => {
+    const longStr = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    const full = new TextEncoder().encode(longStr)
+    // max (isMax = true): prefix with the last byte incremented ('P' -> 'Q')
+    const max = unconvertMinMax(longStr, { name: 'test', type: 'BYTE_ARRAY' }, true)
+    expect(max).toEqual(new TextEncoder().encode('ABCDEFGHIJKLMNOQ'))
+    // invariant: the stored max must be >= the real value, byte-for-byte
+    expect(compareBytes(max, full)).toBeGreaterThanOrEqual(0)
+  })
+
+  it('should drop trailing 0xFF bytes when rounding a max up', () => {
+    // 16-byte prefix ends in 0xFF, 0xFF which cannot be incremented, so they are
+    // dropped and the preceding byte (index 13, 0x4e) is incremented to 0x4f.
+    // Input must exceed 16 bytes so that truncation actually occurs.
+    const prefix = new Uint8Array(16)
+    for (let i = 0; i < 14; i++) prefix[i] = 0x41 + i // 0x41..0x4e
+    prefix[14] = 0xff
+    prefix[15] = 0xff
+    const value = new Uint8Array(20)
+    value.set(prefix)
+    const max = unconvertMinMax(value, { name: 'test', type: 'BYTE_ARRAY' }, true)
+    const expected = prefix.slice(0, 14)
+    expected[13] = 0x4f
+    expect(max).toEqual(expected)
+    expect(compareBytes(max, value)).toBeGreaterThanOrEqual(0)
+  })
+
+  it('should omit a truncated max when every prefix byte is 0xFF', () => {
+    const value = new Uint8Array(20).fill(0xff)
+    const max = unconvertMinMax(value, { name: 'test', type: 'BYTE_ARRAY' }, true)
+    // no shorter byte string is >= all-0xFF, so the max is omitted
+    expect(max).toBeUndefined()
+  })
+
+  it('should encode a UUID as 16 raw bytes, not ASCII text', () => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', type: 'FIXED_LEN_BYTE_ARRAY', type_length: 16, logical_type: { type: 'UUID' } }
+    const uuid = '8ad1f570-bb0c-4ad0-9b57-4ad7d2d0f32b'
+    const expected = new Uint8Array([
+      0x8a, 0xd1, 0xf5, 0x70, 0xbb, 0x0c, 0x4a, 0xd0,
+      0x9b, 0x57, 0x4a, 0xd7, 0xd2, 0xd0, 0xf3, 0x2b,
+    ])
+    // exactly 16 bytes -> no truncation, min and max are identical raw bytes
+    expect(unconvertMinMax(uuid, schema, false)).toEqual(expected)
+    expect(unconvertMinMax(uuid, schema, true)).toEqual(expected)
   })
 
   it('should correctly encode FLOAT values in little-endian', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', type: 'FLOAT' }
     const value = 1.5
-    const result = unconvertMinMax(value, schema)
+    const result = unconvertMinMax(value, schema, false)
     expect(result).toBeInstanceOf(Uint8Array)
     const roundtrip = convertMetadata(result, schema, DEFAULT_PARSERS)
     expect(roundtrip).toEqual(1.5)
@@ -252,7 +322,7 @@ describe('unconvertMinMax', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', type: 'DOUBLE' }
     const value = 1.123456789
-    const result = unconvertMinMax(value, schema)
+    const result = unconvertMinMax(value, schema, false)
     expect(result).toBeInstanceOf(Uint8Array)
     const roundtrip = convertMetadata(result, schema, DEFAULT_PARSERS)
     expect(roundtrip).toEqual(1.123456789)
@@ -262,7 +332,7 @@ describe('unconvertMinMax', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', type: 'INT32' }
     const value = 123456
-    const result = unconvertMinMax(value, schema)
+    const result = unconvertMinMax(value, schema, false)
     const roundtrip = convertMetadata(result, schema, DEFAULT_PARSERS)
     expect(roundtrip).toEqual(123456)
   })
@@ -271,7 +341,7 @@ describe('unconvertMinMax', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', type: 'INT64' }
     const value = 1234567890123456789n
-    const result = unconvertMinMax(value, schema)
+    const result = unconvertMinMax(value, schema, false)
     const roundtrip = convertMetadata(result, schema, DEFAULT_PARSERS)
     expect(roundtrip).toEqual(1234567890123456789n)
   })
@@ -280,7 +350,7 @@ describe('unconvertMinMax', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', type: 'INT64', converted_type: 'TIMESTAMP_MILLIS' }
     const date = new Date('2023-01-01T00:00:00Z')
-    const result = unconvertMinMax(date, schema)
+    const result = unconvertMinMax(date, schema, false)
     const roundtrip = convertMetadata(result, schema, DEFAULT_PARSERS)
     expect(roundtrip).toEqual(date)
   })
@@ -288,14 +358,14 @@ describe('unconvertMinMax', () => {
   it('should throw an error for unsupported types', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', type: 'INT96' }
-    expect(() => unconvertMinMax(123, schema))
+    expect(() => unconvertMinMax(123, schema, false))
       .toThrow('unsupported type for statistics: INT96 with value 123')
   })
 
   it('should throw an error for INT64 if value is a number instead of bigint or Date', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', type: 'INT64' }
-    expect(() => unconvertMinMax(123, schema))
+    expect(() => unconvertMinMax(123, schema, false))
       .toThrow('unsupported type for statistics: INT64 with value 123')
   })
 
@@ -357,7 +427,7 @@ describe('unconvertMinMax', () => {
     },
   ]
   it.for(int64EncodeCases)('should encode $name for INT64', ({ schema, value, expected }) => {
-    const result = unconvertMinMax(value, schema)
+    const result = unconvertMinMax(value, schema, false)
     if (!result) throw new Error('expected result')
     const view = new DataView(result.buffer)
     expect(view.getBigInt64(0, true)).toEqual(expected)
