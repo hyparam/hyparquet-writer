@@ -175,10 +175,10 @@ function minMaxIsExact(value, element) {
  *
  * @param {MinMaxType | undefined} value
  * @param {SchemaElement} element
- * @param {boolean} [isMax] whether this is a max value (rounds truncation up)
+ * @param {boolean} isMax whether this is a max value (rounds truncation up)
  * @returns {Uint8Array | undefined}
  */
-export function unconvertMinMax(value, element, isMax = false) {
+export function unconvertMinMax(value, element, isMax) {
   if (value === undefined || value === null) return undefined
   const { type, converted_type } = element
   if (type === 'BOOLEAN') return new Uint8Array([value ? 1 : 0])
