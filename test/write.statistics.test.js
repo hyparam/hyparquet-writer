@@ -94,17 +94,12 @@ describe('statistics truncation of long string values', () => {
 
 describe('statistics for UUID columns', () => {
   it('encodes UUID min/max as the raw 16 bytes, not ASCII text', async () => {
-    // The end-to-end $eq query also requires a hyparquet reader fix (decoding
-    // UUID statistics back to a string); here we assert the writer-side
-    // guarantee that the bytes are the value's true 16-byte big-endian form.
+    // hyparquet now decodes UUID statistics back to a string. Asserting the
+    // decoded min/max equal the true UUIDs proves the writer stored the value's
+    // genuine 16-byte big-endian form (an ASCII encoding would decode to junk).
     const stats = await readStats(writeCol(['00000000-0000-0000-0000-000000000000', UUID], 'UUID'))
-    expect(stats.min_value).toBeInstanceOf(Uint8Array)
-    expect(stats.max_value).toBeInstanceOf(Uint8Array)
-    expect(Array.from(/** @type {Uint8Array} */ (stats.min_value))).toEqual(new Array(16).fill(0))
-    expect(Array.from(/** @type {Uint8Array} */ (stats.max_value))).toEqual([
-      0x8a, 0xd1, 0xf5, 0x70, 0xbb, 0x0c, 0x4a, 0xd0,
-      0x9b, 0x57, 0x4a, 0xd7, 0xd2, 0xd0, 0xf3, 0x2b,
-    ])
+    expect(stats.min_value).toBe('00000000-0000-0000-0000-000000000000')
+    expect(stats.max_value).toBe(UUID)
   })
 
   it('round-trips UUID column data', async () => {

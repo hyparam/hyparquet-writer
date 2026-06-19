@@ -11,6 +11,8 @@
 
 Hyparquet Writer is a JavaScript library for writing [Apache Parquet](https://parquet.apache.org) files. It is designed to be lightweight, fast and store data very efficiently. It is a companion to the [hyparquet](https://github.com/hyparam/hyparquet) library, which is a JavaScript library for reading parquet files.
 
+> Part of **[HypStack](https://hypstack.ai/)**, an open-source stack for AI observability.
+
 ## Quick Start
 
 To write a parquet file to an `ArrayBuffer` use `parquetWriteBuffer` with argument `columnData`. Each column in `columnData` should contain:

@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.15.7]
+ - Fix min/max statistics truncation for long values
+
 ## [0.15.6]
  - Bound auto-detected variant shredding depth and width
 
