@@ -40,7 +40,7 @@ export interface ParquetWriteOptions {
 // Same write options as ParquetWriteOptions, but the data is supplied as rows
 // plus a column spec instead of pre-transposed columnData.
 export interface ParquetWriteRowsOptions extends Omit<ParquetWriteOptions, 'columnData'> {
-  rows: Record<string, any>[] | Iterable<Record<string, any>>
+  rows: Record<string, any>[] | Iterable<Record<string, any>> | AsyncIterable<Record<string, any>>
   columns: Omit<ColumnSource, 'data'>[]
 }
 

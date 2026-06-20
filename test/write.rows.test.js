@@ -71,8 +71,8 @@ describe('parquetWriteRows', () => {
   })
 
   it('throws when rows is neither array nor iterable', () => {
-    expect(() => writeRows({ rows: null, columns: [{ name: 'a' }] })).toThrow('parquetWriteRows expects a rows array or iterable')
-    expect(() => writeRows({ rows: 42, columns: [{ name: 'a' }] })).toThrow('parquetWriteRows expects a rows array or iterable')
+    expect(() => writeRows({ rows: null, columns: [{ name: 'a' }] })).toThrow('parquetWriteRows expects a rows array, iterable, or async iterable')
+    expect(() => writeRows({ rows: 42, columns: [{ name: 'a' }] })).toThrow('parquetWriteRows expects a rows array, iterable, or async iterable')
   })
 
   describe('streaming iterable input', () => {
@@ -177,6 +177,82 @@ describe('parquetWriteRows', () => {
       const writer = new ByteWriter()
       const result = parquetWriteRows({ writer, rows, columns, rowGroupSize: 50 })
       expect(result).toBeUndefined()
+    })
+  })
+
+  describe('async iterable input', () => {
+    it('returns a promise and round-trips an async generator across row groups', async () => {
+      async function* gen() {
+        for (const row of rows) {
+          await Promise.resolve()
+          yield row
+        }
+      }
+      const writer = new ByteWriter()
+      const result = parquetWriteRows({ writer, rows: gen(), columns, rowGroupSize: 50 })
+      expect(result).toBeInstanceOf(Promise)
+      await result
+      const out = await parquetReadObjects({ file: writer.getBuffer() })
+      expect(out).toEqual(rows)
+    })
+
+    it('produces output identical to the equivalent array input', async () => {
+      async function* gen() {
+        yield* rows
+      }
+      const writer = new ByteWriter()
+      await parquetWriteRows({ writer, rows: gen(), columns, rowGroupSize: 64 })
+      const fromArray = writeRows({ rows, columns, rowGroupSize: 64 })
+      expect(new Uint8Array(writer.getBuffer())).toEqual(new Uint8Array(fromArray))
+    })
+
+    it('infers schema from the first buffered group', async () => {
+      async function* gen() {
+        yield* rows
+      }
+      const writer = new ByteWriter()
+      await parquetWriteRows({ writer, rows: gen(), columns, rowGroupSize: 50 })
+      const out = await parquetReadObjects({ file: writer.getBuffer() })
+      expect(out).toEqual(rows)
+    })
+
+    it('handles an empty async iterable', async () => {
+      async function* gen() {}
+      const writer = new ByteWriter()
+      await parquetWriteRows({ writer, rows: gen(), columns: [{ name: 'a', type: 'INT32' }] })
+      const out = await parquetReadObjects({ file: writer.getBuffer() })
+      expect(out).toEqual([])
+    })
+
+    it('does not pull a group ahead of the writer', async () => {
+      let pulled = 0
+      async function* gen() {
+        for (let i = 0; i < 250; i++) {
+          await Promise.resolve()
+          pulled++
+          yield { a: i, b: `v${i}` }
+        }
+      }
+      // Record how many rows had been pulled from the source at each flush.
+      /** @type {number[]} */
+      const pulledAtFlush = []
+      /** @type {any} */
+      const writer = new ByteWriter()
+      writer.flush = async () => {
+        await Promise.resolve()
+        pulledAtFlush.push(pulled)
+      }
+      await parquetWriteRows({
+        writer,
+        rows: gen(),
+        columns: [{ name: 'a' }, { name: 'b' }],
+        rowGroupSize: 50,
+      })
+      // The next group is pulled only after the prior group's write settles, so
+      // the source is never read more than the current group ahead of the writer.
+      expect(pulledAtFlush).toEqual([50, 100, 150, 200, 250])
+      const out = await parquetReadObjects({ file: writer.getBuffer() })
+      expect(out.length).toBe(250)
     })
   })
 })

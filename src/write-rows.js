@@ -8,22 +8,19 @@ import { schemaFromColumnData } from './schema.js'
 
 /**
  * Write row objects to parquet without first transposing the whole dataset into
- * columns. Rows are processed one row group at a time: transpose that group,
- * write it through an incrementally-driven ParquetWriter, then discard it. Only
- * one group is ever materialized in column-major form, so peak memory is bounded
- * by the row-group size, not the dataset.
+ * columns, so peak memory is bounded by the row-group size, not the dataset.
  *
- * `rows` may be an array or any (sync) iterable, such as a generator, a Set, or
- * a DB cursor. With a lazy iterable the rows are pulled one group at a time and
- * never all held at once, so peak memory is independent of the total row count.
+ * `rows` may be an array, any sync iterable (a generator, a Set), or an async
+ * iterable (a DB cursor, a stream). With a lazy source the rows are pulled one
+ * group at a time and never all held at once, so peak memory is independent of
+ * the total row count.
  *
- * If the `writer` sink is async (its `flush` returns a promise), the write runs
- * with backpressure: each group's write is awaited before the next group is
- * transposed or pulled from the source, and the call returns a promise. With a
- * fully synchronous sink no promise is ever created and the call returns void.
- *
- * This is a thin wrapper over ParquetWriter and the plain columnar write path;
- * it adds no new column-input shapes to the core writer.
+ * Return type: an async-iterable source always returns a promise, since its
+ * rows can't be pulled synchronously. For an array or sync iterable it is
+ * governed by the sink — an async `writer` (its `flush` returns a promise)
+ * returns a promise, a fully synchronous sink returns void. Either way each
+ * group's write settles before the next group is pulled, so the source and sink
+ * stay within one group of each other (see drain / drainAsync below).
  *
  * `columns` is required and fixes the column names and order (same fields as
  * ColumnSource minus the data); per-column `type` is optional. A schema is
@@ -41,8 +38,16 @@ export function parquetWriteRows({ writer, rows, columns, schema, rowGroupSize =
     throw new Error('parquetWriteRows requires a non-empty columns array')
   }
   const isArray = Array.isArray(rows)
-  if (!isArray && !(rows && typeof rows[Symbol.iterator] === 'function')) {
-    throw new Error('parquetWriteRows expects a rows array or iterable')
+  // Iterating the union type needs no casts if we go through one `any` alias;
+  // the array fast path keeps using the typed `rows` for indexed access.
+  /** @type {any} */
+  const source = rows
+  // An async iterable (DB cursor, stream) takes precedence: a value may expose
+  // both iterators, but if it has an async one we must pull with `for await`.
+  const isAsync = !isArray && source && typeof source[Symbol.asyncIterator] === 'function'
+  const isSync = !isArray && source && typeof source[Symbol.iterator] === 'function'
+  if (!isArray && !isAsync && !isSync) {
+    throw new Error('parquetWriteRows expects a rows array, iterable, or async iterable')
   }
   if (Array.isArray(rowGroupSize) && !rowGroupSize.length) {
     throw new Error('rowGroupSize array cannot be empty')
@@ -74,7 +79,8 @@ export function parquetWriteRows({ writer, rows, columns, schema, rowGroupSize =
       let batch = []
       let g = 0
       let target = groupSize(rowGroupSize, 0)
-      for (const row of rows) {
+      // This branch only runs for a sync iterable; the async case uses drainAsync.
+      for (const row of source) {
         batch.push(row)
         if (batch.length >= target) {
           yield { src: batch, start: 0, size: batch.length }
@@ -86,29 +92,67 @@ export function parquetWriteRows({ writer, rows, columns, schema, rowGroupSize =
     }
   }
 
+  /**
+   * Transpose one window of rows and write it as a single row group, lazily
+   * creating the writer (and inferring the schema from the first group) on the
+   * first call. Returns the writer's promise iff the sink flushed asynchronously.
+   * @param {Record<string, any>[]} src
+   * @param {number} start
+   * @param {number} size
+   * @returns {void | Promise<void>}
+   */
+  function writeWindow(src, start, size) {
+    // Transpose this group's rows into one array per column, then hand the core
+    // columnar path its usual { ...spec, data } shape: this is a thin wrapper
+    // that feeds groups in incrementally, not a new column-input type.
+    const cols = transposeWindow(src, fields, start, size)
+    /** @type {ColumnSource[]} */
+    const columnData = columns.map((spec, c) => ({ ...spec, data: cols[c] }))
+    // The first group fixes the schema, so the writer can't be created earlier.
+    if (!pq) {
+      pq = new ParquetWriter({ writer, schema: schema ?? schemaFromColumnData({ columnData }), ...options })
+    }
+    return pq.write({ columnData, rowGroupSize: size, pageSize })
+  }
+
   const it = windows()
 
   /**
-   * Pull, transpose, and write windows in order, lazily creating the writer
-   * (and inferring the schema from the first group) on the first call.
-   * promise iff a write was async.
+   * Pull, transpose, and write windows in order. Returns a promise iff a write
+   * was async, in which case it resumes the loop only after that write settles
+   * so the source can't run ahead of the writer.
    * @returns {void | Promise<void>}
    */
   function drain() {
     for (let next = it.next(); !next.done; next = it.next()) {
-      // Transpose this group's rows into one array per column.
       const { src, start, size } = next.value
-      const cols = transposeWindow(src, fields, start, size)
-      /** @type {ColumnSource[]} */
-      const columnData = columns.map((spec, c) => ({ ...spec, data: cols[c] }))
-      // The first group fixes the schema, so the writer can't be created earlier.
-      if (!pq) {
-        pq = new ParquetWriter({ writer, schema: schema ?? schemaFromColumnData({ columnData }), ...options })
-      }
-      // Async write: await it before the next it.next() so the source can't run ahead.
-      const r = pq.write({ columnData, rowGroupSize: size, pageSize })
+      const r = writeWindow(src, start, size)
       if (r) return r.then(drain)
     }
+  }
+
+  /**
+   * Async-source variant of {@link drain}: pull rows from an async iterable one
+   * group at a time, awaiting each group's write before pulling the next so the
+   * source (a cursor or stream) is never read ahead of the writer. Only ever
+   * one buffered batch plus its columnar copy is held, so peak memory stays
+   * bounded by the row-group size regardless of total row count.
+   * @returns {Promise<void>}
+   */
+  async function drainAsync() {
+    /** @type {Record<string, any>[]} */
+    let batch = []
+    let g = 0
+    let target = groupSize(rowGroupSize, 0)
+    for await (const row of source) {
+      batch.push(row)
+      if (batch.length >= target) {
+        await writeWindow(batch, 0, batch.length)
+        batch = []
+        target = groupSize(rowGroupSize, ++g)
+      }
+    }
+    if (batch.length) await writeWindow(batch, 0, batch.length)
   }
 
   /**
@@ -127,6 +171,8 @@ export function parquetWriteRows({ writer, rows, columns, schema, rowGroupSize =
     return pq?.finish()
   }
 
+  // An async source forces an async return: the rows can't be pulled synchronously.
+  if (isAsync) return drainAsync().then(finish)
   const drained = drain()
   return drained ? drained.then(finish) : finish()
 }
