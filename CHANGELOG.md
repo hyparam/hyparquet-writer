@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.16.0]
+ - Add `parquetWriteRows` for row-oriented and streaming input (#32)
+
 ## [0.15.7]
  - Fix min/max statistics truncation for long values
 
