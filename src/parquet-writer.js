@@ -170,6 +170,20 @@ ParquetWriter.prototype.finish = function() {
 }
 
 /**
+ * Target row count for the i-th row group. When rowGroupSize is an array, the
+ * last entry repeats once the array is exhausted.
+ *
+ * @param {number | number[]} rowGroupSize - Size of each row group or an array of sizes
+ * @param {number} i - zero-based group index
+ * @returns {number}
+ */
+export function groupSize(rowGroupSize, i) {
+  return Array.isArray(rowGroupSize)
+    ? rowGroupSize[Math.min(i, rowGroupSize.length - 1)]
+    : rowGroupSize
+}
+
+/**
  * Create an iterator for row groups based on the specified row group size.
  * If rowGroupSize is an array, it will return groups based on the sizes in the array.
  * When the array runs out, it will continue with the last size.
@@ -187,11 +201,8 @@ function groupIterator({ columnDataRows, rowGroupSize }) {
   let groupIndex = 0
   let groupStartIndex = 0
   while (groupStartIndex < columnDataRows) {
-    const size = Array.isArray(rowGroupSize)
-      ? rowGroupSize[Math.min(groupIndex, rowGroupSize.length - 1)]
-      : rowGroupSize
-    const groupSize = Math.min(size, columnDataRows - groupStartIndex)
-    groups.push({ groupStartIndex, groupSize })
+    const size = groupSize(rowGroupSize, groupIndex)
+    groups.push({ groupStartIndex, groupSize: Math.min(size, columnDataRows - groupStartIndex) })
     groupStartIndex += size
     groupIndex++
   }

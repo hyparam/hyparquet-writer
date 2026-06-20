@@ -156,7 +156,7 @@ describe('BloomBuilder', () => {
   })
 
   it('returns undefined when any non-null value is unhashable (would be a false negative)', () => {
-    // INT32 column with a non-integer JS value — hashParquetValue returns undefined
+    // INT32 column with a non-integer JS value, so hashParquetValue returns undefined
     const builder = new BloomBuilder({ name: 'i', type: 'INT32' })
     builder.insert(1)
     builder.insert(1.5) // unhashable for INT32

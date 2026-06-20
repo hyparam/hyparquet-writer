@@ -37,6 +37,13 @@ export interface ParquetWriteOptions {
   kvMetadata?: KeyValue[]
 }
 
+// Same write options as ParquetWriteOptions, but the data is supplied as rows
+// plus a column spec instead of pre-transposed columnData.
+export interface ParquetWriteRowsOptions extends Omit<ParquetWriteOptions, 'columnData'> {
+  rows: Record<string, any>[] | Iterable<Record<string, any>>
+  columns: Omit<ColumnSource, 'data'>[]
+}
+
 export interface ColumnSource {
   name: string
   data: DecodedArray
