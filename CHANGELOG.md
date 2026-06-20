@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.16.1]
+ - Support async iterables (DB cursors, streams) as `parquetWriteRows` input
+
 ## [0.16.0]
  - Add `parquetWriteRows` for row-oriented and streaming input (#32)
 
