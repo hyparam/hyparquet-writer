@@ -225,7 +225,7 @@ export function autoSchemaElement(name, values) {
       } else if (type === 'INT32' && valueType === 'DOUBLE') {
         type = 'DOUBLE'
       } else if (type === 'DOUBLE' && valueType === 'INT32') {
-        valueType = 'DOUBLE'
+        continue
       } else if (type !== valueType || converted_type !== valueConvertedType) {
         throw new Error(`parquet cannot write mixed types: ${converted_type ?? type} and ${valueConvertedType ?? valueType}`)
       }

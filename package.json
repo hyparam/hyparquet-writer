@@ -55,16 +55,17 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "hyparquet": "1.26.1"
+    "hyparquet": "1.27.1"
   },
   "devDependencies": {
     "@babel/eslint-parser": "8.0.1",
-    "@types/node": "26.0.0",
-    "@vitest/coverage-v8": "4.1.9",
-    "eslint": "9.39.4",
-    "eslint-plugin-jsdoc": "63.0.6",
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.1.2",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "10.8.0",
+    "eslint-plugin-jsdoc": "63.3.2",
     "hysnappy": "1.1.1",
-    "typescript": "6.0.3",
-    "vitest": "4.1.9"
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
   }
 }

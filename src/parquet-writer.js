@@ -14,159 +14,162 @@ import { encodeVariantColumn } from './variant.js'
 
 /**
  * ParquetWriter class allows incremental writing of parquet files.
- *
- * @param {object} options
- * @param {Writer} options.writer
- * @param {SchemaElement[]} options.schema
- * @param {CompressionCodec} [options.codec]
- * @param {Compressors} [options.compressors]
- * @param {boolean} [options.statistics]
- * @param {KeyValue[]} [options.kvMetadata]
  */
-export function ParquetWriter({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, kvMetadata }) {
-  this.writer = writer
-  this.schema = schema
-  this.codec = codec
-  // Include built-in snappy as fallback
-  this.compressors = { SNAPPY: snappyCompress, ...compressors }
-  this.statistics = statistics
-  this.kvMetadata = kvMetadata
+export class ParquetWriter {
+  /**
+   * @param {object} options
+   * @param {Writer} options.writer
+   * @param {SchemaElement[]} options.schema
+   * @param {CompressionCodec} [options.codec]
+   * @param {Compressors} [options.compressors]
+   * @param {boolean} [options.statistics]
+   * @param {KeyValue[]} [options.kvMetadata]
+   */
+  constructor({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, kvMetadata }) {
+    this.writer = writer
+    this.schema = schema
+    this.codec = codec
+    // Include built-in snappy as fallback
+    this.compressors = { SNAPPY: snappyCompress, ...compressors }
+    this.statistics = statistics
+    this.kvMetadata = kvMetadata
 
-  /** @type {RowGroup[]} */
-  this.row_groups = []
-  this.num_rows = 0n
+    /** @type {RowGroup[]} */
+    this.row_groups = []
+    this.num_rows = 0n
 
-  /** @type {PageIndexes[]} */
-  this.pendingIndexes = []
+    /** @type {PageIndexes[]} */
+    this.pendingIndexes = []
 
-  // write header PAR1
-  this.writer.appendUint32(0x31524150)
-}
+    // write header PAR1
+    this.writer.appendUint32(0x31524150)
+  }
 
-/**
- * Write data to the file.
- * Will split data into row groups of the specified size.
- * Calls writer.flush() (if defined) after each row group; if it returns a
- * Promise, subsequent row groups await it before encoding more data.
- *
- * @param {object} options
- * @param {ColumnSource[]} options.columnData
- * @param {number | number[]} [options.rowGroupSize]
- * @param {number} [options.pageSize]
- * @returns {void | Promise<void>}
- */
-ParquetWriter.prototype.write = function({ columnData, rowGroupSize = [1000, 100000], pageSize = 1048576 }) {
-  const columnDataRows = columnData[0]?.data?.length || 0
-  /** @type {Promise<void> | undefined} */
-  let pending
-  for (const { groupStartIndex, groupSize } of groupIterator({ columnDataRows, rowGroupSize })) {
-    const writeGroup = () => {
-      const groupStartOffset = this.writer.offset
-      /** @type {ColumnChunk[]} */
-      const columns = []
+  /**
+   * Write data to the file.
+   * Will split data into row groups of the specified size.
+   * Calls writer.flush() (if defined) after each row group; if it returns a
+   * Promise, subsequent row groups await it before encoding more data.
+   *
+   * @param {object} options
+   * @param {ColumnSource[]} options.columnData
+   * @param {number | number[]} [options.rowGroupSize]
+   * @param {number} [options.pageSize]
+   * @returns {void | Promise<void>}
+   */
+  write({ columnData, rowGroupSize = [1000, 100000], pageSize = 1048576 }) {
+    const columnDataRows = columnData[0]?.data?.length || 0
+    /** @type {Promise<void> | undefined} */
+    let pending
+    for (const { groupStartIndex, groupSize } of groupIterator({ columnDataRows, rowGroupSize })) {
+      const writeGroup = () => {
+        const groupStartOffset = this.writer.offset
+        /** @type {ColumnChunk[]} */
+        const columns = []
 
-      // write columns
-      for (let j = 0; j < columnData.length; j++) {
-        const { name, data, encoding, codec = this.codec, columnIndex = false, offsetIndex = true, shredding, bloomFilter } = columnData[j]
+        // write columns
+        for (let j = 0; j < columnData.length; j++) {
+          const { name, data, encoding, codec = this.codec, columnIndex = false, offsetIndex = true, shredding, bloomFilter } = columnData[j]
 
-        // Spec: if ColumnIndex is present, OffsetIndex must also be present
-        if (columnIndex && !offsetIndex) {
-          throw new Error('parquet ColumnIndex cannot be present without OffsetIndex')
-        }
-        if (data.length !== columnDataRows) {
-          throw new Error('parquet columns must have the same length')
-        }
-
-        const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
-        const columnPath = getSchemaPath(this.schema, [name])
-        const leafPaths = getLeafSchemaPaths(columnPath)
-
-        // For VARIANT logical type, encode JS values into {metadata, value} structs
-        const columnElement = columnPath.at(-1)?.element
-        const shreddingConfig = shredding && shredding !== true ? shredding : undefined
-        const isVariant = columnElement?.logical_type?.type === 'VARIANT'
-        const isRequired = columnElement?.repetition_type === 'REQUIRED'
-        const rows = isVariant
-          ? encodeVariantColumn(Array.from(groupData), shreddingConfig, { name, required: isRequired })
-          : groupData
-
-        for (const leafPath of leafPaths) {
-          const schemaPath = leafPath.map(node => node.element)
-
-          /** @type {ColumnEncoder} */
-          const column = {
-            columnName: schemaPath.slice(1).map(s => s.name).join('.'),
-            element: schemaPath[schemaPath.length - 1],
-            schemaPath,
-            codec,
-            compressors: this.compressors,
-            stats: this.statistics,
-            pageSize,
-            columnIndex,
-            offsetIndex,
-            encoding,
-            bloomFilter,
+          // Spec: if ColumnIndex is present, OffsetIndex must also be present
+          if (columnIndex && !offsetIndex) {
+            throw new Error('parquet ColumnIndex cannot be present without OffsetIndex')
+          }
+          if (data.length !== columnDataRows) {
+            throw new Error('parquet columns must have the same length')
           }
 
-          const pageData = encodeNestedValues(leafPath, rows)
-          const result = writeColumn({
-            writer: this.writer,
-            column,
-            pageData,
-          })
+          const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
+          const columnPath = getSchemaPath(this.schema, [name])
+          const leafPaths = getLeafSchemaPaths(columnPath)
 
-          columns.push(result.chunk)
-          this.pendingIndexes.push(result)
+          // For VARIANT logical type, encode JS values into {metadata, value} structs
+          const columnElement = columnPath.at(-1)?.element
+          const shreddingConfig = shredding && shredding !== true ? shredding : undefined
+          const isVariant = columnElement?.logical_type?.type === 'VARIANT'
+          const isRequired = columnElement?.repetition_type === 'REQUIRED'
+          const rows = isVariant
+            ? encodeVariantColumn(Array.from(groupData), shreddingConfig, { name, required: isRequired })
+            : groupData
+
+          for (const leafPath of leafPaths) {
+            const schemaPath = leafPath.map(node => node.element)
+
+            /** @type {ColumnEncoder} */
+            const column = {
+              columnName: schemaPath.slice(1).map(s => s.name).join('.'),
+              element: schemaPath[schemaPath.length - 1],
+              schemaPath,
+              codec,
+              compressors: this.compressors,
+              stats: this.statistics,
+              pageSize,
+              columnIndex,
+              offsetIndex,
+              encoding,
+              bloomFilter,
+            }
+
+            const pageData = encodeNestedValues(leafPath, rows)
+            const result = writeColumn({
+              writer: this.writer,
+              column,
+              pageData,
+            })
+
+            columns.push(result.chunk)
+            this.pendingIndexes.push(result)
+          }
         }
+
+        this.num_rows += BigInt(groupSize)
+        this.row_groups.push({
+          columns,
+          total_byte_size: BigInt(this.writer.offset - groupStartOffset),
+          num_rows: BigInt(groupSize),
+        })
+        return this.writer.flush?.()
       }
-
-      this.num_rows += BigInt(groupSize)
-      this.row_groups.push({
-        columns,
-        total_byte_size: BigInt(this.writer.offset - groupStartOffset),
-        num_rows: BigInt(groupSize),
-      })
-      return this.writer.flush?.()
+      if (pending) {
+        pending = pending.then(writeGroup)
+      } else {
+        const r = writeGroup()
+        if (r) pending = Promise.resolve(r)
+      }
     }
-    if (pending) {
-      pending = pending.then(writeGroup)
-    } else {
-      const r = writeGroup()
-      if (r) pending = Promise.resolve(r)
+    return pending
+  }
+
+  /**
+   * Finish writing the file.
+   *
+   * @returns {void | Promise<void>}
+   */
+  finish() {
+    // Write all indexes at end of file
+    writeIndexes(this.writer, this.pendingIndexes)
+    // Bloom filters cluster after indexes so pushdown readers fetch them in one range
+    writeBlooms(this.writer, this.pendingIndexes)
+
+    // write metadata
+    /** @type {FileMetaData} */
+    const metadata = {
+      version: 2,
+      created_by: 'hyparquet',
+      schema: this.schema,
+      num_rows: this.num_rows,
+      row_groups: this.row_groups,
+      metadata_length: 0,
+      key_value_metadata: this.kvMetadata,
     }
+    // @ts-ignore don't want to actually serialize metadata_length
+    delete metadata.metadata_length
+    writeMetadata(this.writer, metadata)
+
+    // write footer PAR1
+    this.writer.appendUint32(0x31524150)
+    return this.writer.finish()
   }
-  return pending
-}
-
-/**
- * Finish writing the file.
- *
- * @returns {void | Promise<void>}
- */
-ParquetWriter.prototype.finish = function() {
-  // Write all indexes at end of file
-  writeIndexes(this.writer, this.pendingIndexes)
-  // Bloom filters cluster after indexes so pushdown readers fetch them in one range
-  writeBlooms(this.writer, this.pendingIndexes)
-
-  // write metadata
-  /** @type {FileMetaData} */
-  const metadata = {
-    version: 2,
-    created_by: 'hyparquet',
-    schema: this.schema,
-    num_rows: this.num_rows,
-    row_groups: this.row_groups,
-    metadata_length: 0,
-    key_value_metadata: this.kvMetadata,
-  }
-  // @ts-ignore don't want to actually serialize metadata_length
-  delete metadata.metadata_length
-  writeMetadata(this.writer, metadata)
-
-  // write footer PAR1
-  this.writer.appendUint32(0x31524150)
-  return this.writer.finish()
 }
 
 /**
