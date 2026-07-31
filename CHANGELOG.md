@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.16.3]
+ - Fix type resolution under typescript 7
+
 ## [0.16.2]
  - Faster delta encoding for INT32 columns
 
