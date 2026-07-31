@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.16.2]
+ - Faster delta encoding for INT32 columns
+
 ## [0.16.1]
  - Support async iterables (DB cursors, streams) as `parquetWriteRows` input
 
