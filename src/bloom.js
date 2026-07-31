@@ -139,6 +139,7 @@ export class BloomBuilder {
    * @param {{ fpp?: number, maxBytes?: number }} [options]
    */
   constructor(element, { fpp = 0.01, maxBytes = 1024 * 1024 } = {}) {
+    /** @type {SchemaElement} */
     this.element = element
     this.fpp = fpp
     this.maxBytes = maxBytes

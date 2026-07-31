@@ -27,11 +27,14 @@ export class ParquetWriter {
    */
   constructor({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, kvMetadata }) {
     this.writer = writer
+    /** @type {SchemaElement[]} */
     this.schema = schema
+    /** @type {CompressionCodec} */
     this.codec = codec
     // Include built-in snappy as fallback
     this.compressors = { SNAPPY: snappyCompress, ...compressors }
     this.statistics = statistics
+    /** @type {KeyValue[] | undefined} */
     this.kvMetadata = kvMetadata
 
     /** @type {RowGroup[]} */
