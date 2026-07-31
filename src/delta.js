@@ -30,6 +30,148 @@ export function deltaBinaryPack(writer, values) {
     throw new Error('deltaBinaryPack only supports number or bigint arrays')
   }
 
+  if (usesInt32NumberPath(values)) {
+    deltaBinaryPackInt32(writer, values)
+  } else {
+    deltaBinaryPackBigInt(writer, values)
+  }
+}
+
+/**
+ * Return whether all values can use exact Number arithmetic. INT32 deltas can
+ * span 33 signed bits, but they and their adjusted deltas remain exactly
+ * representable as JavaScript numbers.
+ *
+ * @param {DecodedArray} values
+ * @returns {boolean}
+ */
+function usesInt32NumberPath(values) {
+  if (values instanceof Int32Array) return true
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i]
+    if (
+      typeof value !== 'number' ||
+      !Number.isInteger(value) ||
+      value < -0x80000000 ||
+      value > 0x7fffffff
+    ) return false
+  }
+  return true
+}
+
+/**
+ * Write signed 32-bit values without allocating or operating on BigInts.
+ *
+ * @param {Writer} writer
+ * @param {DecodedArray} values
+ */
+function deltaBinaryPackInt32(writer, values) {
+  const count = values.length
+
+  // Write header
+  writer.appendVarInt(BLOCK_SIZE)
+  writer.appendVarInt(MINIBLOCKS_PER_BLOCK)
+  writer.appendVarInt(count)
+  appendZigZagNumber(writer, Number(values[0]))
+
+  // Process blocks
+  /** @type {Array<Uint8Array | undefined>} */
+  const packedByBitWidth = []
+  const blockDeltas = new Float64Array(BLOCK_SIZE)
+  const bitWidths = new Uint8Array(MINIBLOCKS_PER_BLOCK)
+  let index = 1
+  while (index < count) {
+    const blockEnd = Math.min(index + BLOCK_SIZE, count)
+    const blockSize = blockEnd - index
+
+    // Compute deltas for this block
+    // Adjacent INT32 extremes differ by 4,294,967,295, so Int32Array is not
+    // sufficient even though every input value is a signed 32-bit integer.
+    let minDelta = Number(values[index]) - Number(values[index - 1])
+    blockDeltas[0] = minDelta
+    for (let i = 1; i < blockSize; i++) {
+      const delta = Number(values[index + i]) - Number(values[index + i - 1])
+      blockDeltas[i] = delta
+      if (delta < minDelta) minDelta = delta
+    }
+    appendZigZagNumber(writer, minDelta)
+
+    // Calculate bit widths for each miniblock
+    for (let mb = 0; mb < MINIBLOCKS_PER_BLOCK; mb++) {
+      const mbStart = mb * VALUES_PER_MINIBLOCK
+      const mbEnd = Math.min(mbStart + VALUES_PER_MINIBLOCK, blockSize)
+
+      let maxAdjusted = 0
+      for (let i = mbStart; i < mbEnd; i++) {
+        const adjusted = blockDeltas[i] - minDelta
+        if (adjusted > maxAdjusted) maxAdjusted = adjusted
+      }
+      bitWidths[mb] = bitWidthNumber(maxAdjusted)
+    }
+
+    // Write bit widths
+    writer.appendBytes(bitWidths)
+
+    // Write packed miniblocks
+    for (let mb = 0; mb < MINIBLOCKS_PER_BLOCK; mb++) {
+      const bitWidth = bitWidths[mb]
+      if (bitWidth === 0) continue // No data needed for zero bit width
+
+      const mbStart = mb * VALUES_PER_MINIBLOCK
+      const mbEnd = Math.min(mbStart + VALUES_PER_MINIBLOCK, blockSize)
+
+      // Bit pack into a reusable miniblock buffer, then append it in one call.
+      // There are always 32 values including padding, so the byte length is
+      // exactly bitWidth * 4.
+      const packed = packedByBitWidth[bitWidth] ??= new Uint8Array(bitWidth * 4)
+      let byteIndex = 0
+      let buffer = 0
+      let bitsUsed = 0
+      if (bitWidth <= 25) {
+        // Up to 25 data bits plus at most 7 pending bits fit in the 32-bit
+        // bitwise operations, which are faster than arithmetic packing.
+        for (let i = 0; i < VALUES_PER_MINIBLOCK; i++) {
+          const adjusted = mbStart + i < mbEnd ? blockDeltas[mbStart + i] - minDelta : 0
+          buffer |= adjusted << bitsUsed
+          bitsUsed += bitWidth
+          while (bitsUsed >= 8) {
+            packed[byteIndex++] = buffer & 0xff
+            buffer >>>= 8
+            bitsUsed -= 8
+          }
+        }
+      } else {
+        for (let i = 0; i < VALUES_PER_MINIBLOCK; i++) {
+          const adjusted = mbStart + i < mbEnd ? blockDeltas[mbStart + i] - minDelta : 0
+          // bitsUsed is below 8 at the start of each iteration. The largest
+          // adjusted INT32 delta is below 2^33, so this stays below 2^40 and is
+          // exactly representable by Number.
+          buffer += adjusted * 2 ** bitsUsed
+          bitsUsed += bitWidth
+          while (bitsUsed >= 8) {
+            packed[byteIndex++] = buffer % 0x100
+            buffer = Math.floor(buffer / 0x100)
+            bitsUsed -= 8
+          }
+        }
+      }
+      writer.appendBytes(packed)
+      // assert(bitsUsed === 0) // because multiple of 8
+    }
+
+    index = blockEnd
+  }
+}
+
+/**
+ * BigInt fallback for INT64 values and numeric input outside the INT32 range.
+ *
+ * @param {Writer} writer
+ * @param {DecodedArray} values
+ */
+function deltaBinaryPackBigInt(writer, values) {
+  const count = values.length
+
   // Write header
   writer.appendVarInt(BLOCK_SIZE)
   writer.appendVarInt(MINIBLOCKS_PER_BLOCK)
@@ -99,6 +241,33 @@ export function deltaBinaryPack(writer, values) {
 
     index = blockEnd
   }
+}
+
+/**
+ * Zigzag-encode an exactly represented integer and write it as a varint without
+ * truncating through JavaScript's 32-bit bitwise operators.
+ *
+ * @param {Writer} writer
+ * @param {number} value
+ */
+function appendZigZagNumber(writer, value) {
+  let encoded = value < 0 ? -value * 2 - 1 : value * 2
+  while (encoded >= 0x80) {
+    writer.appendUint8(encoded % 0x80 + 0x80)
+    encoded = Math.floor(encoded / 0x80)
+  }
+  writer.appendUint8(encoded)
+}
+
+/**
+ * Minimum bits needed to store an adjusted INT32 delta.
+ *
+ * @param {number} value
+ * @returns {number}
+ */
+function bitWidthNumber(value) {
+  if (value === 0) return 0
+  return value > 0xffffffff ? 33 : 32 - Math.clz32(value)
 }
 
 /**

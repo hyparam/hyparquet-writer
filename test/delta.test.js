@@ -9,7 +9,7 @@ const encoder = new TextEncoder()
 /**
  * Round-trip test for deltaBinaryPack with Int32Array output.
  *
- * @param {number[]} values
+ * @param {number[] | Int32Array} values
  * @returns {number[]}
  */
 function roundTripInt32(values) {
@@ -19,6 +19,18 @@ function roundTripInt32(values) {
   const output = new Int32Array(values.length)
   deltaBinaryUnpack(reader, values.length, output)
   return Array.from(output)
+}
+
+/**
+ * Encode values for byte-level comparisons between encoder paths.
+ *
+ * @param {number[] | Int32Array | bigint[]} values
+ * @returns {Uint8Array}
+ */
+function encodeIntValues(values) {
+  const writer = new ByteWriter()
+  deltaBinaryPack(writer, values)
+  return writer.getBytes()
 }
 
 /**
@@ -120,6 +132,26 @@ describe('deltaBinaryPack', () => {
     const original = [-10, -5, 0, 5, 10]
     const decoded = roundTripInt32(original)
     expect(decoded).toEqual(original)
+  })
+
+  it('should match bigint encoding across the full int32 range', () => {
+    let state = 0x12345678
+    const random = Array.from({ length: 517 }, () => {
+      state = Math.imul(state, 1664525) + 1013904223 | 0
+      return state
+    })
+    const fixtures = [
+      [0x7fffffff, -0x80000000, 0x7fffffff, -0x80000000, 0, -1, 1],
+      Array.from({ length: 300 }, (_, i) => i % 2 ? 0x7fffffff - i : -0x80000000 + i),
+      random,
+      Int32Array.from(random),
+    ]
+
+    for (const values of fixtures) {
+      const bigintValues = Array.from(values, value => BigInt(value))
+      expect(encodeIntValues(values)).toEqual(encodeIntValues(bigintValues))
+      expect(roundTripInt32(values)).toEqual(Array.from(values))
+    }
   })
 
   it('should round-trip bigint values', () => {
