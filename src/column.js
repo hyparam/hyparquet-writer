@@ -123,12 +123,14 @@ export function writeColumn({ writer, column, pageData }) {
 
       // Track boundary order using original JS values
       if (prevMinValue !== undefined && min_value !== undefined) {
-        if (prevMinValue > min_value) ascending = false
-        if (prevMinValue < min_value) descending = false
+        const order = compareValues(prevMinValue, min_value)
+        if (order > 0) ascending = false
+        if (order < 0) descending = false
       }
       if (prevMaxValue !== undefined && max_value !== undefined) {
-        if (prevMaxValue > max_value) ascending = false
-        if (prevMaxValue < max_value) descending = false
+        const order = compareValues(prevMaxValue, max_value)
+        if (order > 0) ascending = false
+        if (order < 0) descending = false
       }
       prevMinValue = min_value
       prevMaxValue = max_value
@@ -249,13 +251,34 @@ function getStatistics(values) {
       null_count++
       continue
     }
-    if (typeof value === 'object') continue // skip objects
+    if (typeof value === 'object' && !(value instanceof Uint8Array)) continue
     if (typeof value === 'number' && Number.isNaN(value)) continue // skip NaN per parquet spec
-    if (min_value === undefined || value < min_value) min_value = value
-    if (max_value === undefined || value > max_value) max_value = value
+    if (min_value === undefined || compareValues(value, min_value) < 0) min_value = value
+    if (max_value === undefined || compareValues(value, max_value) > 0) max_value = value
   }
   // Normalize signed zero per parquet spec: min becomes -0, max becomes +0
   if (min_value === 0) min_value = -0
   if (max_value === 0) max_value = 0
   return { min_value, max_value, null_count }
+}
+
+/**
+ * Compare primitive statistic values or Parquet byte arrays. Byte arrays use
+ * unsigned lexicographic order, as required for BYTE_ARRAY min/max bounds.
+ *
+ * @param {any} left
+ * @param {any} right
+ * @returns {number}
+ */
+function compareValues(left, right) {
+  if (left instanceof Uint8Array && right instanceof Uint8Array) {
+    const length = Math.min(left.length, right.length)
+    for (let i = 0; i < length; i += 1) {
+      if (left[i] !== right[i]) return left[i] - right[i]
+    }
+    return left.length - right.length
+  }
+  if (left < right) return -1
+  if (left > right) return 1
+  return 0
 }

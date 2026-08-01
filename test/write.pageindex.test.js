@@ -20,6 +20,39 @@ function indexReader(buffer, offset, length) {
 }
 
 describe('parquetWrite columnIndex and offsetIndex', () => {
+  it('writes byte-array UTF-8 values with the same statistics and pages as strings', () => {
+    const strings = ['alpha', 'alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot']
+    const encoder = new TextEncoder()
+    const bytes = strings.map(value => encoder.encode(value))
+    /**
+     * @param {any[]} data
+     * @returns {Omit<import('../src/types.js').ParquetWriteOptions, 'writer'>}
+     */
+    function options(data) {
+      return {
+        columnData: [{
+          name: 'value',
+          data,
+          type: 'STRING',
+          encoding: 'DELTA_BYTE_ARRAY',
+          columnIndex: true,
+        }],
+        pageSize: 12,
+      }
+    }
+    const stringBuffer = parquetWriteBuffer(options(strings))
+    const byteBuffer = parquetWriteBuffer(options(bytes))
+
+    expect(new Uint8Array(byteBuffer)).toEqual(new Uint8Array(stringBuffer))
+    const metadata = parquetMetadata(byteBuffer)
+    const column = metadata.row_groups[0].columns[0]
+    const reader = indexReader(byteBuffer, column.column_index_offset, column.column_index_length)
+    const columnIndex = readColumnIndex(reader, metadata.schema[1])
+    expect(columnIndex.min_values).toEqual(['alpha', 'bravo', 'charlie', 'delta', 'foxtrot'])
+    expect(columnIndex.max_values).toEqual(['alpha', 'bravo', 'charlie', 'echo', 'foxtrot'])
+    expect(columnIndex.boundary_order).toBe('ASCENDING')
+  })
+
   it('writes column index and offset index when both are true', async () => {
     const buffer = parquetWriteBuffer({
       columnData: [
