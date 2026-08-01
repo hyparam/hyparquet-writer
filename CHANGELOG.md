@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.16.4]
+ - Support byte arrays in column statistics
+
 ## [0.16.3]
  - Fix type resolution under typescript 7
 
