@@ -80,6 +80,18 @@ function roundTripByteArray(values) {
   return output
 }
 
+/**
+ * Encode byte arrays for byte-level comparisons between encoder paths.
+ *
+ * @param {Uint8Array[]} values
+ * @returns {Uint8Array}
+ */
+function encodeByteArrays(values) {
+  const writer = new ByteWriter()
+  deltaByteArray(writer, values)
+  return writer.getBytes()
+}
+
 describe('deltaBinaryPack', () => {
   it('should round-trip empty array', () => {
     const decoded = roundTripInt32([])
@@ -252,6 +264,15 @@ describe('deltaByteArray', () => {
     const original = ['apple', 'application', 'apply', 'banana', 'bandana'].map(s => encoder.encode(s))
     const decoded = roundTripByteArray(original)
     expect(decoded.map(d => decoder.decode(d))).toEqual(['apple', 'application', 'apply', 'banana', 'bandana'])
+  })
+
+  it('should encode shared references identically to copied values', () => {
+    const repeated = encoder.encode('repeated value')
+    const shared = [repeated, repeated, repeated, encoder.encode('repeated variant')]
+    const copied = shared.map(value => value.slice())
+
+    expect(encodeByteArrays(shared)).toEqual(encodeByteArrays(copied))
+    expect(roundTripByteArray(shared)).toEqual(copied)
   })
 
   it('should throw for non-Uint8Array first value', () => {

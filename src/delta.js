@@ -311,11 +311,10 @@ export function deltaByteArray(writer, values) {
     return
   }
 
-  // Calculate prefix lengths and suffixes
+  // Calculate prefix and suffix lengths. Write suffix bytes in a second pass
+  // to avoid allocating one subarray view for every value.
   const prefixLengths = new Int32Array(values.length)
   const suffixLengths = new Int32Array(values.length)
-  /** @type {Uint8Array[]} */
-  const suffixes = new Array(values.length)
 
   // First value has no prefix
   const value = values[0]
@@ -323,26 +322,31 @@ export function deltaByteArray(writer, values) {
     throw new Error('deltaByteArray expects Uint8Array values')
   }
   prefixLengths[0] = 0
-  suffixLengths[0] = values[0].length
-  suffixes[0] = values[0]
+  suffixLengths[0] = value.length
 
   for (let i = 1; i < values.length; i++) {
     const prev = values[i - 1]
     const curr = values[i]
-    if (!(curr instanceof Uint8Array)) {
-      throw new Error('deltaByteArray expects Uint8Array values')
-    }
 
     // Find common prefix length
-    let prefixLen = 0
-    const maxPrefix = Math.min(prev.length, curr.length)
-    while (prefixLen < maxPrefix && prev[prefixLen] === curr[prefixLen]) {
-      prefixLen++
+    let prefixLen
+    if (curr === prev) {
+      // Reused byte arrays are common in dictionary-like columns. Identity
+      // proves the entire value is a prefix without scanning its bytes.
+      prefixLen = curr.length
+    } else {
+      if (!(curr instanceof Uint8Array)) {
+        throw new Error('deltaByteArray expects Uint8Array values')
+      }
+      prefixLen = 0
+      const maxPrefix = Math.min(prev.length, curr.length)
+      while (prefixLen < maxPrefix && prev[prefixLen] === curr[prefixLen]) {
+        prefixLen++
+      }
     }
 
     prefixLengths[i] = prefixLen
     suffixLengths[i] = curr.length - prefixLen
-    suffixes[i] = curr.subarray(prefixLen)
   }
 
   // Write delta-packed prefix lengths
@@ -352,8 +356,10 @@ export function deltaByteArray(writer, values) {
   deltaBinaryPack(writer, suffixLengths)
 
   // Write suffix bytes
-  for (const suffix of suffixes) {
-    writer.appendBytes(suffix)
+  for (let i = 0; i < values.length; i++) {
+    if (suffixLengths[i] > 0) {
+      writer.appendBytes(values[i].subarray(prefixLengths[i]))
+    }
   }
 }
 
