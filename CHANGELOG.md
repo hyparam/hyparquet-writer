@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.16.5]
+ - Faster delta encoding
+
 ## [0.16.4]
  - Support byte arrays in column statistics
 
