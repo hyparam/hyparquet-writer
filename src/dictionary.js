@@ -180,7 +180,7 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
         }
         index = dictionary.length
         dictionary.push(value)
-        valueSizes.push(valueSize)
+        valueSizes[index] = valueSize
         valueIndex.set(value, index)
       }
     }

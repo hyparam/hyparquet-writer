@@ -160,6 +160,15 @@ describe('useDictionary', () => {
     expect(useDictionary(['a', 'a', 'b', 'c'], 'BYTE_ARRAY', undefined, undefined, undefined)).toEqual({})
   })
 
+  it('falls back for a losing dictionary with mixed BYTE_ARRAY values', () => {
+    const bytes = Array.from(
+      { length: 850 },
+      (_, i) => Uint8Array.of(i >> 8, i & 0xff)
+    )
+    const data = [...bytes, ...new Array(150).fill('x')]
+    expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)).toEqual({})
+  })
+
   it('counts BYTE_ARRAY length prefixes when evaluating short strings', () => {
     const distinct = Array.from({ length: 100 }, (_, i) => String(i).padStart(2, '0'))
     const data = Array.from({ length: 1000 }, (_, i) => distinct[i % distinct.length])
