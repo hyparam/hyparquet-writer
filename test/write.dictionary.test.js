@@ -63,6 +63,28 @@ describe('parquetWrite dictionary encoding', () => {
     expect(toBytes(rows[499].blob)).toEqual(bytes())
   })
 
+  it('dictionary-encodes repeated short and empty BYTE_ARRAY values', async () => {
+    const numRows = 1000
+    const distinct = Array.from({ length: 100 }, (_, i) => String(i).padStart(2, '0'))
+    /** @type {ColumnSource[]} */
+    const columnData = [
+      { name: 'code', data: Array.from({ length: numRows }, (_, i) => distinct[i % distinct.length]), type: 'STRING' },
+      { name: 'blob', data: Array.from({ length: numRows }, () => new Uint8Array()), type: 'BYTE_ARRAY' },
+    ]
+
+    const buffer = parquetWriteBuffer({ columnData, rowGroupSize: numRows })
+
+    const columns = parquetMetadata(buffer).row_groups[0].columns
+    expect(columns[0].meta_data?.encodings).toContain('RLE_DICTIONARY')
+    expect(columns[1].meta_data?.encodings).toContain('RLE_DICTIONARY')
+
+    const rows = await parquetReadObjects({ file: buffer })
+    expect(rows).toHaveLength(numRows)
+    expect(rows[0].code).toBe('00')
+    expect(rows[999].code).toBe('99')
+    expect(toBytes(rows[0].blob)).toEqual(new Uint8Array())
+  })
+
   it('dictionary-encodes repeated JSON objects after physical conversion', async () => {
     const value = { kind: 'shared', payload: 'x'.repeat(4000) }
     const data = Array(1200).fill(value)

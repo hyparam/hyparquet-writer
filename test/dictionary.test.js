@@ -160,6 +160,21 @@ describe('useDictionary', () => {
     expect(useDictionary(['a', 'a', 'b', 'c'], 'BYTE_ARRAY', undefined, undefined, undefined)).toEqual({})
   })
 
+  it('counts BYTE_ARRAY length prefixes when evaluating short strings', () => {
+    const distinct = Array.from({ length: 100 }, (_, i) => String(i).padStart(2, '0'))
+    const data = Array.from({ length: 1000 }, (_, i) => distinct[i % distinct.length])
+    const { dictionary, indexes } = useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)
+    expect(dictionary).toEqual(distinct)
+    expect(indexes).toHaveLength(data.length)
+  })
+
+  it('counts BYTE_ARRAY length prefixes when evaluating empty byte arrays', () => {
+    const data = Array.from({ length: 1000 }, () => new Uint8Array())
+    const { dictionary, indexes } = useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)
+    expect(dictionary).toEqual([new Uint8Array()])
+    expect(indexes).toHaveLength(data.length)
+  })
+
   it('includes dictionary indexes in the win check', () => {
     const data = Array.from({ length: 20_000 }, (_, i) => i % 9_990)
     expect(useDictionary(data, 'INT32', undefined, undefined, undefined)).toEqual({})

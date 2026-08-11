@@ -93,6 +93,7 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
   if (encoding && encoding !== 'RLE_DICTIONARY') return {}
   if (type === 'BOOLEAN') return {}
   const forced = encoding === 'RLE_DICTIONARY'
+  const byteArrayPrefixSize = type === 'BYTE_ARRAY' ? 4 : 0
 
   // Estimate distinct-value bytes from a sample spread over the complete
   // column. Byte arrays are keyed by hash so distinct Uint8Array objects with
@@ -110,6 +111,7 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
       let valueSize = sampleSizes.get(key)
       if (valueSize === undefined) {
         valueSize = estimateValueSize(value, type, type_length)
+          + (value === null || value === undefined ? 0 : byteArrayPrefixSize)
         sampleSizes.set(key, valueSize)
         sampleDictionarySize += valueSize
       }
@@ -186,10 +188,13 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
   }
 
   // An automatic dictionary plus its bit-packed indexes must at least halve
-  // the value bytes. Page framing and RLE run savings are not estimated here.
+  // the PLAIN value bytes. BYTE_ARRAY values have a four-byte length prefix
+  // per occurrence in PLAIN and per distinct value in the dictionary.
   const bitWidth = Math.ceil(Math.log2(dictionary.length))
   const indexSize = Math.ceil(nonNullCount * bitWidth / 8)
-  if (!forced && 2 * (dictSize + indexSize) > totalSize) return {}
+  const plainSize = totalSize + nonNullCount * byteArrayPrefixSize
+  const dictionaryValueSize = dictSize + dictionary.length * byteArrayPrefixSize
+  if (!forced && 2 * (dictionaryValueSize + indexSize) > plainSize) return {}
 
   // TODO: sort by frequency?
   return { dictionary, indexes }
