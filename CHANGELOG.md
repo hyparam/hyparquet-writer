@@ -1,5 +1,9 @@
 # Hyparquet-writer Changelog
 
+## [0.16.6]
+ - Keep large dictionaries when dictionary encoding wins, decoupled from pageSize
+ - Write bounding box statistics as explicitly typed doubles
+
 ## [0.16.5]
  - Faster delta encoding
 
