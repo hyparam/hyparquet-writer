@@ -58,21 +58,22 @@ function bytesEqual(a, b) {
   return true
 }
 
-// dictionaries up to this size are always kept, matching the old fixed cap;
-// larger ones must earn their keep via the win check in useDictionary
-const dictionaryFloor = 1048576
+// Sampling only rejects columns that are very likely to lose. Columns in the
+// uncertain middle are decided by the complete-column win check below.
+const sampleRejectionRatio = 0.9
 
 /**
  * Decide whether to dictionary-encode a column, and if so build the dictionary
  * and per-row indexes. Returns {} to fall back to plain encoding.
  *
- * A dictionary above `dictionaryFloor` is kept only if it wins: distinct-value
- * bytes must be at most half the total value bytes, so dictionary encoding at
- * least halves the encoded size. There is no fixed size cap by default; a
- * low-cardinality column of large values (say a thousand distinct 75kb strings
- * over a million rows) is exactly where a big dictionary pays for itself, and
- * capping it at page size caused 20-100x file bloat (#35). Callers can still
- * impose a hard cap via `dictionarySize`.
+ * Sampling is spread across the complete column chunk and weighted by value
+ * bytes. It only rejects columns whose sampled distinct bytes exceed 90% of
+ * sampled value bytes. Other columns are built and kept when distinct-value
+ * bytes are at most half the total value bytes, so dictionary encoding offers
+ * a material win. There is no fixed size cap by default; a low-cardinality
+ * column of large values is exactly where a big dictionary pays for itself,
+ * and capping it at page size caused 20-100x file bloat (#35). Callers can
+ * still impose a hard cap via `dictionarySize`.
  *
  * When `encoding` explicitly requests RLE_DICTIONARY, the dictionary is built
  * unconditionally (no sampling, no size or win checks), so the written pages
@@ -90,17 +91,27 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
   if (type === 'BOOLEAN') return {}
   const forced = encoding === 'RLE_DICTIONARY'
 
-  // uniqueness on a sample. Byte arrays are keyed by hash so distinct
-  // Uint8Array objects with identical bytes count as one (a plain Set would key
-  // them by object identity); null/undefined count as values, matching the
-  // plain-encoding fallback that validates required/missing values.
+  // Estimate distinct-value bytes from a sample spread over the complete
+  // column. Byte arrays are keyed by hash so distinct Uint8Array objects with
+  // identical bytes count as one (a plain Set would key them by object
+  // identity). Null/undefined contribute no encoded value bytes.
   if (!forced) {
-    const sample = values.slice(0, 1000)
+    const sampleSize = Math.min(values.length, 1000)
     const sampleKeys = new Set()
-    for (const value of sample) {
-      sampleKeys.add(value instanceof Uint8Array ? hashBytes(value) : value)
+    let sampleDictionarySize = 0
+    let sampleTotalSize = 0
+    for (let i = 0; i < sampleSize; i++) {
+      const sampleIndex = sampleSize === 1 ? 0 : Math.floor(i * (values.length - 1) / (sampleSize - 1))
+      const value = values[sampleIndex]
+      const valueSize = estimateValueSize(value, type, type_length)
+      sampleTotalSize += valueSize
+      const key = value instanceof Uint8Array ? hashBytes(value) : value
+      if (!sampleKeys.has(key)) {
+        sampleKeys.add(key)
+        sampleDictionarySize += valueSize
+      }
     }
-    if (sampleKeys.size === 0 || sampleKeys.size / sample.length > 0.5) return {}
+    if (!sampleTotalSize || sampleDictionarySize / sampleTotalSize > sampleRejectionRatio) return {}
   }
 
   // build dictionary and indexes. Primitives (string/number/bigint) dedupe by
@@ -152,8 +163,9 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
     indexes[i] = index
   }
 
-  // win check: a large dictionary must at least halve the encoded bytes
-  if (!forced && dictSize > dictionaryFloor && 2 * dictSize > totalSize) return {}
+  // An automatic dictionary must at least halve the value bytes. Requiring a
+  // material win also compensates for index overhead and lost page offsets.
+  if (!forced && 2 * dictSize > totalSize) return {}
 
   // TODO: sort by frequency?
   return { dictionary, indexes }

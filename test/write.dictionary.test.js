@@ -116,6 +116,45 @@ describe('parquetWrite dictionary encoding', () => {
     expect(rows[numRows - 1].prompt).toBe(distinct[(numRows - 1) % 40])
   })
 
+  it('keeps a winning dictionary after an initially unique phase', async () => {
+    const distinct = Array.from({ length: 1000 }, (_, i) => String(i).padStart(8, '0').repeat(8))
+    const data = [...distinct, ...new Array(4000).fill('repeated'.repeat(8))]
+    /** @type {ColumnSource[]} */
+    const columnData = [{ name: 'message', data, type: 'STRING' }]
+
+    const buffer = parquetWriteBuffer({ columnData, rowGroupSize: data.length })
+
+    const column = parquetMetadata(buffer).row_groups[0].columns[0]
+    expect(column.meta_data?.encodings).toContain('RLE_DICTIONARY')
+
+    const rows = await parquetReadObjects({ file: buffer })
+    expect(rows).toHaveLength(data.length)
+    expect(rows[0].message).toBe(distinct[0])
+    expect(rows[999].message).toBe(distinct[999])
+    expect(rows[1000].message).toBe('repeated'.repeat(8))
+  })
+
+  it('uses indexed plain pages when a small dictionary does not halve bytes', async () => {
+    const distinct = Array.from({ length: 400 }, (_, i) => String(i).padStart(8, '0').repeat(4))
+    let distinctIndex = 0
+    const data = Array.from({ length: 1000 }, (_, i) => {
+      return i % 5 < 2 ? distinct[distinctIndex++] : 'repeated'
+    })
+    /** @type {ColumnSource[]} */
+    const columnData = [{ name: 'message', data, type: 'STRING' }]
+
+    const buffer = parquetWriteBuffer({ columnData, pageSize: 4096, rowGroupSize: data.length })
+
+    const column = parquetMetadata(buffer).row_groups[0].columns[0]
+    expect(column.meta_data?.encodings).toEqual(['PLAIN'])
+    expect(column.offset_index_offset).toBeDefined()
+
+    const rows = await parquetReadObjects({ file: buffer })
+    expect(rows).toHaveLength(data.length)
+    expect(rows[0].message).toBe(distinct[0])
+    expect(rows[2].message).toBe('repeated')
+  })
+
   it('honors an explicit dictionarySize cap', () => {
     // same low-cardinality data, but the caller caps dictionary bytes below
     // the distinct-value total, forcing plain encoding

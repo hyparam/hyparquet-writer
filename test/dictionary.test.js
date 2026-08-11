@@ -121,9 +121,9 @@ describe('useDictionary', () => {
     expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, 120)).toEqual({})
   })
 
-  it('keeps a dictionary above the floor when it at least halves the bytes', () => {
-    // 100 distinct 20kb strings, 20 repeats each: dictionary is 2mb (above the
-    // 1mb floor) but total values are 40mb, a 20x win, so it must be kept
+  it('keeps a large dictionary when it at least halves the bytes', () => {
+    // 100 distinct 20kb strings, 20 repeats each: dictionary is 2mb but total
+    // values are 40mb, a 20x win, so it must be kept
     const distinct = Array.from({ length: 100 }, (_, i) => String(i).padStart(8, '0').repeat(2500))
     const data = []
     for (let r = 0; r < 20; r++) for (const v of distinct) data.push(v)
@@ -132,7 +132,7 @@ describe('useDictionary', () => {
     expect(indexes?.length).toBe(2000)
   })
 
-  it('falls back when a dictionary above the floor does not halve the bytes', () => {
+  it('falls back when a large dictionary does not halve the bytes', () => {
     // first 1000 values are 100 distinct 20kb strings (sample ratio 0.1), then
     // 1000 unique 20kb strings: dictionary is 22mb of 40mb total, less than a
     // 2x win, so plain encoding is the better trade
@@ -141,6 +141,27 @@ describe('useDictionary', () => {
     for (let r = 0; r < 10; r++) for (const v of distinct) data.push(v)
     for (let i = 0; i < 1000; i++) data.push(String(i + 1000).padStart(8, '0').repeat(2500))
     expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)).toEqual({})
+  })
+
+  it('falls back when a small dictionary does not halve the bytes', () => {
+    expect(useDictionary(['a', 'a', 'b', 'c'], 'BYTE_ARRAY', undefined, undefined, undefined)).toEqual({})
+  })
+
+  it('samples evenly across phase-changing values', () => {
+    const uniquePrefix = Array.from({ length: 1000 }, (_, i) => `unique-${i}`)
+    const repeatedTail = new Array(9000).fill('repeated')
+    const { dictionary } = useDictionary(
+      [...uniquePrefix, ...repeatedTail], 'BYTE_ARRAY', undefined, undefined, undefined
+    )
+    expect(dictionary).toHaveLength(1001)
+  })
+
+  it('builds a winning dictionary when sampled distinct count exceeds 50%', () => {
+    const distinct = Array.from({ length: 800 }, (_, i) => String(i).padStart(8, '0').repeat(8))
+    const data = Array.from({ length: 4000 }, (_, i) => distinct[i % distinct.length])
+    const { dictionary, indexes } = useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)
+    expect(dictionary).toHaveLength(800)
+    expect(indexes).toHaveLength(4000)
   })
 
   it('builds a dictionary unconditionally when RLE_DICTIONARY is forced', () => {
