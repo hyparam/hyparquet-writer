@@ -23,6 +23,7 @@ export function parquetWrite({
   rowGroupSize = [1000, 100000],
   kvMetadata,
   pageSize = 1048576,
+  dictionarySize,
 }) {
   // Resolve shredding: true -> auto-detected config
   columnData = columnData.map(col => {
@@ -55,6 +56,7 @@ export function parquetWrite({
     columnData,
     rowGroupSize,
     pageSize,
+    dictionarySize,
   })
   return w ? w.then(() => pq.finish()) : pq.finish()
 }

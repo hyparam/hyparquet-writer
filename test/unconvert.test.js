@@ -52,6 +52,21 @@ describe('unconvert', () => {
     expect(new TextDecoder().decode(result[1])).toEqual(JSON.stringify({ hello: 'world' }))
   })
 
+  it('should reuse converted bytes for repeated JSON object references', () => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', converted_type: 'JSON' }
+    const values = [
+      { kind: 'request', payload: 'x'.repeat(10_000) },
+      { kind: 'response', payload: 'y'.repeat(10_000) },
+    ]
+    const result = unconvert(schema, Array.from({ length: 1000 }, (_, i) => values[i % 2]))
+
+    expect(result).toHaveLength(1000)
+    expect(result[0]).toBeInstanceOf(Uint8Array)
+    expect(result[0]).not.toBe(result[1])
+    expect(result.every((item, i) => item === result[i % 2])).toBe(true)
+  })
+
   it('should handle undefined values in JSON arrays', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', converted_type: 'JSON' }

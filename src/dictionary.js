@@ -2,6 +2,8 @@ import { ByteWriter } from './bytewriter.js'
 import { writePageHeader } from './datapage.js'
 import { writePlain } from './plain.js'
 
+const textEncoder = new TextEncoder()
+
 /**
  * @import {DecodedArray, Encoding, ParquetType} from 'hyparquet'
  * @import {ColumnEncoder, Writer} from './types.js'
@@ -58,31 +60,73 @@ function bytesEqual(a, b) {
   return true
 }
 
+// Sampling only rejects columns that are very likely to lose. Columns in the
+// uncertain middle are decided by the complete-column win check below.
+const sampleRejectionRatio = 0.9
+
 /**
  * Decide whether to dictionary-encode a column, and if so build the dictionary
  * and per-row indexes. Returns {} to fall back to plain encoding.
+ *
+ * Sampling is spread across the complete column chunk and weighted by value
+ * bytes. It only rejects columns whose sampled distinct bytes exceed 90% of
+ * sampled value bytes. Other columns are built and kept when distinct-value
+ * bytes are at most half the total value bytes, so dictionary encoding offers
+ * a material win. There is no fixed size cap by default; a low-cardinality
+ * column of large values is exactly where a big dictionary pays for itself,
+ * and capping it at page size caused 20-100x file bloat (#35). Callers can
+ * still impose a hard cap via `dictionarySize`.
+ *
+ * When `encoding` explicitly requests RLE_DICTIONARY, the dictionary is built
+ * unconditionally (no sampling, no size or win checks), so the written pages
+ * always match the requested encoding.
  *
  * @param {DecodedArray} values
  * @param {ParquetType} type
  * @param {number | undefined} type_length
  * @param {Encoding | undefined} encoding
- * @param {number} pageSize
+ * @param {number} [dictionarySize] - optional hard cap on distinct-value bytes
+ * @param {boolean} [required] - reject null or undefined values
  * @returns {{ dictionary?: any[], indexes?: number[] }}
  */
-export function useDictionary(values, type, type_length, encoding, pageSize) {
+export function useDictionary(values, type, type_length, encoding, dictionarySize, required) {
   if (encoding && encoding !== 'RLE_DICTIONARY') return {}
   if (type === 'BOOLEAN') return {}
+  const forced = encoding === 'RLE_DICTIONARY'
+  const byteArrayPrefixSize = type === 'BYTE_ARRAY' ? 4 : 0
 
-  // uniqueness on a sample. Byte arrays are keyed by hash so distinct
-  // Uint8Array objects with identical bytes count as one (a plain Set would key
-  // them by object identity); null/undefined count as values, matching the
-  // plain-encoding fallback that validates required/missing values.
-  const sample = values.slice(0, 1000)
-  const sampleKeys = new Set()
-  for (const value of sample) {
-    sampleKeys.add(value instanceof Uint8Array ? hashBytes(value) : value)
+  // Estimate distinct-value bytes from a sample spread over the complete
+  // column. Byte arrays are keyed by hash so distinct Uint8Array objects with
+  // identical bytes count as one (a plain Set would key them by object
+  // identity). Null/undefined contribute no encoded value bytes.
+  if (!forced) {
+    const sampleSize = Math.min(values.length, 1000)
+    const sampleSizes = new Map()
+    const sampleHashes = new Map()
+    let sampleDictionarySize = 0
+    let sampleTotalSize = 0
+    for (let i = 0; i < sampleSize; i++) {
+      const sampleIndex = sampleSize === 1 ? 0 : Math.floor(i * (values.length - 1) / (sampleSize - 1))
+      const value = values[sampleIndex]
+      let key = value
+      if (value instanceof Uint8Array) {
+        key = sampleHashes.get(value)
+        if (key === undefined) {
+          key = hashBytes(value)
+          sampleHashes.set(value, key)
+        }
+      }
+      let valueSize = sampleSizes.get(key)
+      if (valueSize === undefined) {
+        valueSize = estimateValueSize(value, type, type_length)
+          + (value === null || value === undefined ? 0 : byteArrayPrefixSize)
+        sampleSizes.set(key, valueSize)
+        sampleDictionarySize += valueSize
+      }
+      sampleTotalSize += valueSize
+    }
+    if (!sampleTotalSize || sampleDictionarySize / sampleTotalSize > sampleRejectionRatio) return {}
   }
-  if (sampleKeys.size === 0 || sampleKeys.size / sample.length > 0.5) return {}
 
   // build dictionary and indexes. Primitives (string/number/bigint) dedupe by
   // value; byte arrays dedupe by content via hash buckets with an exact
@@ -93,15 +137,30 @@ export function useDictionary(values, type, type_length, encoding, pageSize) {
   const indexes = new Array(values.length)
   /** @type {Map<any, number>} */
   const valueIndex = new Map()
+  /** @type {number[]} */
+  const valueSizes = []
   /** @type {Map<number, number[]>} */
   const hashBuckets = new Map()
   let dictSize = 0
+  let physicalDictSize = 0
+  let totalSize = 0
+  let nonNullCount = 0
   for (let i = 0; i < values.length; i++) {
     const value = values[i]
-    if (value === null || value === undefined) continue
+    if (value === null || value === undefined) {
+      if (required) throw new Error('parquet required value is undefined')
+      continue
+    }
+    nonNullCount++
 
     let index
     if (value instanceof Uint8Array) {
+      totalSize += value.byteLength
+      index = valueIndex.get(value)
+      if (index !== undefined) {
+        indexes[i] = index
+        continue
+      }
       const hash = hashBytes(value)
       const bucket = hashBuckets.get(hash)
       if (bucket) {
@@ -111,24 +170,45 @@ export function useDictionary(values, type, type_length, encoding, pageSize) {
       }
       if (index === undefined) {
         dictSize += value.byteLength
-        if (pageSize && dictSize > pageSize) return {}
+        if (!forced && dictionarySize) {
+          physicalDictSize += value.byteLength
+          if (physicalDictSize > dictionarySize) return {}
+        }
         index = dictionary.length
         dictionary.push(value)
         if (bucket) bucket.push(index)
         else hashBuckets.set(hash, [index])
       }
+      valueIndex.set(value, index)
     } else {
       index = valueIndex.get(value)
+      const valueSize = index === undefined
+        ? estimateValueSize(value, type, type_length)
+        : valueSizes[index]
+      totalSize += valueSize
       if (index === undefined) {
-        dictSize += estimateValueSize(value, type, type_length)
-        if (pageSize && dictSize > pageSize) return {}
+        dictSize += valueSize
+        if (!forced && dictionarySize) {
+          physicalDictSize += typeof value === 'string' ? textEncoder.encode(value).byteLength : valueSize
+          if (physicalDictSize > dictionarySize) return {}
+        }
         index = dictionary.length
         dictionary.push(value)
+        valueSizes[index] = valueSize
         valueIndex.set(value, index)
       }
     }
     indexes[i] = index
   }
+
+  // An automatic dictionary plus its bit-packed indexes must at least halve
+  // the PLAIN value bytes. BYTE_ARRAY values have a four-byte length prefix
+  // per occurrence in PLAIN and per distinct value in the dictionary.
+  const bitWidth = Math.ceil(Math.log2(dictionary.length))
+  const indexSize = Math.ceil(nonNullCount * bitWidth / 8)
+  const plainSize = totalSize + nonNullCount * byteArrayPrefixSize
+  const dictionaryValueSize = dictSize + dictionary.length * byteArrayPrefixSize
+  if (!forced && 2 * (dictionaryValueSize + indexSize) > plainSize) return {}
 
   // TODO: sort by frequency?
   return { dictionary, indexes }

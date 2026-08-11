@@ -84,6 +84,7 @@ interface ParquetWriteOptions {
   compressors?: Compressors // custom compressors (default includes snappy)
   statistics?: boolean // enable column statistics (default true)
   pageSize?: number // target page size in bytes (default 1 mb)
+  dictionarySize?: number // hard cap on dictionary bytes per column chunk (default: uncapped, dictionaries kept while they at least halve the encoded size)
   rowGroupSize?: number | number[] // target row group size in rows (default [1000, 100000])
   kvMetadata?: { key: string; value?: string }[] // extra key-value metadata
 }

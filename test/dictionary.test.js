@@ -38,17 +38,18 @@ describe('estimateValueSize', () => {
     expect(estimateValueSize(new Uint8Array(4), 'FIXED_LEN_BYTE_ARRAY')).toBe(0)
   })
 
-  it('measures BYTE_ARRAY by byte/char length', () => {
+  it('estimates BYTE_ARRAY by byte or character length', () => {
     expect(estimateValueSize(new Uint8Array(7), 'BYTE_ARRAY')).toBe(7)
     expect(estimateValueSize('hello', 'BYTE_ARRAY')).toBe(5)
+    expect(estimateValueSize('🙂', 'BYTE_ARRAY')).toBe(2)
     expect(estimateValueSize(42, 'BYTE_ARRAY')).toBe(0) // neither bytes nor string
   })
 })
 
 describe('useDictionary', () => {
   it('dedupes repeated strings', () => {
-    const { dictionary, indexes } = useDictionary(['x', 'x', 'x', 'x', 'y'], 'BYTE_ARRAY', undefined, undefined, 0)
-    expect(dictionary).toEqual(['x', 'y'])
+    const { dictionary, indexes } = useDictionary(['xx', 'xx', 'xx', 'xx', 'yy'], 'BYTE_ARRAY', undefined, undefined, 0)
+    expect(dictionary).toEqual(['xx', 'yy'])
     expect(indexes).toEqual([0, 0, 0, 0, 1])
   })
 
@@ -110,15 +111,107 @@ describe('useDictionary', () => {
     expect(indexes).toEqual([0, 0, 0, 0, undefined]) // null slot left empty
   })
 
-  it('falls back when the dictionary would exceed pageSize', () => {
+  it('rejects null values in required columns', () => {
+    expect(() => useDictionary([1, 1, null], 'INT32', undefined, undefined, 0, true))
+      .toThrow('parquet required value is undefined')
+  })
+
+  it('falls back when the dictionary would exceed the dictionarySize cap', () => {
     // three distinct 50-byte blobs cycled; low cardinality clears the sample
-    // check, but cumulative dictionary size (150) exceeds pageSize (120)
+    // check, but cumulative dictionary size (150) exceeds the explicit cap (120)
     function a() { return new Uint8Array(50).fill(1) }
     function b() { return new Uint8Array(50).fill(2) }
     function c() { return new Uint8Array(50).fill(3) }
     const data = []
     for (let i = 0; i < 30; i++) data.push([a, b, c][i % 3]())
     expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, 120)).toEqual({})
+  })
+
+  it('uses UTF-8 bytes only to enforce dictionarySize', () => {
+    const value = '🙂'.repeat(10)
+    const data = new Array(10).fill(value)
+    expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, 30)).toEqual({})
+    expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, 40).dictionary).toEqual([value])
+  })
+
+  it('keeps a large dictionary when it at least halves the bytes', () => {
+    // 100 distinct 20kb strings, 20 repeats each: dictionary is 2mb but total
+    // values are 40mb, a 20x win, so it must be kept
+    const distinct = Array.from({ length: 100 }, (_, i) => String(i).padStart(8, '0').repeat(2500))
+    const data = []
+    for (let r = 0; r < 20; r++) for (const v of distinct) data.push(v)
+    const { dictionary, indexes } = useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)
+    expect(dictionary?.length).toBe(100)
+    expect(indexes?.length).toBe(2000)
+  })
+
+  it('falls back when a large dictionary does not halve the bytes', () => {
+    // first 1000 values are 100 distinct 20kb strings (sample ratio 0.1), then
+    // 1000 unique 20kb strings: dictionary is 22mb of 40mb total, less than a
+    // 2x win, so plain encoding is the better trade
+    const distinct = Array.from({ length: 100 }, (_, i) => String(i).padStart(8, '0').repeat(2500))
+    const data = []
+    for (let r = 0; r < 10; r++) for (const v of distinct) data.push(v)
+    for (let i = 0; i < 1000; i++) data.push(String(i + 1000).padStart(8, '0').repeat(2500))
+    expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)).toEqual({})
+  })
+
+  it('falls back when a small dictionary does not halve the bytes', () => {
+    expect(useDictionary(['a', 'a', 'b', 'c'], 'BYTE_ARRAY', undefined, undefined, undefined)).toEqual({})
+  })
+
+  it('falls back for a losing dictionary with mixed BYTE_ARRAY values', () => {
+    const bytes = Array.from(
+      { length: 850 },
+      (_, i) => Uint8Array.of(i >> 8, i & 0xff)
+    )
+    const data = [...bytes, ...new Array(150).fill('x')]
+    expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)).toEqual({})
+  })
+
+  it('counts BYTE_ARRAY length prefixes when evaluating short strings', () => {
+    const distinct = Array.from({ length: 100 }, (_, i) => String(i).padStart(2, '0'))
+    const data = Array.from({ length: 1000 }, (_, i) => distinct[i % distinct.length])
+    const { dictionary, indexes } = useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)
+    expect(dictionary).toEqual(distinct)
+    expect(indexes).toHaveLength(data.length)
+  })
+
+  it('counts BYTE_ARRAY length prefixes when evaluating empty byte arrays', () => {
+    const data = Array.from({ length: 1000 }, () => new Uint8Array())
+    const { dictionary, indexes } = useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)
+    expect(dictionary).toEqual([new Uint8Array()])
+    expect(indexes).toHaveLength(data.length)
+  })
+
+  it('includes dictionary indexes in the win check', () => {
+    const data = Array.from({ length: 20_000 }, (_, i) => i % 9_990)
+    expect(useDictionary(data, 'INT32', undefined, undefined, undefined)).toEqual({})
+  })
+
+  it('samples evenly across phase-changing values', () => {
+    const uniquePrefix = Array.from({ length: 1000 }, (_, i) => `unique-${i}`)
+    const repeatedTail = new Array(9000).fill('repeated')
+    const { dictionary } = useDictionary(
+      [...uniquePrefix, ...repeatedTail], 'BYTE_ARRAY', undefined, undefined, undefined
+    )
+    expect(dictionary).toHaveLength(1001)
+  })
+
+  it('builds a winning dictionary when sampled distinct count exceeds 50%', () => {
+    const distinct = Array.from({ length: 800 }, (_, i) => String(i).padStart(8, '0').repeat(8))
+    const data = Array.from({ length: 4000 }, (_, i) => distinct[i % distinct.length])
+    const { dictionary, indexes } = useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)
+    expect(dictionary).toHaveLength(800)
+    expect(indexes).toHaveLength(4000)
+  })
+
+  it('builds a dictionary unconditionally when RLE_DICTIONARY is forced', () => {
+    // all-unique values fail the sample check, but a forced encoding must be
+    // honored so the written pages match the declared encoding
+    const { dictionary, indexes } = useDictionary(['a', 'b', 'c'], 'BYTE_ARRAY', undefined, 'RLE_DICTIONARY', undefined)
+    expect(dictionary).toEqual(['a', 'b', 'c'])
+    expect(indexes).toEqual([0, 1, 2])
   })
 })
 
