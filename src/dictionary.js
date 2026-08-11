@@ -2,6 +2,8 @@ import { ByteWriter } from './bytewriter.js'
 import { writePageHeader } from './datapage.js'
 import { writePlain } from './plain.js'
 
+const textEncoder = new TextEncoder()
+
 /**
  * @import {DecodedArray, Encoding, ParquetType} from 'hyparquet'
  * @import {ColumnEncoder, Writer} from './types.js'
@@ -98,19 +100,20 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
   // identity). Null/undefined contribute no encoded value bytes.
   if (!forced) {
     const sampleSize = Math.min(values.length, 1000)
-    const sampleKeys = new Set()
+    const sampleSizes = new Map()
     let sampleDictionarySize = 0
     let sampleTotalSize = 0
     for (let i = 0; i < sampleSize; i++) {
       const sampleIndex = sampleSize === 1 ? 0 : Math.floor(i * (values.length - 1) / (sampleSize - 1))
       const value = values[sampleIndex]
-      const valueSize = estimateValueSize(value, type, type_length)
-      sampleTotalSize += valueSize
       const key = value instanceof Uint8Array ? hashBytes(value) : value
-      if (!sampleKeys.has(key)) {
-        sampleKeys.add(key)
+      let valueSize = sampleSizes.get(key)
+      if (valueSize === undefined) {
+        valueSize = estimateValueSize(value, type, type_length)
+        sampleSizes.set(key, valueSize)
         sampleDictionarySize += valueSize
       }
+      sampleTotalSize += valueSize
     }
     if (!sampleTotalSize || sampleDictionarySize / sampleTotalSize > sampleRejectionRatio) return {}
   }
@@ -124,9 +127,12 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
   const indexes = new Array(values.length)
   /** @type {Map<any, number>} */
   const valueIndex = new Map()
+  /** @type {number[]} */
+  const valueSizes = []
   /** @type {Map<number, number[]>} */
   const hashBuckets = new Map()
   let dictSize = 0
+  let physicalDictSize = 0
   let totalSize = 0
   let nonNullCount = 0
   for (let i = 0; i < values.length; i++) {
@@ -149,20 +155,30 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
       }
       if (index === undefined) {
         dictSize += value.byteLength
-        if (!forced && dictionarySize && dictSize > dictionarySize) return {}
+        if (!forced && dictionarySize) {
+          physicalDictSize += value.byteLength
+          if (physicalDictSize > dictionarySize) return {}
+        }
         index = dictionary.length
         dictionary.push(value)
         if (bucket) bucket.push(index)
         else hashBuckets.set(hash, [index])
       }
     } else {
-      totalSize += estimateValueSize(value, type, type_length)
       index = valueIndex.get(value)
+      const valueSize = index === undefined
+        ? estimateValueSize(value, type, type_length)
+        : valueSizes[index]
+      totalSize += valueSize
       if (index === undefined) {
-        dictSize += estimateValueSize(value, type, type_length)
-        if (!forced && dictionarySize && dictSize > dictionarySize) return {}
+        dictSize += valueSize
+        if (!forced && dictionarySize) {
+          physicalDictSize += typeof value === 'string' ? textEncoder.encode(value).byteLength : valueSize
+          if (physicalDictSize > dictionarySize) return {}
+        }
         index = dictionary.length
         dictionary.push(value)
+        valueSizes.push(valueSize)
         valueIndex.set(value, index)
       }
     }

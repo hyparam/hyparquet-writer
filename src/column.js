@@ -47,8 +47,10 @@ export function writeColumn({ writer, column, pageData }) {
   // dictionary encoding
   /** @type {bigint | undefined} */
   let dictionary_page_offset
+  const selectPhysical = element.converted_type !== 'UTF8'
+  const dictionaryValues = selectPhysical ? unconvert(element, values) : values
   const { dictionary, indexes } = useDictionary(
-    values, type, type_length, userEncoding, dictionarySize, maxDefinitionLevel === 0
+    dictionaryValues, type, type_length, userEncoding, dictionarySize, maxDefinitionLevel === 0
   )
 
   // Determine encoding and prepare values for writing
@@ -65,11 +67,11 @@ export function writeColumn({ writer, column, pageData }) {
 
     // write dictionary page first
     dictionary_page_offset = BigInt(writer.offset)
-    const unconverted = unconvert(element, dictionary)
+    const unconverted = selectPhysical ? dictionary : unconvert(element, dictionary)
     writeDictionaryPage(writer, column, unconverted)
   } else {
     // unconvert values from rich types to simple
-    writeValues = unconvert(element, values)
+    writeValues = selectPhysical ? dictionaryValues : unconvert(element, values)
     // a requested RLE_DICTIONARY that produced no dictionary (BOOLEAN) must
     // not label plain pages as dictionary-encoded
     encoding = userEncoding && userEncoding !== 'RLE_DICTIONARY' ? userEncoding

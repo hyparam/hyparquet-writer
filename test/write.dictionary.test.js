@@ -63,6 +63,59 @@ describe('parquetWrite dictionary encoding', () => {
     expect(toBytes(rows[499].blob)).toEqual(bytes())
   })
 
+  it('dictionary-encodes repeated JSON objects after physical conversion', async () => {
+    const value = { kind: 'shared', payload: 'x'.repeat(4000) }
+    const data = Array(1200).fill(value)
+    /** @type {ColumnSource[]} */
+    const columnData = [{ name: 'value', data, type: 'JSON' }]
+
+    const buffer = parquetWriteBuffer({ columnData, rowGroupSize: data.length })
+
+    const column = parquetMetadata(buffer).row_groups[0].columns[0]
+    expect(column.meta_data?.encodings).toContain('RLE_DICTIONARY')
+    expect(buffer.byteLength).toBeLessThan(10_000)
+    const rows = await parquetReadObjects({ file: buffer })
+    expect(rows).toHaveLength(data.length)
+    expect(rows[0].value).toEqual(value)
+    expect(rows.at(-1)?.value).toEqual(value)
+  })
+
+  it('keeps unique JSON objects plain after physical conversion', () => {
+    const data = Array.from({ length: 1200 }, (_, id) => ({ id, payload: 'x'.repeat(100) }))
+    /** @type {ColumnSource[]} */
+    const columnData = [{ name: 'value', data, type: 'JSON' }]
+
+    const buffer = parquetWriteBuffer({ columnData, rowGroupSize: data.length })
+
+    const column = parquetMetadata(buffer).row_groups[0].columns[0]
+    expect(column.meta_data?.encodings).not.toContain('RLE_DICTIONARY')
+  })
+
+  it('uses physical UTF-8 bytes for the dictionarySize cap', () => {
+    const distinct = [`a${'🙂'.repeat(200)}`, `b${'🙂'.repeat(200)}`]
+    const data = Array.from({ length: 100 }, (_, i) => distinct[i % 2])
+    /** @type {ColumnSource[]} */
+    const columnData = [{ name: 'value', data, type: 'STRING' }]
+
+    const buffer = parquetWriteBuffer({ columnData, dictionarySize: 1200 })
+
+    const column = parquetMetadata(buffer).row_groups[0].columns[0]
+    expect(column.meta_data?.encodings).not.toContain('RLE_DICTIONARY')
+  })
+
+  it('round-trips nullable JSON values', async () => {
+    const value = { x: 1 }
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'value', data: [value, null, value], type: 'JSON' }],
+    })
+
+    expect(await parquetReadObjects({ file: buffer })).toEqual([
+      { value },
+      { value: null },
+      { value },
+    ])
+  })
+
   it('keeps hash-colliding byte arrays distinct', async () => {
     // Two different byte sequences that share the same FNV-1a hash. The writer
     // buckets byte-array dictionary values by hash, so it must verify byte

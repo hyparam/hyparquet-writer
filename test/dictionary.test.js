@@ -38,9 +38,10 @@ describe('estimateValueSize', () => {
     expect(estimateValueSize(new Uint8Array(4), 'FIXED_LEN_BYTE_ARRAY')).toBe(0)
   })
 
-  it('measures BYTE_ARRAY by byte/char length', () => {
+  it('estimates BYTE_ARRAY by byte or character length', () => {
     expect(estimateValueSize(new Uint8Array(7), 'BYTE_ARRAY')).toBe(7)
     expect(estimateValueSize('hello', 'BYTE_ARRAY')).toBe(5)
+    expect(estimateValueSize('🙂', 'BYTE_ARRAY')).toBe(2)
     expect(estimateValueSize(42, 'BYTE_ARRAY')).toBe(0) // neither bytes nor string
   })
 })
@@ -124,6 +125,13 @@ describe('useDictionary', () => {
     const data = []
     for (let i = 0; i < 30; i++) data.push([a, b, c][i % 3]())
     expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, 120)).toEqual({})
+  })
+
+  it('uses UTF-8 bytes only to enforce dictionarySize', () => {
+    const value = '🙂'.repeat(10)
+    const data = new Array(10).fill(value)
+    expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, 30)).toEqual({})
+    expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, 40).dictionary).toEqual([value])
   })
 
   it('keeps a large dictionary when it at least halves the bytes', () => {
