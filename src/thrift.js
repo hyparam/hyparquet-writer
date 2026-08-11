@@ -1,6 +1,5 @@
 /**
- * @import {ThriftType} from 'hyparquet/src/types.js'
- * @import {Writer} from '../src/types.js'
+ * @import {ThriftField, ThriftType, Writer} from '../src/types.js'
  */
 
 // TCompactProtocol types
@@ -10,10 +9,20 @@ const FALSE = 2
 const BYTE = 3
 const I32 = 5
 const I64 = 6
-const DOUBLE = 7
+export const DOUBLE = 7
 const BINARY = 8
 const LIST = 9
 const STRUCT = 12
+
+/** A Thrift struct whose field ids and Compact Protocol types are already resolved. */
+export class ThriftStruct {
+  /**
+   * @param {ThriftField[]} fields
+   */
+  constructor(fields) {
+    this.fields = fields
+  }
+}
 
 /**
  * Serialize a JS object in TCompactProtocol format.
@@ -77,6 +86,14 @@ function writeElement(writer, type, value) {
         writeElement(writer, elemType, v)
       }
     }
+  } else if (type === STRUCT && value instanceof ThriftStruct) {
+    // Field ids and types were explicitly provided by the metadata conversion.
+    let lastFid = 0
+    for (const [fid, fieldType, fieldValue] of value.fields) {
+      if (fieldValue === undefined) continue
+      lastFid = writeStructField(writer, lastFid, fid, fieldType, fieldValue)
+    }
+    writer.appendUint8(STOP)
   } else if (type === STRUCT && typeof value === 'object') {
     // write struct fields
     let lastFid = 0
@@ -88,24 +105,36 @@ function writeElement(writer, type, value) {
         throw new Error(`thrift invalid field name: ${k}. Expected "field_###"`)
       }
       const t = getCompactTypeForValue(v)
-      const delta = fid - lastFid
-      if (delta <= 0) {
-        throw new Error(`thrift non-monotonic field id: fid=${fid}, lastFid=${lastFid}`)
-      }
-      if (delta > 15) {
-        writer.appendUint8(t)
-        writer.appendZigZag(fid)
-      } else {
-        writer.appendUint8(delta << 4 | t)
-      }
-      writeElement(writer, t, v)
-      lastFid = fid
+      lastFid = writeStructField(writer, lastFid, fid, t, v)
     }
     // end struct
     writer.appendUint8(STOP)
   } else {
     throw new Error(`thrift invalid type ${type} for value ${value}`)
   }
+}
+
+/**
+ * @param {Writer} writer
+ * @param {number} lastFid
+ * @param {number} fid
+ * @param {number} type
+ * @param {ThriftType} value
+ * @returns {number}
+ */
+function writeStructField(writer, lastFid, fid, type, value) {
+  const delta = fid - lastFid
+  if (delta <= 0) {
+    throw new Error(`thrift non-monotonic field id: fid=${fid}, lastFid=${lastFid}`)
+  }
+  if (delta > 15) {
+    writer.appendUint8(type)
+    writer.appendZigZag(fid)
+  } else {
+    writer.appendUint8(delta << 4 | type)
+  }
+  writeElement(writer, type, value)
+  return fid
 }
 
 /**

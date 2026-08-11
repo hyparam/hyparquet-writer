@@ -1,5 +1,5 @@
 import { parquetMetadata } from 'hyparquet'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ByteWriter } from '../src/bytewriter.js'
 import { logicalType, writeMetadata } from '../src/metadata.js'
 import { exampleMetadata } from './example.js'
@@ -115,7 +115,7 @@ describe('writeMetadata', () => {
         total_compressed_size: 8n,
       }],
       key_value_metadata: [{ key: 'meta', value: 'data' }],
-      metadata_length: 227,
+      metadata_length: 283,
     }
 
     writeMetadata(writer, extendedMetadata)
@@ -123,6 +123,29 @@ describe('writeMetadata', () => {
 
     const outputMetadata = parquetMetadata(writer.getBuffer())
     expect(outputMetadata).toEqual(extendedMetadata)
+  })
+
+  it('converts bounding boxes to explicitly typed DOUBLE fields', () => {
+    const appendFloat64 = vi.spyOn(ByteWriter.prototype, 'appendFloat64')
+    const metadata = globalThis.structuredClone(exampleMetadata)
+    const element = metadata.schema[1]
+    const columnMetadata = metadata.row_groups[0]?.columns[0]?.meta_data
+    if (!element || !columnMetadata) throw new Error('invalid test metadata')
+
+    element.logical_type = { type: 'GEOMETRY' }
+    columnMetadata.geospatial_statistics = {
+      bbox: { xmin: 1, xmax: 3, ymin: 2, ymax: 4 },
+      geospatial_types: [1],
+    }
+
+    writeMetadata(new ByteWriter(), metadata)
+    expect(appendFloat64.mock.calls).toEqual([[1], [3], [2], [4]])
+
+    appendFloat64.mockClear()
+    element.logical_type = { type: 'GEOGRAPHY' }
+    writeMetadata(new ByteWriter(), metadata)
+    expect(appendFloat64.mock.calls).toEqual([[1], [3], [2], [4]])
+    appendFloat64.mockRestore()
   })
 })
 

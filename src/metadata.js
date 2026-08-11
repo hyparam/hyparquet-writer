@@ -1,11 +1,11 @@
 import { getSchemaPath } from 'hyparquet/src/schema.js'
 import { CompressionCodecs, ConvertedTypes, EdgeInterpolationAlgorithms, Encodings, FieldRepetitionTypes, PageTypes, ParquetTypes } from 'hyparquet/src/constants.js'
-import { serializeTCompactProtocol } from './thrift.js'
+import { DOUBLE, ThriftStruct, serializeTCompactProtocol } from './thrift.js'
 import { unconvertStatistics } from './unconvert.js'
 
 /**
- * @import {FileMetaData, LogicalType, SchemaElement, TimeUnit} from 'hyparquet'
- * @import {ThriftObject, Writer} from '../src/types.js'
+ * @import {BoundingBox, FileMetaData, LogicalType, SchemaElement, TimeUnit} from 'hyparquet'
+ * @import {PreconvertedThriftStruct, ThriftObject, Writer} from '../src/types.js'
  */
 
 /**
@@ -67,16 +67,7 @@ export function writeMetadata(writer, metadata) {
             field_3: c.meta_data.size_statistics.definition_level_histogram,
           },
           field_17: c.meta_data.geospatial_statistics && {
-            field_1: c.meta_data.geospatial_statistics.bbox && {
-              field_1: c.meta_data.geospatial_statistics.bbox.xmin,
-              field_2: c.meta_data.geospatial_statistics.bbox.xmax,
-              field_3: c.meta_data.geospatial_statistics.bbox.ymin,
-              field_4: c.meta_data.geospatial_statistics.bbox.ymax,
-              field_5: c.meta_data.geospatial_statistics.bbox.zmin,
-              field_6: c.meta_data.geospatial_statistics.bbox.zmax,
-              field_7: c.meta_data.geospatial_statistics.bbox.mmin,
-              field_8: c.meta_data.geospatial_statistics.bbox.mmax,
-            },
+            field_1: c.meta_data.geospatial_statistics.bbox && thriftBoundingBox(c.meta_data.geospatial_statistics.bbox),
             field_2: c.meta_data.geospatial_statistics.geospatial_types,
           },
         },
@@ -111,6 +102,25 @@ export function writeMetadata(writer, metadata) {
   // write metadata length
   const metadataLength = writer.offset - metadataStart
   writer.appendUint32(metadataLength)
+}
+
+/**
+ * Convert bounds to a struct with explicitly typed DOUBLE fields.
+ *
+ * @param {BoundingBox} bbox
+ * @returns {PreconvertedThriftStruct}
+ */
+function thriftBoundingBox(bbox) {
+  return new ThriftStruct([
+    [1, DOUBLE, bbox.xmin],
+    [2, DOUBLE, bbox.xmax],
+    [3, DOUBLE, bbox.ymin],
+    [4, DOUBLE, bbox.ymax],
+    [5, DOUBLE, bbox.zmin],
+    [6, DOUBLE, bbox.zmax],
+    [7, DOUBLE, bbox.mmin],
+    [8, DOUBLE, bbox.mmax],
+  ])
 }
 
 /**
