@@ -110,6 +110,11 @@ describe('useDictionary', () => {
     expect(indexes).toEqual([0, 0, 0, 0, undefined]) // null slot left empty
   })
 
+  it('rejects null values in required columns', () => {
+    expect(() => useDictionary([1, 1, null], 'INT32', undefined, undefined, 0, true))
+      .toThrow('parquet required value is undefined')
+  })
+
   it('falls back when the dictionary would exceed the dictionarySize cap', () => {
     // three distinct 50-byte blobs cycled; low cardinality clears the sample
     // check, but cumulative dictionary size (150) exceeds the explicit cap (120)

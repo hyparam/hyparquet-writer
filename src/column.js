@@ -47,7 +47,9 @@ export function writeColumn({ writer, column, pageData }) {
   // dictionary encoding
   /** @type {bigint | undefined} */
   let dictionary_page_offset
-  const { dictionary, indexes } = useDictionary(values, type, type_length, userEncoding, dictionarySize)
+  const { dictionary, indexes } = useDictionary(
+    values, type, type_length, userEncoding, dictionarySize, maxDefinitionLevel === 0
+  )
 
   // Determine encoding and prepare values for writing
   /** @type {Encoding} */

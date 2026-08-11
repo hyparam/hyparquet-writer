@@ -29,6 +29,12 @@ function hashBytes(bytes) {
 }
 
 describe('parquetWrite dictionary encoding', () => {
+  it('rejects null values in required dictionary columns', () => {
+    expect(() => parquetWriteBuffer({
+      columnData: [{ name: 'value', data: [1, 1, null], type: 'INT32', nullable: false }],
+    })).toThrow('parquet required value is undefined')
+  })
+
   it('dedupes byte-array values by content, not object identity', async () => {
     // 500 distinct Uint8Array objects that all hold identical bytes.
     // These should collapse to a single dictionary entry, but a Set/Map keyed

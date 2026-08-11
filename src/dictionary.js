@@ -84,9 +84,10 @@ const sampleRejectionRatio = 0.9
  * @param {number | undefined} type_length
  * @param {Encoding | undefined} encoding
  * @param {number} [dictionarySize] - optional hard cap on distinct-value bytes
+ * @param {boolean} [required] - reject null or undefined values
  * @returns {{ dictionary?: any[], indexes?: number[] }}
  */
-export function useDictionary(values, type, type_length, encoding, dictionarySize) {
+export function useDictionary(values, type, type_length, encoding, dictionarySize, required) {
   if (encoding && encoding !== 'RLE_DICTIONARY') return {}
   if (type === 'BOOLEAN') return {}
   const forced = encoding === 'RLE_DICTIONARY'
@@ -129,7 +130,10 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
   let totalSize = 0
   for (let i = 0; i < values.length; i++) {
     const value = values[i]
-    if (value === null || value === undefined) continue
+    if (value === null || value === undefined) {
+      if (required) throw new Error('parquet required value is undefined')
+      continue
+    }
 
     let index
     if (value instanceof Uint8Array) {
