@@ -102,12 +102,20 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
   if (!forced) {
     const sampleSize = Math.min(values.length, 1000)
     const sampleSizes = new Map()
+    const sampleHashes = new Map()
     let sampleDictionarySize = 0
     let sampleTotalSize = 0
     for (let i = 0; i < sampleSize; i++) {
       const sampleIndex = sampleSize === 1 ? 0 : Math.floor(i * (values.length - 1) / (sampleSize - 1))
       const value = values[sampleIndex]
-      const key = value instanceof Uint8Array ? hashBytes(value) : value
+      let key = value
+      if (value instanceof Uint8Array) {
+        key = sampleHashes.get(value)
+        if (key === undefined) {
+          key = hashBytes(value)
+          sampleHashes.set(value, key)
+        }
+      }
       let valueSize = sampleSizes.get(key)
       if (valueSize === undefined) {
         valueSize = estimateValueSize(value, type, type_length)
@@ -148,6 +156,11 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
     let index
     if (value instanceof Uint8Array) {
       totalSize += value.byteLength
+      index = valueIndex.get(value)
+      if (index !== undefined) {
+        indexes[i] = index
+        continue
+      }
       const hash = hashBytes(value)
       const bucket = hashBuckets.get(hash)
       if (bucket) {
@@ -166,6 +179,7 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
         if (bucket) bucket.push(index)
         else hashBuckets.set(hash, [index])
       }
+      valueIndex.set(value, index)
     } else {
       index = valueIndex.get(value)
       const valueSize = index === undefined

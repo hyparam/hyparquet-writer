@@ -10,6 +10,25 @@ import { geojsonToWkb } from './wkb.js'
 const dayMillis = 86400000 // 1 day in milliseconds
 
 /**
+ * Convert values while reusing the result for repeated primitives or object
+ * references. This prevents repeated logical values from retaining a separate
+ * byte array for every row. The cache is released when conversion returns.
+ *
+ * @param {DecodedArray} values
+ * @param {(value: any) => any} convert
+ * @returns {any[]}
+ */
+function mapConverted(values, convert) {
+  const cache = new Map()
+  return Array.from(values, value => {
+    if (cache.has(value)) return cache.get(value)
+    const result = convert(value)
+    cache.set(value, result)
+    return result
+  })
+}
+
+/**
  * Convert from rich to primitive types.
  *
  * @param {SchemaElement} element
@@ -49,7 +68,10 @@ export function unconvert(element, values) {
   if (ctype === 'JSON') {
     if (!Array.isArray(values)) throw new Error('JSON must be an array')
     const encoder = new TextEncoder()
-    return values.map(v => v === null || v === undefined ? v : encoder.encode(JSON.stringify(toJson(v))))
+    return mapConverted(
+      values,
+      v => v === null || v === undefined ? v : encoder.encode(JSON.stringify(toJson(v)))
+    )
   }
   if (ctype === 'UTF8') {
     if (!Array.isArray(values)) throw new Error('strings must be an array')
@@ -92,7 +114,7 @@ export function unconvert(element, values) {
   }
   if (ltype?.type === 'GEOMETRY' || ltype?.type === 'GEOGRAPHY') {
     if (!Array.isArray(values)) throw new Error('geometry must be an array')
-    return values.map(v => {
+    return mapConverted(values, v => {
       if (v === null || v === undefined) return v
       return geojsonToWkb(v)
     })
