@@ -110,15 +110,45 @@ describe('useDictionary', () => {
     expect(indexes).toEqual([0, 0, 0, 0, undefined]) // null slot left empty
   })
 
-  it('falls back when the dictionary would exceed pageSize', () => {
+  it('falls back when the dictionary would exceed the dictionarySize cap', () => {
     // three distinct 50-byte blobs cycled; low cardinality clears the sample
-    // check, but cumulative dictionary size (150) exceeds pageSize (120)
+    // check, but cumulative dictionary size (150) exceeds the explicit cap (120)
     function a() { return new Uint8Array(50).fill(1) }
     function b() { return new Uint8Array(50).fill(2) }
     function c() { return new Uint8Array(50).fill(3) }
     const data = []
     for (let i = 0; i < 30; i++) data.push([a, b, c][i % 3]())
     expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, 120)).toEqual({})
+  })
+
+  it('keeps a dictionary above the floor when it at least halves the bytes', () => {
+    // 100 distinct 20kb strings, 20 repeats each: dictionary is 2mb (above the
+    // 1mb floor) but total values are 40mb, a 20x win, so it must be kept
+    const distinct = Array.from({ length: 100 }, (_, i) => String(i).padStart(8, '0').repeat(2500))
+    const data = []
+    for (let r = 0; r < 20; r++) for (const v of distinct) data.push(v)
+    const { dictionary, indexes } = useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)
+    expect(dictionary?.length).toBe(100)
+    expect(indexes?.length).toBe(2000)
+  })
+
+  it('falls back when a dictionary above the floor does not halve the bytes', () => {
+    // first 1000 values are 100 distinct 20kb strings (sample ratio 0.1), then
+    // 1000 unique 20kb strings: dictionary is 22mb of 40mb total, less than a
+    // 2x win, so plain encoding is the better trade
+    const distinct = Array.from({ length: 100 }, (_, i) => String(i).padStart(8, '0').repeat(2500))
+    const data = []
+    for (let r = 0; r < 10; r++) for (const v of distinct) data.push(v)
+    for (let i = 0; i < 1000; i++) data.push(String(i + 1000).padStart(8, '0').repeat(2500))
+    expect(useDictionary(data, 'BYTE_ARRAY', undefined, undefined, undefined)).toEqual({})
+  })
+
+  it('builds a dictionary unconditionally when RLE_DICTIONARY is forced', () => {
+    // all-unique values fail the sample check, but a forced encoding must be
+    // honored so the written pages match the declared encoding
+    const { dictionary, indexes } = useDictionary(['a', 'b', 'c'], 'BYTE_ARRAY', undefined, 'RLE_DICTIONARY', undefined)
+    expect(dictionary).toEqual(['a', 'b', 'c'])
+    expect(indexes).toEqual([0, 1, 2])
   })
 })
 

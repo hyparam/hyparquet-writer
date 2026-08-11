@@ -20,7 +20,7 @@ import { unconvert, unconvertMinMax } from './unconvert.js'
  * @returns {{ chunk: ColumnChunk, columnIndex?: ColumnIndex, offsetIndex?: OffsetIndex, bloomFilter?: Uint32Array }}
  */
 export function writeColumn({ writer, column, pageData }) {
-  const { columnName, element, schemaPath, stats, pageSize, encoding: userEncoding } = column
+  const { columnName, element, schemaPath, stats, pageSize, dictionarySize, encoding: userEncoding } = column
   const { type, type_length } = element
   if (!type) throw new Error(`column ${columnName} cannot determine type`)
   const { values, definitionLevels, repetitionLevels, maxDefinitionLevel } = pageData
@@ -47,7 +47,7 @@ export function writeColumn({ writer, column, pageData }) {
   // dictionary encoding
   /** @type {bigint | undefined} */
   let dictionary_page_offset
-  const { dictionary, indexes } = useDictionary(values, type, type_length, userEncoding, pageSize)
+  const { dictionary, indexes } = useDictionary(values, type, type_length, userEncoding, dictionarySize)
 
   // Determine encoding and prepare values for writing
   /** @type {Encoding} */
@@ -68,7 +68,10 @@ export function writeColumn({ writer, column, pageData }) {
   } else {
     // unconvert values from rich types to simple
     writeValues = unconvert(element, values)
-    encoding = userEncoding ?? (type === 'BOOLEAN' && values.length > 16 ? 'RLE' : 'PLAIN')
+    // a requested RLE_DICTIONARY that produced no dictionary (BOOLEAN) must
+    // not label plain pages as dictionary-encoded
+    encoding = userEncoding && userEncoding !== 'RLE_DICTIONARY' ? userEncoding
+      : type === 'BOOLEAN' && values.length > 16 ? 'RLE' : 'PLAIN'
   }
   encodings.push(encoding)
 

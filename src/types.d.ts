@@ -34,6 +34,7 @@ export interface ParquetWriteOptions {
   statistics?: boolean // enable column statistics, default true
   rowGroupSize?: number | number[] // number of rows per row group
   pageSize?: number // target uncompressed page size in bytes, default 1048576
+  dictionarySize?: number // hard cap on distinct-value bytes per column chunk dictionary; unset = keep any dictionary that at least halves the encoded size
   kvMetadata?: KeyValue[]
 }
 
@@ -77,6 +78,7 @@ export interface ColumnEncoder {
   compressors: Compressors
   stats: boolean
   pageSize: number
+  dictionarySize?: number
   // Spec: If ColumnIndex is present, OffsetIndex must also be present
   columnIndex: boolean
   offsetIndex: boolean

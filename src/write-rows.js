@@ -27,13 +27,14 @@ import { schemaFromColumnData } from './schema.js'
  * inferred from the first group's values unless one is supplied.
  *
  * Takes the same write options as {@link parquetWrite} (codec, compressors,
- * statistics, rowGroupSize, pageSize, kvMetadata, schema) at the top level,
+ * statistics, rowGroupSize, pageSize, dictionarySize, kvMetadata, schema) at
+ * the top level,
  * minus `columnData`, since `rows` and `columns` describe the data instead.
  *
  * @param {ParquetWriteRowsOptions} options
  * @returns {void | Promise<void>}
  */
-export function parquetWriteRows({ writer, rows, columns, schema, rowGroupSize = [1000, 100000], pageSize, ...options }) {
+export function parquetWriteRows({ writer, rows, columns, schema, rowGroupSize = [1000, 100000], pageSize, dictionarySize, ...options }) {
   if (!Array.isArray(columns) || columns.length === 0) {
     throw new Error('parquetWriteRows requires a non-empty columns array')
   }
@@ -112,7 +113,7 @@ export function parquetWriteRows({ writer, rows, columns, schema, rowGroupSize =
     if (!pq) {
       pq = new ParquetWriter({ writer, schema: schema ?? schemaFromColumnData({ columnData }), ...options })
     }
-    return pq.write({ columnData, rowGroupSize: size, pageSize })
+    return pq.write({ columnData, rowGroupSize: size, pageSize, dictionarySize })
   }
 
   const it = windows()
@@ -165,7 +166,7 @@ export function parquetWriteRows({ writer, rows, columns, schema, rowGroupSize =
       /** @type {ColumnSource[]} */
       const columnData = columns.map(spec => ({ ...spec, data: [] }))
       pq = new ParquetWriter({ writer, schema: schema ?? schemaFromColumnData({ columnData }), ...options })
-      const w = pq.write({ columnData, rowGroupSize, pageSize })
+      const w = pq.write({ columnData, rowGroupSize, pageSize, dictionarySize })
       if (w) return w.then(() => pq?.finish())
     }
     return pq?.finish()

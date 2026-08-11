@@ -58,9 +58,10 @@ export class ParquetWriter {
    * @param {ColumnSource[]} options.columnData
    * @param {number | number[]} [options.rowGroupSize]
    * @param {number} [options.pageSize]
+   * @param {number} [options.dictionarySize]
    * @returns {void | Promise<void>}
    */
-  write({ columnData, rowGroupSize = [1000, 100000], pageSize = 1048576 }) {
+  write({ columnData, rowGroupSize = [1000, 100000], pageSize = 1048576, dictionarySize }) {
     const columnDataRows = columnData[0]?.data?.length || 0
     /** @type {Promise<void> | undefined} */
     let pending
@@ -107,6 +108,7 @@ export class ParquetWriter {
               compressors: this.compressors,
               stats: this.statistics,
               pageSize,
+              dictionarySize,
               columnIndex,
               offsetIndex,
               encoding,

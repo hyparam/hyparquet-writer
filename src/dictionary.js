@@ -58,31 +58,50 @@ function bytesEqual(a, b) {
   return true
 }
 
+// dictionaries up to this size are always kept, matching the old fixed cap;
+// larger ones must earn their keep via the win check in useDictionary
+const dictionaryFloor = 1048576
+
 /**
  * Decide whether to dictionary-encode a column, and if so build the dictionary
  * and per-row indexes. Returns {} to fall back to plain encoding.
+ *
+ * A dictionary above `dictionaryFloor` is kept only if it wins: distinct-value
+ * bytes must be at most half the total value bytes, so dictionary encoding at
+ * least halves the encoded size. There is no fixed size cap by default; a
+ * low-cardinality column of large values (say a thousand distinct 75kb strings
+ * over a million rows) is exactly where a big dictionary pays for itself, and
+ * capping it at page size caused 20-100x file bloat (#35). Callers can still
+ * impose a hard cap via `dictionarySize`.
+ *
+ * When `encoding` explicitly requests RLE_DICTIONARY, the dictionary is built
+ * unconditionally (no sampling, no size or win checks), so the written pages
+ * always match the requested encoding.
  *
  * @param {DecodedArray} values
  * @param {ParquetType} type
  * @param {number | undefined} type_length
  * @param {Encoding | undefined} encoding
- * @param {number} pageSize
+ * @param {number} [dictionarySize] - optional hard cap on distinct-value bytes
  * @returns {{ dictionary?: any[], indexes?: number[] }}
  */
-export function useDictionary(values, type, type_length, encoding, pageSize) {
+export function useDictionary(values, type, type_length, encoding, dictionarySize) {
   if (encoding && encoding !== 'RLE_DICTIONARY') return {}
   if (type === 'BOOLEAN') return {}
+  const forced = encoding === 'RLE_DICTIONARY'
 
   // uniqueness on a sample. Byte arrays are keyed by hash so distinct
   // Uint8Array objects with identical bytes count as one (a plain Set would key
   // them by object identity); null/undefined count as values, matching the
   // plain-encoding fallback that validates required/missing values.
-  const sample = values.slice(0, 1000)
-  const sampleKeys = new Set()
-  for (const value of sample) {
-    sampleKeys.add(value instanceof Uint8Array ? hashBytes(value) : value)
+  if (!forced) {
+    const sample = values.slice(0, 1000)
+    const sampleKeys = new Set()
+    for (const value of sample) {
+      sampleKeys.add(value instanceof Uint8Array ? hashBytes(value) : value)
+    }
+    if (sampleKeys.size === 0 || sampleKeys.size / sample.length > 0.5) return {}
   }
-  if (sampleKeys.size === 0 || sampleKeys.size / sample.length > 0.5) return {}
 
   // build dictionary and indexes. Primitives (string/number/bigint) dedupe by
   // value; byte arrays dedupe by content via hash buckets with an exact
@@ -96,12 +115,14 @@ export function useDictionary(values, type, type_length, encoding, pageSize) {
   /** @type {Map<number, number[]>} */
   const hashBuckets = new Map()
   let dictSize = 0
+  let totalSize = 0
   for (let i = 0; i < values.length; i++) {
     const value = values[i]
     if (value === null || value === undefined) continue
 
     let index
     if (value instanceof Uint8Array) {
+      totalSize += value.byteLength
       const hash = hashBytes(value)
       const bucket = hashBuckets.get(hash)
       if (bucket) {
@@ -111,17 +132,18 @@ export function useDictionary(values, type, type_length, encoding, pageSize) {
       }
       if (index === undefined) {
         dictSize += value.byteLength
-        if (pageSize && dictSize > pageSize) return {}
+        if (!forced && dictionarySize && dictSize > dictionarySize) return {}
         index = dictionary.length
         dictionary.push(value)
         if (bucket) bucket.push(index)
         else hashBuckets.set(hash, [index])
       }
     } else {
+      totalSize += estimateValueSize(value, type, type_length)
       index = valueIndex.get(value)
       if (index === undefined) {
         dictSize += estimateValueSize(value, type, type_length)
-        if (pageSize && dictSize > pageSize) return {}
+        if (!forced && dictionarySize && dictSize > dictionarySize) return {}
         index = dictionary.length
         dictionary.push(value)
         valueIndex.set(value, index)
@@ -129,6 +151,9 @@ export function useDictionary(values, type, type_length, encoding, pageSize) {
     }
     indexes[i] = index
   }
+
+  // win check: a large dictionary must at least halve the encoded bytes
+  if (!forced && dictSize > dictionaryFloor && 2 * dictSize > totalSize) return {}
 
   // TODO: sort by frequency?
   return { dictionary, indexes }

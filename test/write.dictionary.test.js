@@ -87,4 +87,67 @@ describe('parquetWrite dictionary encoding', () => {
       expect(toBytes(rows[i].blob)).toEqual(i % 2 ? b() : a())
     }
   })
+
+  it('keeps the dictionary for low-cardinality large-value columns (#35)', async () => {
+    // 40 distinct 30kb strings over 1200 rows: the distinct bytes (1.2mb)
+    // exceed the old pageSize-coupled cap, but the dictionary replaces 36mb of
+    // values, so it must be kept. This is the system-prompt-per-log-row shape
+    // that ballooned real files 20-100x under the old fallback.
+    const distinct = Array.from({ length: 40 }, (_, i) => String(i).padStart(6, '0').repeat(5000))
+    const numRows = 1200
+    const data = Array.from({ length: numRows }, (_, i) => distinct[i % 40])
+    /** @type {ColumnSource[]} */
+    const columnData = [{ name: 'prompt', data, type: 'STRING' }]
+
+    const buffer = parquetWriteBuffer({ columnData })
+
+    const metadata = parquetMetadata(buffer)
+    for (const rg of metadata.row_groups) {
+      expect(rg.columns[0].meta_data?.encodings).toContain('RLE_DICTIONARY')
+    }
+
+    // plain encoding of the same column is dramatically larger
+    const plainBuffer = parquetWriteBuffer({ columnData: [{ ...columnData[0], encoding: 'PLAIN' }] })
+    expect(buffer.byteLength * 5).toBeLessThan(plainBuffer.byteLength)
+
+    const rows = await parquetReadObjects({ file: buffer })
+    expect(rows.length).toBe(numRows)
+    expect(rows[0].prompt).toBe(distinct[0])
+    expect(rows[numRows - 1].prompt).toBe(distinct[(numRows - 1) % 40])
+  })
+
+  it('honors an explicit dictionarySize cap', () => {
+    // same low-cardinality data, but the caller caps dictionary bytes below
+    // the distinct-value total, forcing plain encoding
+    const distinct = Array.from({ length: 40 }, (_, i) => String(i).padStart(6, '0').repeat(500))
+    const data = Array.from({ length: 400 }, (_, i) => distinct[i % 40])
+    /** @type {ColumnSource[]} */
+    const columnData = [{ name: 'prompt', data, type: 'STRING' }]
+
+    const buffer = parquetWriteBuffer({ columnData, dictionarySize: 1024 })
+
+    const column = parquetMetadata(buffer).row_groups[0].columns[0]
+    expect(column.meta_data?.encodings).not.toContain('RLE_DICTIONARY')
+  })
+
+  it('honors forced RLE_DICTIONARY on high-cardinality values', async () => {
+    // every value unique: the sampling heuristic would fall back to PLAIN, but
+    // then the pages would be mislabeled as dictionary-encoded and misread.
+    // A forced encoding must produce genuinely dictionary-encoded pages.
+    const numRows = 1500
+    const data = Array.from({ length: numRows }, (_, i) => `value-${i}`)
+    /** @type {ColumnSource[]} */
+    const columnData = [{ name: 'id', data, type: 'STRING', encoding: 'RLE_DICTIONARY' }]
+
+    const buffer = parquetWriteBuffer({ columnData })
+
+    const column = parquetMetadata(buffer).row_groups[0].columns[0]
+    expect(column.meta_data?.encodings).toContain('RLE_DICTIONARY')
+
+    const rows = await parquetReadObjects({ file: buffer })
+    expect(rows.length).toBe(numRows)
+    for (let i = 0; i < numRows; i++) {
+      expect(rows[i].id).toBe(`value-${i}`)
+    }
+  })
 })
