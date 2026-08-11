@@ -2,7 +2,7 @@ import { deserializeTCompactProtocol } from 'hyparquet/src/thrift.js'
 import { describe, expect, it } from 'vitest'
 import { ByteWriter } from '../src/bytewriter.js'
 import { logicalType } from '../src/metadata.js'
-import { serializeTCompactProtocol } from '../src/thrift.js'
+import { DOUBLE, ThriftStruct, serializeTCompactProtocol } from '../src/thrift.js'
 
 const decoder = new TextDecoder()
 
@@ -40,6 +40,16 @@ describe('serializeTCompactProtocol', () => {
     // Decode the binary back into a string
     expect(decoder.decode(result.field_8)).toBe('Hello, Thrift!')
     expect(decoder.decode(result.field_9)).toBe('Hello, Thrift!')
+  })
+
+  it('serializes a pre-converted struct with explicit field types', () => {
+    const writer = new ByteWriter()
+    serializeTCompactProtocol(writer, {
+      field_1: new ThriftStruct([[1, DOUBLE, 1]]),
+    })
+
+    expect(writer.getBytes()[1] & 0x0f).toBe(DOUBLE)
+    expect(deserializeTCompactProtocol({ view: writer.view, offset: 0 }).field_1.field_1).toBe(1)
   })
 
   it('serializes STRUCTs', () => {

@@ -115,4 +115,6 @@ export interface Writer {
 }
 
 export type ThriftObject = { [ key: `field_${number}` ]: ThriftType }
-export type ThriftType = boolean | number | bigint | string | Uint8Array | ThriftType[] | ThriftObject | undefined
+export type ThriftField = [fieldId: number, type: number, value: ThriftType]
+export interface PreconvertedThriftStruct { fields: ThriftField[] }
+export type ThriftType = boolean | number | bigint | string | Uint8Array | PreconvertedThriftStruct | ThriftType[] | ThriftObject | undefined
