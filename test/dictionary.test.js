@@ -47,8 +47,8 @@ describe('estimateValueSize', () => {
 
 describe('useDictionary', () => {
   it('dedupes repeated strings', () => {
-    const { dictionary, indexes } = useDictionary(['x', 'x', 'x', 'x', 'y'], 'BYTE_ARRAY', undefined, undefined, 0)
-    expect(dictionary).toEqual(['x', 'y'])
+    const { dictionary, indexes } = useDictionary(['xx', 'xx', 'xx', 'xx', 'yy'], 'BYTE_ARRAY', undefined, undefined, 0)
+    expect(dictionary).toEqual(['xx', 'yy'])
     expect(indexes).toEqual([0, 0, 0, 0, 1])
   })
 
@@ -150,6 +150,11 @@ describe('useDictionary', () => {
 
   it('falls back when a small dictionary does not halve the bytes', () => {
     expect(useDictionary(['a', 'a', 'b', 'c'], 'BYTE_ARRAY', undefined, undefined, undefined)).toEqual({})
+  })
+
+  it('includes dictionary indexes in the win check', () => {
+    const data = Array.from({ length: 20_000 }, (_, i) => i % 9_990)
+    expect(useDictionary(data, 'INT32', undefined, undefined, undefined)).toEqual({})
   })
 
   it('samples evenly across phase-changing values', () => {

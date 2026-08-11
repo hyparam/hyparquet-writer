@@ -128,12 +128,14 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
   const hashBuckets = new Map()
   let dictSize = 0
   let totalSize = 0
+  let nonNullCount = 0
   for (let i = 0; i < values.length; i++) {
     const value = values[i]
     if (value === null || value === undefined) {
       if (required) throw new Error('parquet required value is undefined')
       continue
     }
+    nonNullCount++
 
     let index
     if (value instanceof Uint8Array) {
@@ -167,9 +169,11 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
     indexes[i] = index
   }
 
-  // An automatic dictionary must at least halve the value bytes. Requiring a
-  // material win also compensates for index overhead and lost page offsets.
-  if (!forced && 2 * dictSize > totalSize) return {}
+  // An automatic dictionary plus its bit-packed indexes must at least halve
+  // the value bytes. Page framing and RLE run savings are not estimated here.
+  const bitWidth = Math.ceil(Math.log2(dictionary.length))
+  const indexSize = Math.ceil(nonNullCount * bitWidth / 8)
+  if (!forced && 2 * (dictSize + indexSize) > totalSize) return {}
 
   // TODO: sort by frequency?
   return { dictionary, indexes }
