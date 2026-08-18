@@ -239,6 +239,51 @@ describe('unconvert', () => {
   })
 })
 
+describe('unconvert DECIMAL from bigint', () => {
+  /** @type {SchemaElement} */
+  const int64Schema = { name: 'test', type: 'INT64', converted_type: 'DECIMAL', precision: 18, scale: 2 }
+
+  it('should write a bigint as the unscaled value, without scaling it again', () => {
+    // The bigint IS the unscaled value, so 12345n at scale 2 means 123.45.
+    expect(unconvert(int64Schema, [12345n])).toEqual([12345n])
+  })
+
+  it('should keep a bigint exact past Number.MAX_SAFE_INTEGER', () => {
+    // This is the whole point: scaling through float64 cannot represent this.
+    const unscaled = 123456789012345678n
+    expect(unconvert(int64Schema, [unscaled])).toEqual([unscaled])
+    // What the number path would have produced instead, for contrast.
+    const viaNumber = BigInt(Math.round(Number(unscaled) / 100 * 100))
+    expect(viaNumber).not.toBe(unscaled)
+  })
+
+  it('should agree with the number path wherever float64 is exact', () => {
+    // Equivalence where both paths are defined, so this is a widening and not a
+    // second behaviour: 123.45 as a number and 12345n as a bigint are one value.
+    expect(unconvert(int64Schema, [12345n])).toEqual(unconvert(int64Schema, [123.45]))
+  })
+
+  it('should accept a bigint for FIXED_LEN_BYTE_ARRAY decimals', () => {
+    /** @type {SchemaElement} */
+    const flba = {
+      name: 'test', type: 'FIXED_LEN_BYTE_ARRAY', type_length: 16,
+      converted_type: 'DECIMAL', precision: 38, scale: 0,
+    }
+    const [bytes] = unconvert(flba, [1n])
+    expect(bytes).toBeInstanceOf(Uint8Array)
+    expect(bytes).toEqual(new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]))
+  })
+
+  it('should still pass through null and undefined', () => {
+    expect(unconvert(int64Schema, [null, undefined, 1n])).toEqual([null, undefined, 1n])
+  })
+
+  it('should still reject a value that is neither a number nor a bigint', () => {
+    expect(() => unconvert(int64Schema, ['123.45']))
+      .toThrow('DECIMAL must be a number or bigint')
+  })
+})
+
 describe('unconvertMinMax', () => {
   it('should return undefined if value is undefined or null', () => {
     /** @type {SchemaElement} */
@@ -446,6 +491,31 @@ describe('unconvertMinMax', () => {
     if (!result) throw new Error('expected result')
     const view = new DataView(result.buffer)
     expect(view.getBigInt64(0, true)).toEqual(expected)
+  })
+})
+
+describe('unconvertMinMax DECIMAL from bigint', () => {
+  /** @type {SchemaElement} */
+  const int64Schema = { name: 'test', type: 'INT64', converted_type: 'DECIMAL', precision: 18, scale: 2 }
+
+  it('should accept a bigint, so statistics match the values they describe', () => {
+    // A column whose values are exact while its min/max were scaled through
+    // float64 would prune on bounds that do not match its own data.
+    const stat = unconvertMinMax(12345n, int64Schema, false)
+    expect(stat).toEqual(unconvertMinMax(123.45, int64Schema, false))
+  })
+
+  it('should keep a bigint statistic exact past Number.MAX_SAFE_INTEGER', () => {
+    const unscaled = 123456789012345678n
+    const stat = unconvertMinMax(unscaled, int64Schema, true)
+    expect(stat).toBeInstanceOf(Uint8Array)
+    const view = new DataView(stat.buffer, stat.byteOffset, stat.byteLength)
+    expect(view.getBigInt64(0, true)).toBe(unscaled)
+  })
+
+  it('should still reject a value that is neither a number nor a bigint', () => {
+    expect(() => unconvertMinMax('123.45', int64Schema, false))
+      .toThrow('DECIMAL must be a number or bigint')
   })
 })
 

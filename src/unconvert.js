@@ -41,7 +41,10 @@ export function unconvert(element, values) {
     const factor = 10 ** (element.scale || 0)
     return values.map(v => {
       if (v === null || v === undefined) return v
-      if (typeof v !== 'number') throw new Error('DECIMAL must be a number')
+      // A bigint is the already-scaled unscaled value, so it is written as-is.
+      // Scaling a number goes through float64, which cannot hold every DECIMAL.
+      if (typeof v === 'bigint') return unconvertDecimal(element, v)
+      if (typeof v !== 'number') throw new Error('DECIMAL must be a number or bigint')
       return unconvertDecimal(element, BigInt(Math.round(v * factor)))
     })
   }
@@ -208,9 +211,14 @@ export function unconvertMinMax(value, element, isMax) {
     return unconvertUuid(value)
   }
   if (converted_type === 'DECIMAL') {
-    if (typeof value !== 'number') throw new Error('DECIMAL must be a number')
+    // Statistics must accept the same inputs as the values they describe, or a
+    // column whose values are exact would carry min/max that are not.
+    if (typeof value !== 'number' && typeof value !== 'bigint') {
+      throw new Error('DECIMAL must be a number or bigint')
+    }
     const factor = 10 ** (element.scale || 0)
-    const out = unconvertDecimal(element, BigInt(Math.round(value * factor)))
+    const scaled = typeof value === 'bigint' ? value : BigInt(Math.round(value * factor))
+    const out = unconvertDecimal(element, scaled)
     if (out instanceof Uint8Array) return out
     if (typeof out === 'number') {
       const buffer = new ArrayBuffer(4)
