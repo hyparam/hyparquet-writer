@@ -28,6 +28,10 @@ export function encodeVariantColumn(values, shredding, column) {
       }
     }
   }
+  // Scratch writers are safe to reuse after their bytes have been copied into
+  // a parent. Keep the pool local so no buffers are retained between columns.
+  /** @type {ByteWriter[]} */
+  const scratchWriters = []
   const shreddingConfig = shredding && normalizeShreddingConfig(shredding)
   if (shreddingConfig) {
     // Cache (metadata, keyIndex) by sorted-dictionary signature so rows with
@@ -44,7 +48,7 @@ export function encodeVariantColumn(values, shredding, column) {
       const keys = new Set()
       collectKeys(value, keys)
       const { metadata, keyIndex } = getVariantRowMetadata(keys, metadataCache)
-      return { metadata, ...encodeShredded(value, shreddingConfig, keyIndex, true) }
+      return { metadata, ...encodeShredded(value, shreddingConfig, keyIndex, true, scratchWriters) }
     })
   }
 
@@ -58,7 +62,7 @@ export function encodeVariantColumn(values, shredding, column) {
   return values.map(value => {
     // Keep top-level null as a present Variant null (0x00). Only undefined is missing.
     if (value === undefined) return null
-    return { metadata, value: writeVariantValue(value, keyIndex) }
+    return { metadata, value: writeVariantValue(value, keyIndex, scratchWriters) }
   })
 }
 
@@ -78,9 +82,10 @@ export function encodeVariantColumn(values, shredding, column) {
  * @param {ShredType} shredType
  * @param {Map<string, number>} keyIndex
  * @param {boolean} allowPartialObjects
+ * @param {ByteWriter[]} scratchWriters
  * @returns {{ value: Uint8Array | null, typed_value: any }}
  */
-function encodeShredded(value, shredType, keyIndex, allowPartialObjects) {
+function encodeShredded(value, shredType, keyIndex, allowPartialObjects, scratchWriters) {
   // Present Variant null: value holds variant null, typed_value is null.
   if (value === null || value === undefined) {
     return { value: VARIANT_NULL, typed_value: null }
@@ -90,17 +95,20 @@ function encodeShredded(value, shredType, keyIndex, allowPartialObjects) {
   if (Array.isArray(shredType)) {
     if (!Array.isArray(value)) {
       // Not an array: typed_value must be null, store the value as binary.
-      return { value: writeVariantValue(value, keyIndex), typed_value: null }
+      return { value: writeVariantValue(value, keyIndex, scratchWriters), typed_value: null }
     }
     const elemShred = shredType[0]
-    return { value: null, typed_value: value.map(el => encodeShredded(el, elemShred, keyIndex, false)) }
+    return {
+      value: null,
+      typed_value: value.map(el => encodeShredded(el, elemShred, keyIndex, false, scratchWriters)),
+    }
   }
 
   // Object shred type
   if (typeof shredType === 'object') {
     // Not a plain object: fall back to a binary value.
     if (typeof value !== 'object' || Array.isArray(value) || value instanceof Date || value instanceof Uint8Array) {
-      return { value: writeVariantValue(value, keyIndex), typed_value: null }
+      return { value: writeVariantValue(value, keyIndex, scratchWriters), typed_value: null }
     }
 
     // Remaining (non-shredded) fields are packed into a binary value.
@@ -113,7 +121,7 @@ function encodeShredded(value, shredType, keyIndex, allowPartialObjects) {
       hasRemaining = true
     }
     if (hasRemaining && !allowPartialObjects) {
-      return { value: writeVariantValue(value, keyIndex), typed_value: null }
+      return { value: writeVariantValue(value, keyIndex, scratchWriters), typed_value: null }
     }
 
     const fieldNames = Object.keys(shredType)
@@ -122,7 +130,7 @@ function encodeShredded(value, shredType, keyIndex, allowPartialObjects) {
       keyIndex.has(fieldName)
     )
     if (hasMissingFieldConflict) {
-      return { value: writeVariantValue(value, keyIndex), typed_value: null }
+      return { value: writeVariantValue(value, keyIndex, scratchWriters), typed_value: null }
     }
 
     /** @type {Record<string, any>} */
@@ -132,9 +140,11 @@ function encodeShredded(value, shredType, keyIndex, allowPartialObjects) {
         // missing field: omit the optional field wrapper entirely
         continue
       }
-      typedValue[fieldName] = encodeShredded(value[fieldName], shredType[fieldName], keyIndex, false)
+      typedValue[fieldName] = encodeShredded(
+        value[fieldName], shredType[fieldName], keyIndex, false, scratchWriters
+      )
     }
-    const binaryValue = hasRemaining ? writeVariantValue(remaining, keyIndex) : null
+    const binaryValue = hasRemaining ? writeVariantValue(remaining, keyIndex, scratchWriters) : null
 
     return { value: binaryValue, typed_value: typedValue }
   }
@@ -143,7 +153,7 @@ function encodeShredded(value, shredType, keyIndex, allowPartialObjects) {
   if (matchesType(value, shredType)) {
     return { value: null, typed_value: value }
   }
-  return { value: writeVariantValue(value, keyIndex), typed_value: null }
+  return { value: writeVariantValue(value, keyIndex, scratchWriters), typed_value: null }
 }
 
 /**
@@ -449,11 +459,12 @@ function writeVariantMetadata(dictionary) {
  *
  * @param {any} value
  * @param {Map<string, number>} keyIndex map from key string to dictionary index
+ * @param {ByteWriter[]} scratchWriters
  * @returns {Uint8Array}
  */
-function writeVariantValue(value, keyIndex) {
+function writeVariantValue(value, keyIndex, scratchWriters) {
   const writer = new ByteWriter(8)
-  writeValue(value, writer, keyIndex)
+  writeValue(value, writer, keyIndex, scratchWriters)
   return writer.getBytes()
 }
 
@@ -461,8 +472,9 @@ function writeVariantValue(value, keyIndex) {
  * @param {any} val
  * @param {ByteWriter} writer
  * @param {Map<string, number>} keyIndex
+ * @param {ByteWriter[]} scratchWriters
  */
-function writeValue(val, writer, keyIndex) {
+function writeValue(val, writer, keyIndex, scratchWriters) {
   if (val === null || val === undefined) {
     writer.appendUint8(0x00) // basicType=0, typeId=0
     return
@@ -531,11 +543,11 @@ function writeValue(val, writer, keyIndex) {
     return
   }
   if (Array.isArray(val)) {
-    writeVariantArray(val, writer, keyIndex)
+    writeVariantArray(val, writer, keyIndex, scratchWriters)
     return
   }
   if (typeof val === 'object') {
-    writeVariantObject(val, writer, keyIndex)
+    writeVariantObject(val, writer, keyIndex, scratchWriters)
     return
   }
 
@@ -546,8 +558,9 @@ function writeValue(val, writer, keyIndex) {
  * @param {Record<string, any>} obj
  * @param {ByteWriter} writer
  * @param {Map<string, number>} keyIndex
+ * @param {ByteWriter[]} scratchWriters
  */
-function writeVariantObject(obj, writer, keyIndex) {
+function writeVariantObject(obj, writer, keyIndex, scratchWriters) {
   const entries = Object.keys(obj).filter(key => obj[key] !== undefined).map(key => {
     const id = keyIndex.get(key)
     if (id === undefined) throw new Error(`variant key not in dictionary: ${key}`)
@@ -561,11 +574,11 @@ function writeVariantObject(obj, writer, keyIndex) {
   const idWidth = byteWidth(maxFieldId)
 
   // Encode child values into a scratch writer so we can compute offsets
-  const scratch = new ByteWriter(8)
+  const scratch = scratchWriters.pop() ?? new ByteWriter(8)
   const offsets = new Array(numElements + 1)
   offsets[0] = 0
   for (let i = 0; i < numElements; i++) {
-    writeValue(obj[entries[i].key], scratch, keyIndex)
+    writeValue(obj[entries[i].key], scratch, keyIndex, scratchWriters)
     offsets[i + 1] = scratch.index
   }
   const offsetWidth = byteWidth(offsets[numElements])
@@ -578,21 +591,25 @@ function writeVariantObject(obj, writer, keyIndex) {
   for (const { id } of entries) appendUnsignedLE(writer, id, idWidth)
   for (const off of offsets) appendUnsignedLE(writer, off, offsetWidth)
   writer.appendBytes(scratch.getBytes())
+  scratch.index = 0
+  scratch.offset = 0
+  scratchWriters.push(scratch)
 }
 
 /**
  * @param {any[]} arr
  * @param {ByteWriter} writer
  * @param {Map<string, number>} keyIndex
+ * @param {ByteWriter[]} scratchWriters
  */
-function writeVariantArray(arr, writer, keyIndex) {
+function writeVariantArray(arr, writer, keyIndex, scratchWriters) {
   const numElements = arr.length
 
-  const scratch = new ByteWriter(8)
+  const scratch = scratchWriters.pop() ?? new ByteWriter(8)
   const offsets = new Array(numElements + 1)
   offsets[0] = 0
   for (let i = 0; i < numElements; i++) {
-    writeValue(arr[i], scratch, keyIndex)
+    writeValue(arr[i], scratch, keyIndex, scratchWriters)
     offsets[i + 1] = scratch.index
   }
   const offsetWidth = byteWidth(offsets[numElements])
@@ -604,6 +621,9 @@ function writeVariantArray(arr, writer, keyIndex) {
   else writer.appendUint8(numElements)
   for (const off of offsets) appendUnsignedLE(writer, off, offsetWidth)
   writer.appendBytes(scratch.getBytes())
+  scratch.index = 0
+  scratch.offset = 0
+  scratchWriters.push(scratch)
 }
 
 /**
