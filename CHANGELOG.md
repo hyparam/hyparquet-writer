@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.16.8]
+ - Accept bigint for DECIMAL values and statistics
+
 ## [0.16.7]
  - Fix ByteWriter buffer capacity checks
  - Update hyparquet to 1.29.2
