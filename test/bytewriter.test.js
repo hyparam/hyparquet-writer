@@ -98,6 +98,21 @@ describe('ByteWriter', () => {
     expect(writer.getBytes().length).toBe(2000)
   })
 
+  it('uses the complete buffer capacity before expanding', () => {
+    const writer = new ByteWriter(8)
+    writer.appendBytes(new Uint8Array(8))
+    expect(writer.buffer.byteLength).toBe(8)
+
+    writer.appendUint8(1)
+    expect(writer.buffer.byteLength).toBe(16)
+  })
+
+  it('reserves the physical width of float32 values', () => {
+    const writer = new ByteWriter(4)
+    writer.appendFloat32(1)
+    expect(writer.buffer.byteLength).toBe(4)
+  })
+
   it('finish does nothing but is callable', () => {
     const writer = new ByteWriter()
     writer.finish()

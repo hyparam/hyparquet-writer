@@ -1,5 +1,9 @@
 # Hyparquet-writer Changelog
 
+## [0.16.7]
+ - Fix ByteWriter buffer capacity checks
+ - Update hyparquet to 1.29.2
+
 ## [0.16.6]
  - Keep large dictionaries when dictionary encoding wins, decoupled from pageSize
  - Write bounding box statistics as explicitly typed doubles
