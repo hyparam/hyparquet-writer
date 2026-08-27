@@ -52,4 +52,23 @@ describe('snappy compress', () => {
     snappyUncompress(output, decompressed)
     expect(decompressed).toEqual(input)
   })
+
+  it('compresses across a 64KiB boundary', () => {
+    const input = new Uint8Array(65536 + 1024)
+    let state = 1
+    for (let i = 0; i < input.length; i++) {
+      state ^= state << 13
+      state ^= state >>> 17
+      state ^= state << 5
+      input[i] = state
+    }
+    input.set(input.subarray(64512, 65536), 65536)
+
+    const output = snappyCompress(input)
+    const decompressed = new Uint8Array(input.length)
+    snappyUncompress(output, decompressed)
+
+    expect(output.length).toBeLessThan(input.length)
+    expect(decompressed).toEqual(input)
+  })
 })

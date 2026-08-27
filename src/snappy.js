@@ -10,10 +10,8 @@ import { ByteWriter } from './bytewriter.js'
  * @import {Writer} from '../src/types.js'
  */
 
-const BLOCK_LOG = 16
-const BLOCK_SIZE = 1 << BLOCK_LOG
-
 const MAX_HASH_TABLE_BITS = 14
+const MAX_OFFSET = 0xffff
 const globalHashTables = new Array(MAX_HASH_TABLE_BITS + 1)
 
 /**
@@ -27,13 +25,7 @@ export function snappyCompress(input) {
   const writer = new ByteWriter()
   writer.appendVarInt(input.length) // uncompressed length
 
-  // Process input in 64K blocks
-  let pos = 0
-  while (pos < input.length) {
-    const fragmentSize = Math.min(input.length - pos, BLOCK_SIZE)
-    compressFragment(writer, input, pos, fragmentSize)
-    pos += fragmentSize
-  }
+  compressInput(writer, input)
 
   return writer.getBytes()
 }
@@ -46,7 +38,7 @@ export function snappyCompress(input) {
  * @returns {number}
  */
 function hashFunc(key, hashFuncShift) {
-  return key * 0x1e35a7bd >>> hashFuncShift
+  return Math.imul(key, 0x1e35a7bd) >>> hashFuncShift
 }
 
 /**
@@ -93,13 +85,13 @@ function emitLiteral(writer, input, ip, len) {
   // The first byte(s) encode the literal length
   if (len <= 60) {
     writer.appendUint8(len - 1 << 2)
-  } else if (len < 256) {
-    writer.appendUint8(60 << 2)
-    writer.appendUint8(len - 1)
   } else {
-    writer.appendUint8(61 << 2)
-    writer.appendUint8(len - 1 & 0xff)
-    writer.appendUint8(len - 1 >>> 8)
+    const value = len - 1
+    const bytes = value < 0x100 ? 1 : value < 0x10000 ? 2 : value < 0x1000000 ? 3 : 4
+    writer.appendUint8(59 + bytes << 2)
+    for (let i = 0; i < bytes; i++) {
+      writer.appendUint8(value >>> i * 8)
+    }
   }
 
   // Then copy the literal bytes
@@ -149,13 +141,12 @@ function emitCopy(writer, offset, len) {
 }
 
 /**
- * Compress a fragment of data.
+ * Compress input data.
  * @param {Writer} writer
  * @param {Uint8Array} input
- * @param {number} ip
- * @param {number} inputSize
  */
-function compressFragment(writer, input, ip, inputSize) {
+function compressInput(writer, input) {
+  const inputSize = input.length
   let hashTableBits = 1
   while (1 << hashTableBits <= inputSize && hashTableBits <= MAX_HASH_TABLE_BITS) {
     hashTableBits++
@@ -164,14 +155,14 @@ function compressFragment(writer, input, ip, inputSize) {
   const hashFuncShift = 32 - hashTableBits
 
   // Initialize the hash table
-  globalHashTables[hashTableBits] ??= new Uint16Array(1 << hashTableBits)
+  globalHashTables[hashTableBits] ??= new Uint32Array(1 << hashTableBits)
   const hashTable = globalHashTables[hashTableBits]
   hashTable.fill(0)
 
-  const ipEnd = ip + inputSize
+  const ipEnd = inputSize
   let ipLimit
-  const baseIp = ip
-  let nextEmit = ip
+  let ip = 0
+  let nextEmit = 0
 
   let hash, nextHash
   let nextIp, candidate, skip
@@ -200,9 +191,9 @@ function compressFragment(writer, input, ip, inputSize) {
           break
         }
         nextHash = hashFunc(load32(input, nextIp), hashFuncShift)
-        candidate = baseIp + hashTable[hash]
-        hashTable[hash] = ip - baseIp
-      } while (!equals32(input, ip, candidate))
+        candidate = hashTable[hash]
+        hashTable[hash] = ip
+      } while (ip - candidate > MAX_OFFSET || !equals32(input, ip, candidate))
 
       if (!flag) {
         break
@@ -231,11 +222,11 @@ function compressFragment(writer, input, ip, inputSize) {
           break
         }
         prevHash = hashFunc(load32(input, ip - 1), hashFuncShift)
-        hashTable[prevHash] = ip - 1 - baseIp
+        hashTable[prevHash] = ip - 1
         curHash = hashFunc(load32(input, ip), hashFuncShift)
-        candidate = baseIp + hashTable[curHash]
-        hashTable[curHash] = ip - baseIp
-      } while (equals32(input, ip, candidate))
+        candidate = hashTable[curHash]
+        hashTable[curHash] = ip
+      } while (ip - candidate <= MAX_OFFSET && equals32(input, ip, candidate))
 
       if (!flag) {
         break
