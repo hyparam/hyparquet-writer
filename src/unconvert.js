@@ -39,7 +39,7 @@ export function unconvert(element, values) {
   const { type, converted_type: ctype, logical_type: ltype } = element
   if (ctype === 'DECIMAL') {
     const factor = 10 ** (element.scale || 0)
-    return values.map(v => {
+    return Array.from(values, v => {
       if (v === null || v === undefined) return v
       // A bigint is the already-scaled unscaled value, so it is written as-is.
       // Scaling a number goes through float64, which cannot hold every DECIMAL.
@@ -191,6 +191,7 @@ function minMaxIsExact(value, element) {
   // only byte-array statistics are ever truncated
   if (type !== 'BYTE_ARRAY' && type !== 'FIXED_LEN_BYTE_ARRAY') return undefined
   if (element.logical_type?.type === 'UUID') return undefined // exactly 16 bytes, never truncated
+  if (element.converted_type === 'DECIMAL') return undefined // encoded as full, exact physical bytes
   const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(value.toString())
   return bytes.length > STATS_TRUNCATE_LENGTH ? false : undefined
 }

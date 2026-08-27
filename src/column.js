@@ -5,7 +5,7 @@ import { geospatialStatistics } from './geospatial.js'
 import { unconvert, unconvertMinMax } from './unconvert.js'
 
 /**
- * @import {ColumnChunk, ColumnIndex, DecodedArray, Encoding, OffsetIndex, ParquetType, Statistics} from 'hyparquet'
+ * @import {ColumnChunk, ColumnIndex, DecodedArray, Encoding, OffsetIndex, ParquetType, SchemaElement, Statistics} from 'hyparquet'
  * @import {PageEncodingStats} from 'hyparquet/src/types.js'
  * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
  */
@@ -32,7 +32,7 @@ export function writeColumn({ writer, column, pageData }) {
   const isGeospatial = element?.logical_type?.type === 'GEOMETRY' || element?.logical_type?.type === 'GEOGRAPHY'
 
   // Compute statistics
-  const statistics = stats ? getStatistics(values) : undefined
+  const statistics = stats ? getStatistics(values, element) : undefined
   const geospatial_statistics = stats && isGeospatial ? geospatialStatistics(values) : undefined
 
   // Build bloom filter from original values (hashParquetValue reads schema info from element)
@@ -120,7 +120,7 @@ export function writeColumn({ writer, column, pageData }) {
     // ColumnIndex construction
     if (columnIndex) {
       const pageValues = values.slice(start, end) // original values not indexes
-      const { min_value, max_value, null_count = 0n } = getStatistics(pageValues)
+      const { min_value, max_value, null_count = 0n } = getStatistics(pageValues, element)
 
       columnIndex.null_pages.push(null_count === BigInt(end - start)) // all nulls
       // Spec: for all-null pages set "byte[0]"
@@ -247,9 +247,10 @@ function getPageBoundaries(values, type, type_length, pageSize) {
 
 /**
  * @param {DecodedArray} values
+ * @param {SchemaElement} element
  * @returns {Statistics}
  */
-function getStatistics(values) {
+function getStatistics(values, element) {
   let min_value = undefined
   let max_value = undefined
   let null_count = 0n
@@ -260,8 +261,14 @@ function getStatistics(values) {
     }
     if (typeof value === 'object' && !(value instanceof Uint8Array)) continue
     if (typeof value === 'number' && Number.isNaN(value)) continue // skip NaN per parquet spec
-    if (min_value === undefined || compareValues(value, min_value) < 0) min_value = value
-    if (max_value === undefined || compareValues(value, max_value) > 0) max_value = value
+    // DECIMAL numbers are logical values while bigints are already unscaled.
+    // Compare both representations as unscaled bigints and return that common
+    // representation for metadata conversion.
+    const statisticValue = element.converted_type === 'DECIMAL' && typeof value === 'number'
+      ? BigInt(Math.round(value * 10 ** (element.scale || 0)))
+      : value
+    if (min_value === undefined || compareValues(statisticValue, min_value) < 0) min_value = statisticValue
+    if (max_value === undefined || compareValues(statisticValue, max_value) > 0) max_value = statisticValue
   }
   // Normalize signed zero per parquet spec: min becomes -0, max becomes +0
   if (min_value === 0) min_value = -0

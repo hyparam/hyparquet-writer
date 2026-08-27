@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { unconvert, unconvertDecimal, unconvertFloat16, unconvertMinMax } from '../src/unconvert.js'
+import {
+  unconvert,
+  unconvertDecimal,
+  unconvertFloat16,
+  unconvertMinMax,
+  unconvertStatistics,
+} from '../src/unconvert.js'
 import { convertMetadata } from 'hyparquet/src/metadata.js'
 import { DEFAULT_PARSERS, parseFloat16 } from 'hyparquet/src/convert.js'
 
@@ -274,6 +280,25 @@ describe('unconvert DECIMAL from bigint', () => {
     expect(bytes).toEqual(new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]))
   })
 
+  it('should materialize bigint typed arrays when the physical type changes', () => {
+    /** @type {SchemaElement[]} */
+    const schemas = [
+      { name: 'int32', type: 'INT32', converted_type: 'DECIMAL', precision: 9, scale: 0 },
+      { name: 'bytes', type: 'BYTE_ARRAY', converted_type: 'DECIMAL', precision: 9, scale: 0 },
+      {
+        name: 'fixed', type: 'FIXED_LEN_BYTE_ARRAY', type_length: 4,
+        converted_type: 'DECIMAL', precision: 9, scale: 0,
+      },
+    ]
+    for (const schema of schemas) {
+      const result = unconvert(schema, new BigInt64Array([1n, 2n]))
+      expect(Array.isArray(result)).toBe(true)
+      expect(result).toHaveLength(2)
+    }
+    expect(unconvert(schemas[1], new BigUint64Array([1n])))
+      .toEqual([new Uint8Array([1])])
+  })
+
   it('should still pass through null and undefined', () => {
     expect(unconvert(int64Schema, [null, undefined, 1n])).toEqual([null, undefined, 1n])
   })
@@ -509,8 +534,26 @@ describe('unconvertMinMax DECIMAL from bigint', () => {
     const unscaled = 123456789012345678n
     const stat = unconvertMinMax(unscaled, int64Schema, true)
     expect(stat).toBeInstanceOf(Uint8Array)
+    if (!stat) throw new Error('expected statistic')
     const view = new DataView(stat.buffer, stat.byteOffset, stat.byteLength)
     expect(view.getBigInt64(0, true)).toBe(unscaled)
+  })
+
+  it('should keep exact byte-array bounds marked exact', () => {
+    const value = 12345678901234567n // more than 16 ASCII digits but only 7 physical bytes
+    /** @type {SchemaElement[]} */
+    const schemas = [
+      { name: 'bytes', type: 'BYTE_ARRAY', converted_type: 'DECIMAL', precision: 38, scale: 0 },
+      {
+        name: 'fixed', type: 'FIXED_LEN_BYTE_ARRAY', type_length: 16,
+        converted_type: 'DECIMAL', precision: 38, scale: 0,
+      },
+    ]
+    for (const schema of schemas) {
+      const thrift = unconvertStatistics({ min_value: value, max_value: value, null_count: 0n }, schema)
+      expect(thrift.field_7).toBeUndefined()
+      expect(thrift.field_8).toBeUndefined()
+    }
   })
 
   it('should still reject a value that is neither a number nor a bigint', () => {

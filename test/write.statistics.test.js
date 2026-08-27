@@ -108,3 +108,41 @@ describe('statistics for UUID columns', () => {
     expect(rows[0].col).toBe(UUID)
   })
 })
+
+describe('statistics for DECIMAL columns', () => {
+  /** @type {import('hyparquet').SchemaElement[]} */
+  const schema = [
+    { name: 'root', num_children: 1 },
+    { name: 'col', type: 'INT64', converted_type: 'DECIMAL', precision: 18, scale: 2 },
+  ]
+
+  it('normalizes mixed number and bigint representations before comparison', async () => {
+    // 200n is the unscaled representation of 2.00; 10 is the logical value 10.00.
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data: [200n, 10] }],
+      schema,
+      statistics: true,
+    })
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toBe(2)
+    expect(stats.max_value).toBe(10)
+
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $eq: 2 } } })
+    expect(rows).toEqual([{ col: 2 }])
+  })
+
+  it('normalizes mixed representations in page indexes', async () => {
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data: [200n, 10, 300n], columnIndex: true }],
+      schema,
+      statistics: false, // isolate page-index pruning from row-group statistics
+      pageSize: 24,
+    })
+    const rows = await parquetQuery({
+      file: buffer,
+      filter: { col: { $eq: 2 } },
+      usePageIndex: true,
+    })
+    expect(rows).toEqual([{ col: 2 }])
+  })
+})
