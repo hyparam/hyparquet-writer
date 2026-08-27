@@ -48,7 +48,7 @@ export class ByteWriter {
    * @param {number} value
    */
   appendUint8(value) {
-    this.ensure(this.index + 1)
+    this.ensure(1)
     this.view.setUint8(this.index, value)
     this.offset++
     this.index++
@@ -58,7 +58,7 @@ export class ByteWriter {
    * @param {number} value
    */
   appendUint32(value) {
-    this.ensure(this.index + 4)
+    this.ensure(4)
     this.view.setUint32(this.index, value, true)
     this.offset += 4
     this.index += 4
@@ -68,7 +68,7 @@ export class ByteWriter {
    * @param {number} value
    */
   appendInt32(value) {
-    this.ensure(this.index + 4)
+    this.ensure(4)
     this.view.setInt32(this.index, value, true)
     this.offset += 4
     this.index += 4
@@ -78,7 +78,7 @@ export class ByteWriter {
    * @param {bigint} value
    */
   appendInt64(value) {
-    this.ensure(this.index + 8)
+    this.ensure(8)
     this.view.setBigInt64(this.index, BigInt(value), true)
     this.offset += 8
     this.index += 8
@@ -88,7 +88,7 @@ export class ByteWriter {
    * @param {number} value
    */
   appendFloat32(value) {
-    this.ensure(this.index + 8)
+    this.ensure(4)
     this.view.setFloat32(this.index, value, true)
     this.offset += 4
     this.index += 4
@@ -98,7 +98,7 @@ export class ByteWriter {
    * @param {number} value
    */
   appendFloat64(value) {
-    this.ensure(this.index + 8)
+    this.ensure(8)
     this.view.setFloat64(this.index, value, true)
     this.offset += 8
     this.index += 8
@@ -115,7 +115,7 @@ export class ByteWriter {
    * @param {Uint8Array} value
    */
   appendBytes(value) {
-    this.ensure(this.index + value.length)
+    this.ensure(value.length)
     new Uint8Array(this.buffer, this.index, value.length).set(value)
     this.offset += value.length
     this.index += value.length
