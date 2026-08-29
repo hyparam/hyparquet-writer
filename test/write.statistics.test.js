@@ -145,4 +145,18 @@ describe('statistics for DECIMAL columns', () => {
     })
     expect(rows).toEqual([{ col: 2 }])
   })
+
+  it('writes INT32 decimal statistics as int32, not float32', async () => {
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'price', data: [123.45, -0.5] }],
+      schema: [
+        { name: 'root', num_children: 1 },
+        { name: 'price', type: 'INT32', repetition_type: 'OPTIONAL', converted_type: 'DECIMAL', precision: 6, scale: 2 },
+      ],
+      statistics: true,
+    })
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toBe(-0.5)
+    expect(stats.max_value).toBe(123.45)
+  })
 })
