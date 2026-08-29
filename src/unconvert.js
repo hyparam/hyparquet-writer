@@ -223,7 +223,7 @@ export function unconvertMinMax(value, element, isMax) {
     if (out instanceof Uint8Array) return out
     if (typeof out === 'number') {
       const buffer = new ArrayBuffer(4)
-      new DataView(buffer).setFloat32(0, out, true)
+      new DataView(buffer).setInt32(0, out, true)
       return new Uint8Array(buffer)
     }
     if (typeof out === 'bigint') {
