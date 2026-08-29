@@ -1,5 +1,9 @@
 # Hyparquet-writer Changelog
 
+## [0.16.9]
+ - Fix INT32 DECIMAL statistics encoding
+ - Improve built-in Snappy compression window
+
 ## [0.16.8]
  - Accept bigint for DECIMAL values and statistics
 
