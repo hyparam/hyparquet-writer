@@ -17,8 +17,7 @@ const VALUES_PER_MINIBLOCK = BLOCK_SIZE / MINIBLOCKS_PER_BLOCK // 32
  * @param {DecodedArray} values
  */
 export function deltaBinaryPack(writer, values) {
-  const count = values.length
-  if (count === 0) {
+  if (values.length === 0) {
     // Write header with zero count
     writer.appendVarInt(BLOCK_SIZE)
     writer.appendVarInt(MINIBLOCKS_PER_BLOCK)
@@ -43,18 +42,13 @@ export function deltaBinaryPack(writer, values) {
  * representable as JavaScript numbers.
  *
  * @param {DecodedArray} values
- * @returns {boolean}
+ * @returns {values is DecodedArray & ArrayLike<number>}
  */
 function usesInt32NumberPath(values) {
   if (values instanceof Int32Array) return true
   for (let i = 0; i < values.length; i++) {
     const value = values[i]
-    if (
-      typeof value !== 'number' ||
-      !Number.isInteger(value) ||
-      value < -0x80000000 ||
-      value > 0x7fffffff
-    ) return false
+    if (typeof value !== 'number' || value !== (value | 0)) return false
   }
   return true
 }
@@ -63,7 +57,7 @@ function usesInt32NumberPath(values) {
  * Write signed 32-bit values without allocating or operating on BigInts.
  *
  * @param {Writer} writer
- * @param {DecodedArray} values
+ * @param {ArrayLike<number>} values
  */
 function deltaBinaryPackInt32(writer, values) {
   const count = values.length
@@ -72,7 +66,7 @@ function deltaBinaryPackInt32(writer, values) {
   writer.appendVarInt(BLOCK_SIZE)
   writer.appendVarInt(MINIBLOCKS_PER_BLOCK)
   writer.appendVarInt(count)
-  appendZigZagNumber(writer, Number(values[0]))
+  appendZigZagNumber(writer, values[0])
 
   // Process blocks
   /** @type {Array<Uint8Array | undefined>} */
@@ -84,13 +78,30 @@ function deltaBinaryPackInt32(writer, values) {
     const blockEnd = Math.min(index + BLOCK_SIZE, count)
     const blockSize = blockEnd - index
 
+    // Constant-delta blocks have no packed payload or miniblock widths to scan.
+    const firstDelta = values[index] - values[index - 1]
+    let previous = values[index]
+    let constantEnd = index + 1
+    while (constantEnd < blockEnd) {
+      const value = values[constantEnd]
+      if (value - previous !== firstDelta) break
+      previous = value
+      constantEnd++
+    }
+    if (constantEnd === blockEnd) {
+      appendZigZagNumber(writer, firstDelta)
+      writer.appendUint32(0) // four zero-width miniblocks
+      index = blockEnd
+      continue
+    }
+
     // Compute deltas for this block
     // Adjacent INT32 extremes differ by 4,294,967,295, so Int32Array is not
     // sufficient even though every input value is a signed 32-bit integer.
-    let minDelta = Number(values[index]) - Number(values[index - 1])
+    let minDelta = values[index] - values[index - 1]
     blockDeltas[0] = minDelta
     for (let i = 1; i < blockSize; i++) {
-      const delta = Number(values[index + i]) - Number(values[index + i - 1])
+      const delta = values[index + i] - values[index + i - 1]
       blockDeltas[i] = delta
       if (delta < minDelta) minDelta = delta
     }
@@ -179,13 +190,14 @@ function deltaBinaryPackBigInt(writer, values) {
   writer.appendZigZag(values[0])
 
   // Process blocks
+  const blockDeltas = new BigInt64Array(BLOCK_SIZE)
+  const bitWidths = new Uint8Array(MINIBLOCKS_PER_BLOCK)
   let index = 1
   while (index < count) {
     const blockEnd = Math.min(index + BLOCK_SIZE, count)
     const blockSize = blockEnd - index
 
     // Compute deltas for this block
-    const blockDeltas = new BigInt64Array(blockSize)
     let minDelta = BigInt(values[index]) - BigInt(values[index - 1])
     blockDeltas[0] = minDelta
     for (let i = 1; i < blockSize; i++) {
@@ -196,7 +208,6 @@ function deltaBinaryPackBigInt(writer, values) {
     writer.appendZigZag(minDelta)
 
     // Calculate bit widths for each miniblock
-    const bitWidths = new Uint8Array(MINIBLOCKS_PER_BLOCK)
     for (let mb = 0; mb < MINIBLOCKS_PER_BLOCK; mb++) {
       const mbStart = mb * VALUES_PER_MINIBLOCK
       const mbEnd = Math.min(mbStart + VALUES_PER_MINIBLOCK, blockSize)

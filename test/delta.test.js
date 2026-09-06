@@ -166,6 +166,38 @@ describe('deltaBinaryPack', () => {
     }
   })
 
+  it.each([2, 32, 33, 34, 64, 65, 96, 97, 128, 129, 130, 257, 300])(
+    'should match bigint bytes for constant deltas with %i values', count => {
+      for (const step of [-7, 0, 7]) {
+        const values = Array.from({ length: count }, (_, i) => 1000 + i * step)
+        const expected = encodeIntValues(values.map(BigInt))
+        expect(encodeIntValues(values)).toEqual(expected)
+        expect(encodeIntValues(Int32Array.from(values))).toEqual(expected)
+        expect(roundTripInt32(values)).toEqual(values)
+      }
+    }
+  )
+
+  it('should switch between constant and varying delta blocks', () => {
+    for (const varyingFirst of [false, true]) {
+      let value = 0
+      const values = Array.from({ length: 600 }, (_, i) => {
+        const varying = Math.floor(Math.max(0, i - 1) / 128) % 2 === 0 === varyingFirst
+        value += varying ? i % 5 - 2 : 3
+        return value
+      })
+      expect(encodeIntValues(values)).toEqual(encodeIntValues(values.map(BigInt)))
+      expect(roundTripInt32(values)).toEqual(values)
+      const bigints = values.map(value => 10000000000n + BigInt(value))
+      expect(roundTripBigInt(bigints)).toEqual(bigints)
+    }
+  })
+
+  it('should use the bigint fallback when later values are outside int32', () => {
+    const values = [0, 0x80000000, 0x80000001, -0x80000001, -0x80000002]
+    expect(encodeIntValues(values)).toEqual(encodeIntValues(values.map(BigInt)))
+  })
+
   it('should round-trip bigint values', () => {
     const original = [1n, 2n, 3n, 4n, 5n]
     const decoded = roundTripBigInt(original)
