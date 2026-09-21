@@ -1,5 +1,6 @@
 import { parquetMetadata, parquetReadObjects } from 'hyparquet'
 import { describe, expect, it } from 'vitest'
+import { getPageBoundaries } from '../src/column.js'
 import { parquetWriteBuffer } from '../src/index.js'
 
 /**
@@ -29,6 +30,37 @@ describe('parquetWrite multi-page', () => {
     expect(rows.length).toBe(numRows)
     expect(rows[0]).toEqual({ id: 0, value: 0 })
     expect(rows[999]).toEqual({ id: 999, value: 1998 })
+  })
+
+  it('starts every page at a row boundary', () => {
+    // 20 rows of 3 values; 4-byte values with a 20-byte page would split mid-row
+    const values = Array.from({ length: 60 }, (_, i) => i)
+    const repetitionLevels = values.map((_, i) => i % 3 === 0 ? 0 : 1)
+    const boundaries = getPageBoundaries(values, 'INT32', undefined, 20, repetitionLevels)
+    expect(boundaries.length).toBeGreaterThan(1)
+    for (const { start } of boundaries) expect(repetitionLevels[start]).toBe(0)
+    expect(boundaries.at(-1)?.end).toBe(values.length)
+    // unrepeated columns still split on the byte estimate alone
+    expect(getPageBoundaries(values, 'INT32', undefined, 20)).toEqual(
+      Array.from({ length: 15 }, (_, i) => ({ start: i * 4, end: i * 4 + 4 })))
+  })
+
+  it('round-trips list columns across pages', async () => {
+    const numRows = 200
+    const items = Array.from({ length: numRows }, (_, i) => Array.from({ length: 7 }, (_, j) => i * 7 + j))
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'items', data: items }],
+      schema: [
+        { name: 'root', num_children: 1 },
+        { name: 'items', repetition_type: 'OPTIONAL', num_children: 1, converted_type: 'LIST' },
+        { name: 'list', repetition_type: 'REPEATED', num_children: 1 },
+        { name: 'element', repetition_type: 'OPTIONAL', type: 'INT32' },
+      ],
+      pageSize: 100,
+    })
+    const stats = parquetMetadata(buffer).row_groups[0].columns[0].meta_data?.encoding_stats ?? []
+    expect(stats.some(stat => stat.page_type === 'DATA_PAGE_V2' && Number(stat.count) > 1)).toBe(true)
+    expect((await parquetReadObjects({ file: buffer })).map(row => row.items)).toEqual(items)
   })
 
   it('handles various data types with pageSize', async () => {
