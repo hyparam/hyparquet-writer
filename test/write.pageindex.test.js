@@ -230,7 +230,7 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     expect(columnIndex.boundary_order).toBe('ASCENDING')
   })
 
-  it('keeps first_row_index stable when a repeated row spans multiple pages', () => {
+  it('keeps a repeated row in one page and counts first_row_index by rows', () => {
     const buffer = parquetWriteBuffer({
       columnData: [{
         name: 'vals',
@@ -246,7 +246,7 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
         { name: 'list', repetition_type: 'REPEATED', num_children: 1 },
         { name: 'element', repetition_type: 'OPTIONAL', type: 'INT32' },
       ],
-      pageSize: 16, // first list spans multiple pages
+      pageSize: 16, // the first list alone exceeds a page but must not be split
     })
     const metadata = parquetMetadata(buffer)
     const column0 = metadata.row_groups[0].columns[0]
@@ -254,8 +254,8 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     const offsetIndexReader = indexReader(buffer, column0.offset_index_offset, column0.offset_index_length)
     const offsetIndex = readOffsetIndex(offsetIndexReader)
 
-    // All pages start inside row 0, so first_row_index should stay 0.
+    // Row 0 fills the first page on its own; rows 1 and 2 share the second.
     const firstRowIndexes = offsetIndex.page_locations.map(pl => pl.first_row_index)
-    expect(firstRowIndexes).toEqual([0n, 0n, 0n, 0n])
+    expect(firstRowIndexes).toEqual([0n, 1n])
   })
 })

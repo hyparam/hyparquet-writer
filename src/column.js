@@ -80,7 +80,7 @@ export function writeColumn({ writer, column, pageData }) {
   encodings.push(encoding)
 
   // Split values into pages based on pageSize
-  const pageBoundaries = getPageBoundaries(writeValues, writeType, type_length, pageSize)
+  const pageBoundaries = getPageBoundaries(writeValues, writeType, type_length, pageSize, repetitionLevels)
 
   // Initialize index structures if requested
   /** @type {ColumnIndex | undefined} */
@@ -206,16 +206,18 @@ export function writeColumn({ writer, column, pageData }) {
 }
 
 /**
- * Get page boundaries based on estimated byte size.
- * TODO: split pages on row boundaries
+ * Split values into pages by estimated byte size. A page can only begin at a
+ * row boundary (repetition level 0), as data page v2 requires: a row never
+ * spans pages, so a page may run past pageSize to reach the next row.
  *
  * @param {DecodedArray} values
  * @param {ParquetType} type
  * @param {number | undefined} type_length
  * @param {number} pageSize
+ * @param {number[]} [repetitionLevels] empty for unrepeated columns
  * @returns {{start: number, end: number}[]}
  */
-function getPageBoundaries(values, type, type_length, pageSize) {
+export function getPageBoundaries(values, type, type_length, pageSize, repetitionLevels = []) {
   // If no pageSize limit, return single page with all values
   if (!pageSize) {
     return [{ start: 0, end: values.length }]
@@ -230,7 +232,8 @@ function getPageBoundaries(values, type, type_length, pageSize) {
     accumulatedBytes += valueSize
 
     // Check if we should start a new page
-    if (accumulatedBytes >= pageSize && i > start) {
+    const rowStart = !repetitionLevels.length || repetitionLevels[i] === 0
+    if (accumulatedBytes >= pageSize && i > start && rowStart) {
       boundaries.push({ start, end: i })
       start = i
       accumulatedBytes = valueSize
