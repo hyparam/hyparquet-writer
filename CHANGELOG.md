@@ -1,5 +1,10 @@
 # Hyparquet-writer Changelog
 
+## [0.16.10]
+ - Split data pages only at row boundaries
+ - Optimize delta binary packing for constant-delta blocks
+ - Update hyparquet to 1.31.1
+
 ## [0.16.9]
  - Fix INT32 DECIMAL statistics encoding
  - Improve built-in Snappy compression window
