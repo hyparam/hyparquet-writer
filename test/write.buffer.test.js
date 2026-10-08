@@ -38,13 +38,13 @@ describe('parquetWriteBuffer', () => {
   it('serializes a string as a BYTE_ARRAY', () => {
     const data = ['string1', 'string2', 'string3']
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data, type: 'BYTE_ARRAY' }] })
-    expect(file.byteLength).toBe(173)
+    expect(file.byteLength).toBe(178)
   })
 
   it('serializes booleans as RLE', async () => {
     const data = Array(100).fill(true)
     const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data }] })
-    expect(file.byteLength).toBe(140)
+    expect(file.byteLength).toBe(145)
     const metadata = parquetMetadata(file)
     expect(metadata.row_groups[0].columns[0].meta_data?.encodings).toEqual(['RLE'])
     const result = await parquetReadObjects({ file })
@@ -58,9 +58,9 @@ describe('parquetWriteBuffer', () => {
     data[500] = true
     data[9999] = false
     const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data }], rowGroupSize: 10000 })
-    expect(file.byteLength).toBe(168)
+    expect(file.byteLength).toBe(173)
     const metadata = parquetMetadata(file)
-    expect(metadata.metadata_length).toBe(101)
+    expect(metadata.metadata_length).toBe(106)
     const result = await parquetReadObjects({ file })
     expect(result.length).toBe(10000)
     expect(result[0]).toEqual({ bool: null })
@@ -74,14 +74,14 @@ describe('parquetWriteBuffer', () => {
   it('efficiently serializes long string', () => {
     const str = 'a'.repeat(10000)
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data: [str] }] })
-    expect(file.byteLength).toBe(649)
+    expect(file.byteLength).toBe(654)
   })
 
   it('less efficiently serializes string without compression', () => {
     const str = 'a'.repeat(10000)
     const columnData = [{ name: 'string', data: [str] }]
     const file = parquetWriteBuffer({ columnData, codec: 'UNCOMPRESSED' })
-    expect(file.byteLength).toBe(10178)
+    expect(file.byteLength).toBe(10183)
   })
 
   it('honors per-column codec override', async () => {
@@ -104,7 +104,7 @@ describe('parquetWriteBuffer', () => {
       .fill('aaaa', 0, 50000)
       .fill('bbbb', 50000, 100000)
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data }], statistics: false, rowGroupSize: 100000 })
-    expect(file.byteLength).toBe(170)
+    expect(file.byteLength).toBe(175)
     // round trip
     const result = await parquetReadObjects({ file })
     expect(result.length).toBe(100000)
@@ -115,8 +115,8 @@ describe('parquetWriteBuffer', () => {
   it('writes statistics when enabled', () => {
     const withStats = parquetWriteBuffer({ columnData: exampleData, statistics: true })
     const noStats = parquetWriteBuffer({ columnData: exampleData, statistics: false })
-    expect(withStats.byteLength).toBe(784)
-    expect(noStats.byteLength).toBe(611)
+    expect(withStats.byteLength).toBe(811)
+    expect(noStats.byteLength).toBe(634)
   })
 
   it('serializes list types', async () => {

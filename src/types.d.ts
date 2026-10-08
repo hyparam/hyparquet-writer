@@ -1,4 +1,4 @@
-import type { ColumnChunk, ColumnIndex, CompressionCodec, DecodedArray, Encoding, KeyValue, OffsetIndex, SchemaElement } from 'hyparquet'
+import type { ColumnChunk, ColumnIndex, CompressionCodec, DecodedArray, Encoding, KeyValue, OffsetIndex, SchemaElement, Statistics } from 'hyparquet'
 
 export type Compressor = (input: Uint8Array) => Uint8Array
 export type Compressors = { [K in CompressionCodec]?: Compressor }
@@ -86,9 +86,18 @@ export interface ColumnEncoder {
   bloomFilter?: boolean | BloomFilterOptions
 }
 
+// nan_count and nan_counts are written but not yet typed by hyparquet
+export interface ChunkStatistics extends Statistics {
+  nan_count?: bigint
+}
+
+export interface PageColumnIndex extends ColumnIndex {
+  nan_counts?: bigint[]
+}
+
 export interface PageIndexes {
   chunk: ColumnChunk
-  columnIndex?: ColumnIndex
+  columnIndex?: PageColumnIndex
   offsetIndex?: OffsetIndex
   bloomFilter?: Uint32Array // finalized SBBF blocks
 }
