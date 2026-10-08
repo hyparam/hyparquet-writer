@@ -2,9 +2,9 @@ import { toJson } from 'hyparquet'
 import { geojsonToWkb } from './wkb.js'
 
 /**
- * @import {DecodedArray, SchemaElement, Statistics} from 'hyparquet'
+ * @import {DecodedArray, SchemaElement} from 'hyparquet'
  * @import {MinMaxType} from 'hyparquet/src/types.js'
- * @import {ThriftObject} from '../src/types.js'
+ * @import {ChunkStatistics, ThriftObject} from '../src/types.js'
  */
 
 const dayMillis = 86400000 // 1 day in milliseconds
@@ -290,7 +290,7 @@ export function unconvertMinMax(value, element, isMax) {
 }
 
 /**
- * @param {Statistics} stats
+ * @param {ChunkStatistics} stats
  * @param {SchemaElement} element
  * @returns {ThriftObject}
  */
@@ -304,6 +304,7 @@ export function unconvertStatistics(stats, element) {
     field_6: unconvertMinMax(stats.min_value, element, false),
     field_7: stats.is_max_value_exact ?? minMaxIsExact(stats.max_value ?? stats.max, element),
     field_8: stats.is_min_value_exact ?? minMaxIsExact(stats.min_value ?? stats.min, element),
+    field_9: stats.nan_count,
   }
 }
 
