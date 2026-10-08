@@ -93,6 +93,49 @@ describe('statistics truncation of long string values', () => {
   })
 })
 
+describe('statistics truncation inside a multi-byte code point', () => {
+  const value = 'a'.repeat(15) + '€' // 18 bytes, '€' spans bytes 15..17
+
+  it('cuts string bounds on a code point boundary', async () => {
+    const stats = await readStats(writeCol([value]))
+    expect(stats.min_value).toBe('a'.repeat(15))
+    expect(stats.max_value).toBe('a'.repeat(14) + 'b')
+  })
+
+  it('finds the value with an exact-match query', async () => {
+    const rows = await parquetQuery({ file: writeCol([value]), filter: { col: { $eq: value } } })
+    expect(rows.map(r => r.col)).toEqual([value])
+  })
+
+  it('finds the value with page-level column index enabled', async () => {
+    const data = Array.from({ length: 50 }, (_, i) => `row-${i}`)
+    data.push(value)
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data, type: 'STRING', columnIndex: true }],
+      statistics: true,
+      pageSize: 100,
+    })
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $eq: value } } })
+    expect(rows.map(r => r.col)).toEqual([value])
+  })
+
+  it('keeps a max whole when it cannot be rounded up', async () => {
+    const top = '\u{10ffff}'.repeat(5)
+    const data = Array.from({ length: 50 }, (_, i) => `row-${i}`)
+    data.push(top)
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data, type: 'STRING', columnIndex: true }],
+      statistics: true,
+      pageSize: 100,
+    })
+    const stats = await readStats(buffer)
+    expect(stats.max_value).toBe(top)
+    expect(stats.is_max_value_exact).not.toBe(false)
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $eq: top } } })
+    expect(rows.map(r => r.col)).toEqual([top])
+  })
+})
+
 describe('statistics for UUID columns', () => {
   it('encodes UUID min/max as the raw 16 bytes, not ASCII text', async () => {
     // hyparquet now decodes UUID statistics back to a string. Asserting the
