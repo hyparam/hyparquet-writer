@@ -1,9 +1,12 @@
 # Hyparquet-writer Changelog
 
+## [0.16.11]
+ - Fix string statistics ordering for non-BMP characters
+ - Fix truncated max statistics mutating the caller's Buffer
+
 ## [0.16.10]
  - Split data pages only at row boundaries
  - Optimize delta binary packing for constant-delta blocks
- - Update hyparquet to 1.31.1
 
 ## [0.16.9]
  - Fix INT32 DECIMAL statistics encoding
@@ -14,7 +17,6 @@
 
 ## [0.16.7]
  - Fix ByteWriter buffer capacity checks
- - Update hyparquet to 1.29.2
 
 ## [0.16.6]
  - Keep large dictionaries when dictionary encoding wins, decoupled from pageSize
