@@ -36,6 +36,7 @@ export interface ParquetWriteOptions {
   pageSize?: number // target uncompressed page size in bytes, default 1048576
   dictionarySize?: number // hard cap on distinct-value bytes per column chunk dictionary; unset = keep any dictionary that at least halves the encoded size
   kvMetadata?: KeyValue[]
+  createdBy?: string // FileMetaData created_by, default 'hyparquet'
 }
 
 // Same write options as ParquetWriteOptions, but the data is supplied as rows
