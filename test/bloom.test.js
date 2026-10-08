@@ -11,19 +11,31 @@ describe('optimalNumBytes', () => {
     expect(optimalNumBytes(1, 0.01)).toBe(32)
   })
 
-  it('grows with NDV and snaps below 1024 to a power of two', () => {
+  it('grows with NDV', () => {
     const small = optimalNumBytes(100, 0.01)
     const big = optimalNumBytes(10000, 0.01)
     expect(small).toBeGreaterThanOrEqual(32)
     expect(big).toBeGreaterThan(small)
-    // Below 1024 should be a power of two
-    if (small < 1024) expect(small & small - 1).toBe(0)
   })
 
-  it('always returns a multiple of 32', () => {
-    for (const ndv of [1, 10, 100, 1000, 10000, 100000]) {
-      expect(optimalNumBytes(ndv, 0.01) % 32).toBe(0)
+  it('always returns a power of two', () => {
+    for (const ndv of [0, 1, 10, 100, 1000, 10000, 100000, 1e6, 1e8]) {
+      for (const fpp of [0.001, 0.01, 0.1]) {
+        const numBytes = optimalNumBytes(ndv, fpp)
+        expect(numBytes).toBeGreaterThanOrEqual(32)
+        expect(numBytes & numBytes - 1).toBe(0)
+      }
     }
+  })
+
+  it('rounds up to the next power of two', () => {
+    // 1000 values at 1% need 9686 bits (1211 bytes)
+    expect(optimalNumBytes(1000, 0.01)).toBe(2048)
+  })
+
+  it('caps at 128 MiB', () => {
+    expect(optimalNumBytes(1e9, 0.01)).toBe(128 * 1024 * 1024)
+    expect(optimalNumBytes(Infinity, 0.01)).toBe(128 * 1024 * 1024)
   })
 
   it('looser FPP yields a smaller (or equal) filter', () => {

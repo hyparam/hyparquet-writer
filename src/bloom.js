@@ -16,7 +16,6 @@ const SALT = new Uint32Array([
   0x705495c7, 0x2df1424b, 0x9efc4947, 0x5c6bfb31,
 ])
 
-const BYTES_PER_BLOCK = 32
 const MIN_BYTES = 32 // one block
 const MAX_BYTES = 128 * 1024 * 1024 // parquet-mr default cap
 
@@ -91,28 +90,21 @@ function nextPowerOfTwo(n) {
 
 /**
  * Optimal SBBF size in bytes for a given number of distinct values and
- * target false-positive probability. Matches parquet-mr's BlockSplitBloomFilter:
- * derives bits from m = -8 * ndv / ln(1 - p^(1/8)), rounds up to a whole block,
- * and snaps to the next power of two below 1024 bits.
+ * target false-positive probability. Matches parquet-java's BlockSplitBloomFilter:
+ * derives bits from m = -8 * ndv / ln(1 - p^(1/8)) and rounds up to a power of two
+ * between one block and MAX_BYTES. Arrow C++ rejects a bitset that is not a power of two.
  *
  * @param {number} ndv expected number of distinct values
  * @param {number} fpp target false positive probability, in (0, 1)
- * @returns {number} bloom filter size in bytes (multiple of 32)
+ * @returns {number} bloom filter size in bytes (power of two, at least 32)
  */
 export function optimalNumBytes(ndv, fpp) {
   if (!(fpp > 0 && fpp < 1)) throw new Error(`bloom filter fpp must be in (0, 1), got ${fpp}`)
   if (!(ndv >= 0)) throw new Error(`bloom filter ndv must be >= 0, got ${ndv}`)
   const m = -8 * ndv / Math.log(1 - fpp ** (1 / 8))
-  let numBits = Math.ceil(m)
-  if (!isFinite(numBits) || numBits > MAX_BYTES << 3) numBits = MAX_BYTES << 3
-  // Round up to whole 32-byte blocks
-  const blockBits = BYTES_PER_BLOCK << 3
-  numBits = Math.ceil(numBits / blockBits) * blockBits
-  let numBytes = numBits >> 3
-  if (numBytes < MIN_BYTES) numBytes = MIN_BYTES
-  // Power-of-two snap below 1024 bytes (matches parquet-mr behavior)
-  if (numBytes < 1024) numBytes = nextPowerOfTwo(numBytes)
-  return numBytes
+  const numBytes = Math.ceil(m / 8)
+  if (!(numBytes <= MAX_BYTES)) return MAX_BYTES
+  return nextPowerOfTwo(Math.max(numBytes, MIN_BYTES))
 }
 
 /**

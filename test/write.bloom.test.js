@@ -136,6 +136,18 @@ describe('parquetWriteBuffer bloom filter end-to-end', () => {
     }
   })
 
+  it('writes a bitset whose size is a power of two', () => {
+    const values = Array.from({ length: 1000 }, (_, i) => `value-${i}`)
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'bloomed', data: values, type: 'STRING', bloomFilter: true }],
+    })
+    const { meta_data } = parquetMetadata(buffer).row_groups[0].columns[0]
+    const offset = Number(meta_data?.bloom_filter_offset)
+    const length = meta_data?.bloom_filter_length ?? 0
+    const parsed = readBloomFilter({ view: new DataView(buffer, offset, length), offset: 0 })
+    expect(parsed?.numBytes).toBe(2048)
+  })
+
   it('writes one bloom per row group when bloomFilter is enabled', () => {
     const values = Array.from({ length: 300 }, (_, i) => i)
     const buffer = parquetWriteBuffer({
