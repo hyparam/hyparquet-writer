@@ -1,10 +1,10 @@
 import { parquetMetadataAsync, parquetQuery, parquetReadObjects } from 'hyparquet'
 import { readColumnIndex } from 'hyparquet/src/indexes.js'
 import { describe, expect, it } from 'vitest'
-import { parquetWriteBuffer } from '../src/index.js'
+import { ByteWriter, parquetWriteBuffer, parquetWriteRows } from '../src/index.js'
 
 /**
- * @import {BasicType, ColumnSource} from '../src/types.js'
+ * @import {BasicType, ColumnSource, ParquetWriteOptions} from '../src/types.js'
  * @import {Encoding, Statistics} from 'hyparquet'
  */
 
@@ -16,12 +16,14 @@ const UUID = '8ad1f570-bb0c-4ad0-9b57-4ad7d2d0f32b' // 36 bytes
  * @param {any[]} data
  * @param {BasicType} [type]
  * @param {Partial<ColumnSource>} [extra]
+ * @param {Partial<ParquetWriteOptions>} [options]
  * @returns {ArrayBuffer}
  */
-function writeCol(data, type = 'STRING', extra = {}) {
+function writeCol(data, type = 'STRING', extra = {}, options = {}) {
   return parquetWriteBuffer({
     columnData: [{ name: 'col', data, type, ...extra }],
     statistics: true,
+    ...options,
   })
 }
 
@@ -133,6 +135,60 @@ describe('statistics truncation inside a multi-byte code point', () => {
     expect(stats.is_max_value_exact).not.toBe(false)
     const rows = await parquetQuery({ file: buffer, filter: { col: { $eq: top } } })
     expect(rows.map(r => r.col)).toEqual([top])
+  })
+})
+
+describe('statisticsTruncateLength', () => {
+  it('truncates bounds to the configured length', async () => {
+    const stats = await readStats(writeCol([LONG], 'STRING', {}, { statisticsTruncateLength: 4 }))
+    expect(stats.min_value).toBe('this')
+    expect(stats.max_value).toBe('thit')
+    expect(stats.is_min_value_exact).toBe(false)
+    expect(stats.is_max_value_exact).toBe(false)
+  })
+
+  it('keeps bounds up to the configured length whole', async () => {
+    const stats = await readStats(writeCol([LONG], 'STRING', {}, { statisticsTruncateLength: 64 }))
+    expect(stats.min_value).toBe(LONG)
+    expect(stats.max_value).toBe(LONG)
+    expect(stats.is_min_value_exact).not.toBe(false)
+    expect(stats.is_max_value_exact).not.toBe(false)
+  })
+
+  it('keeps bounds whole with Infinity', async () => {
+    const value = 'x'.repeat(10_000)
+    const stats = await readStats(writeCol([value], 'STRING', {}, { statisticsTruncateLength: Infinity }))
+    expect(stats.min_value).toBe(value)
+    expect(stats.max_value).toBe(value)
+  })
+
+  it('cuts on a code point boundary at the configured length', async () => {
+    const value = 'ab€' // 5 bytes, '€' spans bytes 2..4
+    const buffer = writeCol([value], 'STRING', {}, { statisticsTruncateLength: 3 })
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toBe('ab')
+    expect(stats.max_value).toBe('ac')
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $eq: value } } })
+    expect(rows.map(r => r.col)).toEqual([value])
+  })
+
+  it('applies to parquetWriteRows', async () => {
+    const writer = new ByteWriter()
+    parquetWriteRows({
+      writer,
+      rows: [{ col: LONG }],
+      columns: [{ name: 'col', type: 'STRING' }],
+      statisticsTruncateLength: 4,
+    })
+    const stats = await readStats(writer.getBuffer())
+    expect(stats.min_value).toBe('this')
+  })
+
+  it('rejects a length that is not a positive integer', () => {
+    for (const statisticsTruncateLength of [0, -1, 1.5, NaN]) {
+      expect(() => writeCol(['a'], 'STRING', {}, { statisticsTruncateLength }))
+        .toThrow('statisticsTruncateLength must be a positive integer or Infinity')
+    }
   })
 })
 

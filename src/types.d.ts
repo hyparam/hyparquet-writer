@@ -32,6 +32,7 @@ export interface ParquetWriteOptions {
   codec?: CompressionCodec // global default codec, default 'SNAPPY'
   compressors?: Compressors // custom compressors, required for any codec other than SNAPPY and UNCOMPRESSED
   statistics?: boolean // enable column statistics, default true
+  statisticsTruncateLength?: number // max bytes of a STRING or BYTE_ARRAY min/max in statistics and column indexes (default 16, Infinity keeps whole values; FIXED_LEN_BYTE_ARRAY, JSON, BSON and DECIMAL bounds are never truncated)
   rowGroupSize?: number | number[] // number of rows per row group
   pageSize?: number // target uncompressed page size in bytes, default 1048576
   dictionarySize?: number // hard cap on distinct-value bytes per column chunk dictionary; unset = keep any dictionary that at least halves the encoded size
@@ -77,6 +78,7 @@ export interface ColumnEncoder {
   codec: CompressionCodec
   compressors: Compressors
   stats: boolean
+  statisticsTruncateLength?: number
   pageSize: number
   dictionarySize?: number
   // Spec: If ColumnIndex is present, OffsetIndex must also be present
