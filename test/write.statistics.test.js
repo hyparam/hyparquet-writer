@@ -241,3 +241,44 @@ describe('statistics for non-BMP strings', () => {
     }
   })
 })
+
+describe('per-column statistics option', () => {
+  it('overrides the writer-wide statistics switch', async () => {
+    const data = [3, 1, 2]
+    const on = parquetWriteBuffer({
+      columnData: [
+        { name: 'a', data, type: 'INT32', statistics: false },
+        { name: 'b', data, type: 'INT32' },
+      ],
+    })
+    const [a, b] = (await parquetMetadataAsync(on)).row_groups[0].columns
+    expect(a.meta_data?.statistics).toBeUndefined()
+    expect(a.meta_data?.encoding_stats).toBeUndefined()
+    expect(b.meta_data?.statistics).toMatchObject({ min_value: 1, max_value: 3 })
+    expect(b.meta_data?.encoding_stats).toBeDefined()
+
+    const off = parquetWriteBuffer({
+      columnData: [
+        { name: 'a', data, type: 'INT32', statistics: true },
+        { name: 'b', data, type: 'INT32' },
+      ],
+      statistics: false,
+    })
+    const [c, d] = (await parquetMetadataAsync(off)).row_groups[0].columns
+    expect(c.meta_data?.statistics).toMatchObject({ min_value: 1, max_value: 3 })
+    expect(d.meta_data?.statistics).toBeUndefined()
+  })
+
+  it('gates geospatial statistics', async () => {
+    const point = { type: 'Point', coordinates: [1, 2] }
+    const buffer = parquetWriteBuffer({
+      columnData: [
+        { name: 'a', data: [point], type: 'GEOMETRY', statistics: false },
+        { name: 'b', data: [point], type: 'GEOMETRY' },
+      ],
+    })
+    const [a, b] = (await parquetMetadataAsync(buffer)).row_groups[0].columns
+    expect(a.meta_data?.geospatial_statistics).toBeUndefined()
+    expect(b.meta_data?.geospatial_statistics?.bbox).toBeDefined()
+  })
+})

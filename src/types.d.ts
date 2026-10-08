@@ -52,6 +52,7 @@ export interface ColumnSource {
   nullable?: boolean
   encoding?: Encoding
   codec?: CompressionCodec // per-column codec override, default ParquetWriteOptions.codec
+  statistics?: boolean // per-column statistics override (also encoding_stats and geospatial statistics), default ParquetWriteOptions.statistics
   columnIndex?: boolean // write column indexes, default false
   offsetIndex?: boolean // write offset indexes, default true
   shredding?: true | ShredType // variant shredding config (true = auto-detect)
