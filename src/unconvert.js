@@ -165,7 +165,8 @@ const STATS_TRUNCATE_LENGTH = 16
  */
 function truncateStatistic(bytes, isMax) {
   if (bytes.length <= STATS_TRUNCATE_LENGTH) return bytes
-  const prefix = bytes.slice(0, STATS_TRUNCATE_LENGTH)
+  // copy: Buffer.prototype.slice returns a view, and rounding mutates in place
+  const prefix = new Uint8Array(bytes.subarray(0, STATS_TRUNCATE_LENGTH))
   if (!isMax) return prefix // a prefix is a valid lower bound
   let i = prefix.length - 1
   while (i >= 0 && prefix[i] === 0xff) i-- // drop trailing 0xFF

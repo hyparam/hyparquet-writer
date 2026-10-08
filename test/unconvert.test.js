@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { describe, expect, it } from 'vitest'
 import {
   unconvert,
@@ -371,6 +372,14 @@ describe('unconvertMinMax', () => {
     expected[13] = 0x4f
     expect(max).toEqual(expected)
     expect(compareBytes(max, value)).toBeGreaterThanOrEqual(0)
+  })
+
+  it('should not mutate a Buffer input when rounding a max up', () => {
+    const value = Buffer.from(Array.from({ length: 32 }, (_, i) => i))
+    const original = Buffer.from(value)
+    const max = unconvertMinMax(value, { name: 'test', type: 'BYTE_ARRAY' }, true)
+    expect(max?.[15]).toBe(0x10)
+    expect(value).toEqual(original)
   })
 
   it('should omit a truncated max when every prefix byte is 0xFF', () => {
