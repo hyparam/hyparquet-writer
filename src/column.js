@@ -262,14 +262,9 @@ function getStatistics(values, element) {
       null_count++
       continue
     }
-    if (typeof value === 'object' && !(value instanceof Uint8Array)) continue
-    if (typeof value === 'number' && Number.isNaN(value)) continue // skip NaN per parquet spec
-    // DECIMAL numbers are logical values while bigints are already unscaled.
-    // Compare both representations as unscaled bigints and return that common
-    // representation for metadata conversion.
-    const statisticValue = element.converted_type === 'DECIMAL' && typeof value === 'number'
-      ? BigInt(Math.round(value * 10 ** (element.scale || 0)))
-      : value
+    const statisticValue = physicalStatistic(value, element)
+    if (typeof statisticValue === 'object' && !(statisticValue instanceof Uint8Array)) continue
+    if (typeof statisticValue === 'number' && Number.isNaN(statisticValue)) continue // skip NaN per parquet spec
     if (min_value === undefined || compareValues(statisticValue, min_value) < 0) min_value = statisticValue
     if (max_value === undefined || compareValues(statisticValue, max_value) > 0) max_value = statisticValue
   }
@@ -277,6 +272,26 @@ function getStatistics(values, element) {
   if (min_value === 0) min_value = -0
   if (max_value === 0) max_value = 0
   return { min_value, max_value, null_count }
+}
+
+/**
+ * Normalize values that have more than one input representation, so that
+ * statistics compare them as the physical values they are written as. DECIMAL
+ * numbers are logical values while bigints are already unscaled, and a Date in
+ * a DATE or TIMESTAMP column is stored in the column's unit.
+ *
+ * @param {any} value
+ * @param {SchemaElement} element
+ * @returns {any}
+ */
+function physicalStatistic(value, element) {
+  if (element.converted_type === 'DECIMAL' && typeof value === 'number') {
+    return BigInt(Math.round(value * 10 ** (element.scale || 0)))
+  }
+  if (value instanceof Date && (element.type === 'INT32' || element.type === 'INT64')) {
+    return unconvert(element, [value])[0]
+  }
+  return value
 }
 
 /**

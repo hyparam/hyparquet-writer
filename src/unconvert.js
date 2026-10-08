@@ -192,6 +192,7 @@ function minMaxIsExact(value, element) {
   // only byte-array statistics are ever truncated
   if (type !== 'BYTE_ARRAY' && type !== 'FIXED_LEN_BYTE_ARRAY') return undefined
   if (element.logical_type?.type === 'UUID') return undefined // exactly 16 bytes, never truncated
+  if (element.logical_type?.type === 'FLOAT16') return undefined
   if (element.converted_type === 'DECIMAL') return undefined // encoded as full, exact physical bytes
   const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(value.toString())
   return bytes.length > STATS_TRUNCATE_LENGTH ? false : undefined
@@ -233,6 +234,9 @@ export function unconvertMinMax(value, element, isMax) {
       return new Uint8Array(buffer)
     }
   }
+  if (element.logical_type?.type === 'FLOAT16' && typeof value === 'number') {
+    return unconvertFloat16(value)
+  }
   if (type === 'BYTE_ARRAY' || type === 'FIXED_LEN_BYTE_ARRAY') {
     const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(value.toString())
     return truncateStatistic(bytes, isMax)
@@ -252,9 +256,9 @@ export function unconvertMinMax(value, element, isMax) {
     new DataView(buffer).setInt32(0, value, true)
     return new Uint8Array(buffer)
   }
-  if (type === 'INT64' && typeof value === 'bigint') {
+  if (type === 'INT64' && (typeof value === 'bigint' || typeof value === 'number' && Number.isInteger(value))) {
     const buffer = new ArrayBuffer(8)
-    new DataView(buffer).setBigInt64(0, value, true)
+    new DataView(buffer).setBigInt64(0, BigInt(value), true)
     return new Uint8Array(buffer)
   }
   if (type === 'INT32' && converted_type === 'DATE' && value instanceof Date) {

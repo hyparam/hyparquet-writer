@@ -241,3 +241,86 @@ describe('statistics for non-BMP strings', () => {
     }
   })
 })
+
+describe('statistics for number INT64 values', () => {
+  it('encodes number bounds of a DELTA_BINARY_PACKED INT64 column as int64', async () => {
+    const stats = await readStats(writeCol([3, -5, 2 ** 40], 'INT64', { encoding: 'DELTA_BINARY_PACKED' }))
+    expect(stats.min_value).toBe(-5n)
+    expect(stats.max_value).toBe(2n ** 40n)
+  })
+
+  it('encodes number bounds of a TIMESTAMP column as int64', async () => {
+    const buffer = writeCol([1000, 3000, 2000], 'TIMESTAMP')
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toEqual(new Date(1000))
+    expect(stats.max_value).toEqual(new Date(3000))
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $gt: new Date(2500) } } })
+    expect(rows).toEqual([{ col: new Date(3000) }])
+  })
+})
+
+describe('statistics for FLOAT16 columns', () => {
+  it('encodes bounds as float16, not text', async () => {
+    const buffer = writeCol([1.5, -2, NaN, null], 'FLOAT16')
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toBe(-2)
+    expect(stats.max_value).toBe(1.5)
+    expect(stats.is_min_value_exact).toBeUndefined()
+    expect(stats.is_max_value_exact).toBeUndefined()
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $gt: 1 } } })
+    expect(rows).toEqual([{ col: 1.5 }])
+  })
+
+  it('encodes page index bounds as float16', async () => {
+    const data = Array.from({ length: 40 }, (_, i) => i / 4)
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data, type: 'FLOAT16', columnIndex: true }],
+      statistics: false,
+      pageSize: 20,
+    })
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $gte: 9.5 } }, usePageIndex: true })
+    expect(rows.map(r => r.col)).toEqual([9.5, 9.75])
+  })
+})
+
+describe('statistics for Date values', () => {
+  it('writes bounds for a column of Dates', async () => {
+    const buffer = writeCol([new Date(5000), new Date(1000), null], 'TIMESTAMP')
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toEqual(new Date(1000))
+    expect(stats.max_value).toEqual(new Date(5000))
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $gt: new Date(2000) } } })
+    expect(rows).toEqual([{ col: new Date(5000) }])
+  })
+
+  it('compares Dates and bigints in the column unit', async () => {
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data: [new Date(20), 1000n, 9000n] }],
+      schema: [
+        { name: 'root', num_children: 1 },
+        { name: 'col', type: 'INT64', converted_type: 'TIMESTAMP_MICROS', repetition_type: 'OPTIONAL' },
+      ],
+      statistics: true,
+    })
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toEqual(new Date(1))
+    expect(stats.max_value).toEqual(new Date(20))
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $gt: new Date(10) } } })
+    expect(rows).toEqual([{ col: new Date(20) }])
+  })
+
+  it('writes DATE bounds in days', async () => {
+    const day = 86400000
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data: [new Date(3 * day), 1, new Date(2 * day)] }],
+      schema: [
+        { name: 'root', num_children: 1 },
+        { name: 'col', type: 'INT32', converted_type: 'DATE', repetition_type: 'OPTIONAL' },
+      ],
+      statistics: true,
+    })
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toEqual(new Date(day))
+    expect(stats.max_value).toEqual(new Date(3 * day))
+  })
+})
