@@ -12,11 +12,13 @@ const VALUES_PER_MINIBLOCK = BLOCK_SIZE / MINIBLOCKS_PER_BLOCK // 32
 
 /**
  * Write values using delta binary packed encoding.
+ * Deltas wrap around in two's complement at the width of the physical type.
  *
  * @param {Writer} writer
  * @param {DecodedArray} values
+ * @param {'INT32' | 'INT64'} type
  */
-export function deltaBinaryPack(writer, values) {
+export function deltaBinaryPack(writer, values, type) {
   if (values.length === 0) {
     // Write header with zero count
     writer.appendVarInt(BLOCK_SIZE)
@@ -30,16 +32,16 @@ export function deltaBinaryPack(writer, values) {
   }
 
   if (usesInt32NumberPath(values)) {
-    deltaBinaryPackInt32(writer, values)
+    deltaBinaryPackInt32(writer, values, type === 'INT32')
   } else {
-    deltaBinaryPackBigInt(writer, values)
+    deltaBinaryPackBigInt(writer, values, type === 'INT32' ? 32 : 64)
   }
 }
 
 /**
- * Return whether all values can use exact Number arithmetic. INT32 deltas can
- * span 33 signed bits, but they and their adjusted deltas remain exactly
- * representable as JavaScript numbers.
+ * Return whether all values can use exact Number arithmetic. Unwrapped deltas
+ * of int32 values can span 33 signed bits, but they and their adjusted deltas
+ * remain exactly representable as JavaScript numbers.
  *
  * @param {DecodedArray} values
  * @returns {values is DecodedArray & ArrayLike<number>}
@@ -58,8 +60,9 @@ function usesInt32NumberPath(values) {
  *
  * @param {Writer} writer
  * @param {ArrayLike<number>} values
+ * @param {boolean} wrap - wrap deltas to int32, for the INT32 physical type
  */
-function deltaBinaryPackInt32(writer, values) {
+function deltaBinaryPackInt32(writer, values, wrap) {
   const count = values.length
 
   // Write header
@@ -79,12 +82,12 @@ function deltaBinaryPackInt32(writer, values) {
     const blockSize = blockEnd - index
 
     // Constant-delta blocks have no packed payload or miniblock widths to scan.
-    const firstDelta = values[index] - values[index - 1]
+    const firstDelta = wrap ? values[index] - values[index - 1] | 0 : values[index] - values[index - 1]
     let previous = values[index]
     let constantEnd = index + 1
     while (constantEnd < blockEnd) {
       const value = values[constantEnd]
-      if (value - previous !== firstDelta) break
+      if ((wrap ? value - previous | 0 : value - previous) !== firstDelta) break
       previous = value
       constantEnd++
     }
@@ -96,12 +99,12 @@ function deltaBinaryPackInt32(writer, values) {
     }
 
     // Compute deltas for this block
-    // Adjacent INT32 extremes differ by 4,294,967,295, so Int32Array is not
-    // sufficient even though every input value is a signed 32-bit integer.
-    let minDelta = values[index] - values[index - 1]
+    // Unwrapped, adjacent INT32 extremes differ by 4,294,967,295, so Int32Array
+    // is not sufficient even though every input value is a signed 32-bit integer.
+    let minDelta = firstDelta
     blockDeltas[0] = minDelta
     for (let i = 1; i < blockSize; i++) {
-      const delta = values[index + i] - values[index + i - 1]
+      const delta = wrap ? values[index + i] - values[index + i - 1] | 0 : values[index + i] - values[index + i - 1]
       blockDeltas[i] = delta
       if (delta < minDelta) minDelta = delta
     }
@@ -179,15 +182,16 @@ function deltaBinaryPackInt32(writer, values) {
  *
  * @param {Writer} writer
  * @param {DecodedArray} values
+ * @param {number} bits - physical type width that deltas wrap at
  */
-function deltaBinaryPackBigInt(writer, values) {
+function deltaBinaryPackBigInt(writer, values, bits) {
   const count = values.length
 
   // Write header
   writer.appendVarInt(BLOCK_SIZE)
   writer.appendVarInt(MINIBLOCKS_PER_BLOCK)
   writer.appendVarInt(count)
-  writer.appendZigZag(values[0])
+  writer.appendZigZag(BigInt.asIntN(bits, BigInt(values[0])))
 
   // Process blocks
   const blockDeltas = new BigInt64Array(BLOCK_SIZE)
@@ -198,10 +202,10 @@ function deltaBinaryPackBigInt(writer, values) {
     const blockSize = blockEnd - index
 
     // Compute deltas for this block
-    let minDelta = BigInt(values[index]) - BigInt(values[index - 1])
+    let minDelta = BigInt.asIntN(bits, BigInt(values[index]) - BigInt(values[index - 1]))
     blockDeltas[0] = minDelta
     for (let i = 1; i < blockSize; i++) {
-      const delta = BigInt(values[index + i]) - BigInt(values[index + i - 1])
+      const delta = BigInt.asIntN(bits, BigInt(values[index + i]) - BigInt(values[index + i - 1]))
       blockDeltas[i] = delta
       if (delta < minDelta) minDelta = delta
     }
@@ -300,7 +304,7 @@ export function deltaLengthByteArray(writer, values) {
   }
 
   // Write delta-packed lengths
-  deltaBinaryPack(writer, lengths)
+  deltaBinaryPack(writer, lengths, 'INT32')
 
   // Write raw byte data
   for (const value of values) {
@@ -317,8 +321,8 @@ export function deltaLengthByteArray(writer, values) {
  */
 export function deltaByteArray(writer, values) {
   if (values.length === 0) {
-    deltaBinaryPack(writer, [])
-    deltaBinaryPack(writer, [])
+    deltaBinaryPack(writer, [], 'INT32')
+    deltaBinaryPack(writer, [], 'INT32')
     return
   }
 
@@ -361,10 +365,10 @@ export function deltaByteArray(writer, values) {
   }
 
   // Write delta-packed prefix lengths
-  deltaBinaryPack(writer, prefixLengths)
+  deltaBinaryPack(writer, prefixLengths, 'INT32')
 
   // Write delta-packed suffix lengths
-  deltaBinaryPack(writer, suffixLengths)
+  deltaBinaryPack(writer, suffixLengths, 'INT32')
 
   // Write suffix bytes
   for (let i = 0; i < values.length; i++) {
