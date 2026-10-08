@@ -1,6 +1,7 @@
 import { parquetMetadata, parquetReadObjects } from 'hyparquet'
+import { gunzipSync, gzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
-import { parquetWriteBuffer } from '../src/index.js'
+import { ByteWriter, ParquetWriter, parquetWriteBuffer } from '../src/index.js'
 import { exampleData, exampleMetadata } from './example.js'
 
 /**
@@ -360,6 +361,38 @@ describe('parquetWriteBuffer', () => {
       { name: 'col1', data: [1, 2, 3] },
       { name: 'col2', data: [4, 5] },
     ] })).toThrow('parquet columns must have the same length')
+  })
+
+  it('throws for a codec without a compressor', () => {
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'a', data: ['x'] }], codec: 'ZSTD' }))
+      .toThrow('parquet no compressor for codec ZSTD')
+    expect(() => parquetWriteBuffer({ columnData: [{ name: 'a', data: ['x'], codec: 'GZIP' }] }))
+      .toThrow('parquet no compressor for codec GZIP')
+  })
+
+  it('throws for a missing compressor before writing any column', () => {
+    const writer = new ByteWriter()
+    const pq = new ParquetWriter({ writer, schema: [
+      { name: 'root', num_children: 2 },
+      { name: 'a', type: 'INT32', repetition_type: 'REQUIRED' },
+      { name: 'b', type: 'INT32', repetition_type: 'REQUIRED' },
+    ] })
+    expect(() => pq.write({ columnData: [
+      { name: 'a', data: [1] },
+      { name: 'b', data: [2], codec: 'BROTLI' },
+    ] })).toThrow('parquet no compressor for codec BROTLI')
+    expect(writer.offset).toBe(4)
+  })
+
+  it('writes a codec with a supplied compressor', async () => {
+    const file = parquetWriteBuffer({
+      columnData: [{ name: 'a', data: ['x'] }],
+      codec: 'GZIP',
+      compressors: { GZIP: input => gzipSync(input) },
+    })
+    expect(parquetMetadata(file).row_groups[0].columns[0].meta_data?.codec).toBe('GZIP')
+    const result = await parquetReadObjects({ file, compressors: { GZIP: input => gunzipSync(input) } })
+    expect(result).toEqual([{ a: 'x' }])
   })
 
   it('throws error for unsupported data types', () => {

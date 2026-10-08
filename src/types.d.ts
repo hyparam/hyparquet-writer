@@ -30,7 +30,7 @@ export interface ParquetWriteOptions {
   columnData: ColumnSource[]
   schema?: SchemaElement[]
   codec?: CompressionCodec // global default codec, default 'SNAPPY'
-  compressors?: Compressors // custom compressors
+  compressors?: Compressors // custom compressors, required for any codec other than SNAPPY and UNCOMPRESSED
   statistics?: boolean // enable column statistics, default true
   rowGroupSize?: number | number[] // number of rows per row group
   pageSize?: number // target uncompressed page size in bytes, default 1048576

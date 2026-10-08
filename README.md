@@ -81,7 +81,7 @@ interface ParquetWriteOptions {
   columnData: ColumnSource[]
   schema?: SchemaElement[] // explicit parquet schema
   codec?: CompressionCodec // compression codec (default 'SNAPPY')
-  compressors?: Compressors // custom compressors (default includes snappy)
+  compressors?: Compressors // custom compressors (default includes snappy, required for other codecs)
   statistics?: boolean // enable column statistics (default true)
   pageSize?: number // target page size in bytes (default 1 mb)
   dictionarySize?: number // hard cap on dictionary bytes per column chunk (default: uncapped, dictionaries kept while they at least halve the encoded size)
