@@ -1,10 +1,11 @@
 import { parquetMetadataAsync, parquetQuery, parquetReadObjects } from 'hyparquet'
+import { readColumnIndex } from 'hyparquet/src/indexes.js'
 import { describe, expect, it } from 'vitest'
 import { parquetWriteBuffer } from '../src/index.js'
 
 /**
  * @import {BasicType, ColumnSource} from '../src/types.js'
- * @import {Statistics} from 'hyparquet'
+ * @import {Encoding, Statistics} from 'hyparquet'
  */
 
 // A value longer than the 16-byte statistics truncation threshold.
@@ -158,5 +159,85 @@ describe('statistics for DECIMAL columns', () => {
     const stats = await readStats(buffer)
     expect(stats.min_value).toBe(-0.5)
     expect(stats.max_value).toBe(123.45)
+  })
+})
+describe('statistics for non-BMP strings', () => {
+  // UTF-8 byte order (code point order) puts U+E000 before U+10000, but
+  // JavaScript UTF-16 comparison puts the surrogate pair for U+10000 first.
+  const BMP = ''
+  const ASTRAL = '\u{10000}'
+
+  it('uses UTF-8 byte order for min/max with plain encoding', async () => {
+    const stats = await readStats(writeCol([ASTRAL, BMP], 'STRING', { encoding: 'PLAIN' }))
+    expect(stats.min_value).toBe(BMP)
+    expect(stats.max_value).toBe(ASTRAL)
+  })
+
+  it('uses UTF-8 byte order for min/max with dictionary encoding', async () => {
+    const buffer = writeCol([ASTRAL, BMP, ASTRAL, BMP], 'STRING', { encoding: 'RLE_DICTIONARY' })
+    const meta = await parquetMetadataAsync(buffer)
+    expect(meta.row_groups[0].columns[0].meta_data?.encodings).toContain('RLE_DICTIONARY')
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toBe(BMP)
+    expect(stats.max_value).toBe(ASTRAL)
+  })
+
+  it('ignores nulls when computing min/max', async () => {
+    const stats = await readStats(writeCol([null, ASTRAL, null, BMP, null]))
+    expect(stats.min_value).toBe(BMP)
+    expect(stats.max_value).toBe(ASTRAL)
+    expect(stats.null_count).toBe(3n)
+  })
+
+  it('orders strings sharing a prefix and lone surrogates like their UTF-8 bytes', async () => {
+    const data = ['a\u{10000}', 'az', 'a\uD800', 'a�', 'a']
+    const stats = await readStats(writeCol(data))
+    expect(stats.min_value).toBe('a')
+    expect(stats.max_value).toBe('a\u{10000}')
+  })
+
+  /** @type {Encoding[]} */
+  const encodings = ['PLAIN', 'RLE_DICTIONARY']
+  for (const encoding of encodings) {
+    it(`finds rows with $eq and $in using ${encoding} encoding`, async () => {
+      const buffer = writeCol([ASTRAL, null, BMP], 'STRING', { encoding })
+      const eqBmp = await parquetQuery({ file: buffer, filter: { col: { $eq: BMP } } })
+      expect(eqBmp.map(r => r.col)).toEqual([BMP])
+      const eqAstral = await parquetQuery({ file: buffer, filter: { col: { $eq: ASTRAL } } })
+      expect(eqAstral.map(r => r.col)).toEqual([ASTRAL])
+      const inRows = await parquetQuery({ file: buffer, filter: { col: { $in: [BMP, ASTRAL] } } })
+      expect(inRows.map(r => r.col).sort()).toEqual([ASTRAL, BMP].sort())
+    })
+  }
+
+  it('writes page index bounds and boundary order in UTF-8 byte order', async () => {
+    // Pages ascend in code point order but descend in UTF-16 order
+    const data = [
+      ...Array(20).fill(BMP),
+      ...Array(20).fill(ASTRAL),
+      ...Array(20).fill(null),
+    ]
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data, type: 'STRING', encoding: 'PLAIN', columnIndex: true }],
+      statistics: true,
+      pageSize: 40,
+    })
+    const meta = await parquetMetadataAsync(buffer)
+    const column = meta.row_groups[0].columns[0]
+    const reader = {
+      view: new DataView(buffer, Number(column.column_index_offset), column.column_index_length),
+      offset: 0,
+    }
+    const columnIndex = readColumnIndex(reader, meta.schema[1])
+    expect(columnIndex.null_pages).toEqual([false, false, false, false])
+    expect(columnIndex.min_values).toEqual([BMP, BMP, ASTRAL, ASTRAL])
+    expect(columnIndex.max_values).toEqual([BMP, ASTRAL, ASTRAL, ASTRAL])
+    expect(columnIndex.boundary_order).toBe('ASCENDING')
+
+    for (const value of [BMP, ASTRAL]) {
+      const rows = await parquetQuery({ file: buffer, filter: { col: { $eq: value } } })
+      expect(rows.length).toBe(20)
+      expect(rows.every(r => r.col === value)).toBe(true)
+    }
   })
 })

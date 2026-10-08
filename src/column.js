@@ -295,7 +295,47 @@ function compareValues(left, right) {
     }
     return left.length - right.length
   }
+  if (typeof left === 'string' && typeof right === 'string') return compareStrings(left, right)
   if (left < right) return -1
   if (left > right) return 1
   return 0
+}
+
+/**
+ * Compare strings in UTF-8 byte order, which is code point order. JavaScript
+ * `<` compares UTF-16 code units, which misorders supplementary characters
+ * (surrogate pairs) against U+E000..U+FFFF. Lone surrogates compare as U+FFFD,
+ * matching how TextEncoder writes them.
+ *
+ * @param {string} left
+ * @param {string} right
+ * @returns {number}
+ */
+function compareStrings(left, right) {
+  if (left === right) return 0
+  const length = Math.min(left.length, right.length)
+  let i = 0
+  while (i < length && left.charCodeAt(i) === right.charCodeAt(i)) i++
+  // back up if the difference is in the low half of a surrogate pair
+  if (i > 0) {
+    const prev = left.charCodeAt(i - 1)
+    if (prev >= 0xd800 && prev <= 0xdbff) i--
+  }
+  while (i < left.length && i < right.length) {
+    const a = codePointAt(left, i)
+    const b = codePointAt(right, i)
+    if (a !== b) return a - b
+    i += a > 0xffff ? 2 : 1
+  }
+  return left.length - right.length
+}
+
+/**
+ * @param {string} str
+ * @param {number} i
+ * @returns {number}
+ */
+function codePointAt(str, i) {
+  const code = str.codePointAt(i) ?? 0xfffd
+  return code >= 0xd800 && code <= 0xdfff ? 0xfffd : code
 }
