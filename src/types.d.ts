@@ -68,7 +68,7 @@ export interface PageData {
 
 export interface BloomFilterOptions {
   fpp?: number // false positive probability, default 0.01
-  maxBytes?: number // skip emission above this size, default 1 MiB
+  maxBytes?: number // cap the filter at the largest power of two <= maxBytes, default 1 MiB
 }
 
 export interface ColumnEncoder {

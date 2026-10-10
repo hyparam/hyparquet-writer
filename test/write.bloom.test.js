@@ -148,6 +148,20 @@ describe('parquetWriteBuffer bloom filter end-to-end', () => {
     expect(parsed?.numBytes).toBe(2048)
   })
 
+  it('caps the bitset at maxBytes instead of dropping it', async () => {
+    const values = Array.from({ length: 1000 }, (_, i) => `value-${i}`)
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'bloomed', data: values, type: 'STRING', bloomFilter: { maxBytes: 1000 } }],
+    })
+    const { meta_data } = parquetMetadata(buffer).row_groups[0].columns[0]
+    const offset = Number(meta_data?.bloom_filter_offset)
+    const length = meta_data?.bloom_filter_length ?? 0
+    const parsed = readBloomFilter({ view: new DataView(buffer, offset, length), offset: 0 })
+    expect(parsed?.numBytes).toBe(512)
+    const rows = await parquetReadObjects({ file: buffer, filter: { bloomed: { $eq: 'value-999' } }, useBloomFilters: true })
+    expect(rows).toEqual([{ bloomed: 'value-999' }])
+  })
+
   it('writes one bloom per row group when bloomFilter is enabled', () => {
     const values = Array.from({ length: 300 }, (_, i) => i)
     const buffer = parquetWriteBuffer({
