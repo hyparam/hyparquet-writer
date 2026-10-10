@@ -22,6 +22,7 @@ export function parquetWrite({
   statistics = true,
   rowGroupSize = [1000, 100000],
   kvMetadata,
+  createdBy,
   pageSize = 1048576,
   dictionarySize,
 }) {
@@ -51,6 +52,7 @@ export function parquetWrite({
     compressors,
     statistics,
     kvMetadata,
+    createdBy,
   })
   const w = pq.write({
     columnData,
