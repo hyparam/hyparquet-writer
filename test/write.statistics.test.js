@@ -241,3 +241,42 @@ describe('statistics for non-BMP strings', () => {
     }
   })
 })
+
+describe('statistics for JSON columns', () => {
+  it('orders numbers by their encoded bytes', async () => {
+    const stats = await readStats(writeCol([9, 10], 'JSON'))
+    expect(stats.min_value).toBe('10')
+    expect(stats.max_value).toBe('9')
+  })
+
+  it('keeps the quotes of string values', async () => {
+    const stats = await readStats(writeCol(['b', 'a'], 'JSON'))
+    expect(stats.min_value).toBe('"a"')
+    expect(stats.max_value).toBe('"b"')
+  })
+
+  it('includes object and array values in the bounds', async () => {
+    const stats = await readStats(writeCol([[1, 2], 5, { a: 1 }, 'x', null], 'JSON'))
+    expect(stats.min_value).toBe('"x"')
+    expect(stats.max_value).toBe('{"a":1}')
+    expect(stats.null_count).toBe(1n)
+  })
+
+  it('writes page index bounds in encoded byte order', async () => {
+    const data = [...Array(20).fill(9), ...Array(20).fill(10)]
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data, type: 'JSON', encoding: 'PLAIN', columnIndex: true }],
+      pageSize: 40,
+    })
+    const meta = await parquetMetadataAsync(buffer)
+    const column = meta.row_groups[0].columns[0]
+    const reader = {
+      view: new DataView(buffer, Number(column.column_index_offset), column.column_index_length),
+      offset: 0,
+    }
+    const columnIndex = readColumnIndex(reader, meta.schema[1])
+    expect(columnIndex.min_values).toEqual(['10', '10'])
+    expect(columnIndex.max_values).toEqual(['9', '10'])
+    expect(columnIndex.boundary_order).toBe('DESCENDING')
+  })
+})

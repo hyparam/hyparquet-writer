@@ -32,7 +32,6 @@ export function writeColumn({ writer, column, pageData }) {
   const isGeospatial = element?.logical_type?.type === 'GEOMETRY' || element?.logical_type?.type === 'GEOGRAPHY'
 
   // Compute statistics
-  const statistics = stats ? getStatistics(values, element) : undefined
   const geospatial_statistics = stats && isGeospatial ? geospatialStatistics(values) : undefined
 
   // Build bloom filter from original values (hashParquetValue reads schema info from element)
@@ -49,6 +48,9 @@ export function writeColumn({ writer, column, pageData }) {
   let dictionary_page_offset
   const selectPhysical = element.converted_type !== 'UTF8'
   const dictionaryValues = selectPhysical ? unconvert(element, values) : values
+  // JSON bounds order the encoded bytes, not the JS values
+  const statisticsValues = element.converted_type === 'JSON' ? dictionaryValues : values
+  const statistics = stats ? getStatistics(statisticsValues, element) : undefined
   const { dictionary, indexes } = useDictionary(
     dictionaryValues, type, type_length, userEncoding, dictionarySize, maxDefinitionLevel === 0
   )
@@ -119,7 +121,7 @@ export function writeColumn({ writer, column, pageData }) {
 
     // ColumnIndex construction
     if (columnIndex) {
-      const pageValues = values.slice(start, end) // original values not indexes
+      const pageValues = statisticsValues.slice(start, end) // original values not indexes
       const { min_value, max_value, null_count = 0n } = getStatistics(pageValues, element)
 
       columnIndex.null_pages.push(null_count === BigInt(end - start)) // all nulls
