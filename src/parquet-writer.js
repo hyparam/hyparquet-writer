@@ -62,6 +62,11 @@ export class ParquetWriter {
    * @returns {void | Promise<void>}
    */
   write({ columnData, rowGroupSize = [1000, 100000], pageSize = 1048576, dictionarySize }) {
+    for (const { codec = this.codec } of columnData) {
+      if (codec !== 'UNCOMPRESSED' && !this.compressors[codec]) {
+        throw new Error(`parquet no compressor for codec ${codec}`)
+      }
+    }
     const columnDataRows = columnData[0]?.data?.length || 0
     /** @type {Promise<void> | undefined} */
     let pending
