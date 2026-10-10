@@ -218,6 +218,7 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
  * @param {Writer} writer
  * @param {ColumnEncoder} column
  * @param {DecodedArray} dictionary
+ * @returns {number} uncompressed minus compressed page size
  */
 export function writeDictionaryPage(writer, column, dictionary) {
   const { element, codec, compressors } = column
@@ -243,4 +244,5 @@ export function writeDictionaryPage(writer, column, dictionary) {
     },
   })
   writer.appendBytes(compressedBytes)
+  return dictionaryBytes.byteLength - compressedBytes.byteLength
 }

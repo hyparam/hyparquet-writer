@@ -29,6 +29,13 @@ function hashBytes(bytes) {
 }
 
 describe('parquetWrite dictionary encoding', () => {
+  it('lists the PLAIN dictionary page encoding with RLE_DICTIONARY', () => {
+    const buffer = parquetWriteBuffer({ columnData: [{ name: 'value', data: [1, 2, 1, 2, 1, 2, 1, 2] }] })
+    const column = parquetMetadata(buffer).row_groups[0].columns[0]
+    expect(column.meta_data?.dictionary_page_offset).toBeDefined()
+    expect(column.meta_data?.encodings).toEqual(['PLAIN', 'RLE_DICTIONARY'])
+  })
+
   it('rejects null values in required dictionary columns', () => {
     expect(() => parquetWriteBuffer({
       columnData: [{ name: 'value', data: [1, 1, null], type: 'INT32', nullable: false }],

@@ -132,11 +132,14 @@ export class ParquetWriter {
           }
         }
 
+        let total_byte_size = 0n
+        for (const { meta_data } of columns) total_byte_size += meta_data?.total_uncompressed_size ?? 0n
         this.num_rows += BigInt(groupSize)
         this.row_groups.push({
           columns,
-          total_byte_size: BigInt(this.writer.offset - groupStartOffset),
+          total_byte_size,
           num_rows: BigInt(groupSize),
+          total_compressed_size: BigInt(this.writer.offset - groupStartOffset),
         })
         return this.writer.flush?.()
       }

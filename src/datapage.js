@@ -13,6 +13,7 @@ import { serializeTCompactProtocol } from './thrift.js'
  * @param {ColumnEncoder} options.column
  * @param {Encoding} options.encoding
  * @param {PageData} options.pageData
+ * @returns {number} uncompressed minus compressed page size
  */
 export function writeDataPageV2({ writer, column, encoding, pageData }) {
   const { columnName, element, codec, compressors } = column
@@ -98,6 +99,7 @@ export function writeDataPageV2({ writer, column, encoding, pageData }) {
 
   // write page data
   writer.appendBytes(compressedBytes)
+  return page.offset - compressedBytes.length
 }
 
 /**
