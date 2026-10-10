@@ -55,7 +55,7 @@ export function writeDataPageV2({ writer, column, encoding, pageData }) {
     if (type !== 'INT32' && type !== 'INT64') {
       throw new Error('DELTA_BINARY_PACKED encoding only supported for INT32 and INT64 types')
     }
-    deltaBinaryPack(page, nonnull)
+    deltaBinaryPack(page, nonnull, type)
   } else if (encoding === 'DELTA_LENGTH_BYTE_ARRAY') {
     if (type !== 'BYTE_ARRAY') {
       throw new Error('DELTA_LENGTH_BYTE_ARRAY encoding only supported for BYTE_ARRAY type')
