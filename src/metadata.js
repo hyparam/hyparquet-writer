@@ -13,8 +13,9 @@ import { unconvertStatistics } from './unconvert.js'
  *
  * @param {Writer} writer
  * @param {FileMetaData} metadata
+ * @param {number} [statisticsTruncateLength] max bytes for a byte-array min/max
  */
-export function writeMetadata(writer, metadata) {
+export function writeMetadata(writer, metadata, statisticsTruncateLength) {
   /** @type {ThriftObject} */
   const compact = {
     field_1: metadata.version,
@@ -52,7 +53,8 @@ export function writeMetadata(writer, metadata) {
           field_11: c.meta_data.dictionary_page_offset,
           field_12: c.meta_data.statistics && unconvertStatistics(
             c.meta_data.statistics,
-            schemaElement(metadata.schema, c.meta_data.path_in_schema)
+            schemaElement(metadata.schema, c.meta_data.path_in_schema),
+            statisticsTruncateLength
           ),
           field_13: c.meta_data.encoding_stats && c.meta_data.encoding_stats.map(es => ({
             field_1: PageTypes.indexOf(es.page_type),

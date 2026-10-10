@@ -23,9 +23,14 @@ export class ParquetWriter {
    * @param {CompressionCodec} [options.codec]
    * @param {Compressors} [options.compressors]
    * @param {boolean} [options.statistics]
+   * @param {number} [options.statisticsTruncateLength]
    * @param {KeyValue[]} [options.kvMetadata]
    */
-  constructor({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, kvMetadata }) {
+  constructor({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, statisticsTruncateLength, kvMetadata }) {
+    if (statisticsTruncateLength !== undefined && statisticsTruncateLength !== Infinity &&
+      !(Number.isInteger(statisticsTruncateLength) && statisticsTruncateLength > 0)) {
+      throw new Error('statisticsTruncateLength must be a positive integer or Infinity')
+    }
     this.writer = writer
     /** @type {SchemaElement[]} */
     this.schema = schema
@@ -34,6 +39,7 @@ export class ParquetWriter {
     // Include built-in snappy as fallback
     this.compressors = { SNAPPY: snappyCompress, ...compressors }
     this.statistics = statistics
+    this.statisticsTruncateLength = statisticsTruncateLength
     /** @type {KeyValue[] | undefined} */
     this.kvMetadata = kvMetadata
 
@@ -112,6 +118,7 @@ export class ParquetWriter {
               codec,
               compressors: this.compressors,
               stats: this.statistics,
+              statisticsTruncateLength: this.statisticsTruncateLength,
               pageSize,
               dictionarySize,
               columnIndex,
@@ -174,7 +181,7 @@ export class ParquetWriter {
     }
     // @ts-ignore don't want to actually serialize metadata_length
     delete metadata.metadata_length
-    writeMetadata(this.writer, metadata)
+    writeMetadata(this.writer, metadata, this.statisticsTruncateLength)
 
     // write footer PAR1
     this.writer.appendUint32(0x31524150)
