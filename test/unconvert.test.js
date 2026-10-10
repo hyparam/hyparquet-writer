@@ -456,11 +456,38 @@ describe('unconvertMinMax', () => {
       .toThrow('unsupported type for statistics: INT96 with value 123')
   })
 
-  it('should throw an error for INT64 if value is a number instead of bigint or Date', () => {
+  it('should encode a safe integer number as INT64', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', type: 'INT64' }
-    expect(() => unconvertMinMax(123, schema, false))
-      .toThrow('unsupported type for statistics: INT64 with value 123')
+    const result = unconvertMinMax(-123, schema, false)
+    expect(result).toEqual(new Uint8Array([0x85, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]))
+    expect(convertMetadata(result, schema, DEFAULT_PARSERS)).toBe(-123n)
+  })
+
+  it('should throw for INT64 if a number is not an integer', () => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', type: 'INT64' }
+    expect(() => unconvertMinMax(1.5, schema, false))
+      .toThrow('unsupported type for statistics: INT64 with value 1.5')
+  })
+
+  it('should encode an integer number above 2^53 as INT64', () => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', type: 'INT64' }
+    const expected = new Uint8Array(8)
+    new DataView(expected.buffer).setBigInt64(0, 2n ** 53n, true)
+    expect(unconvertMinMax(2 ** 53, schema, false)).toEqual(expected)
+  })
+
+  it('should encode FLOAT16 bounds as float16 bytes', () => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', type: 'FIXED_LEN_BYTE_ARRAY', type_length: 2, logical_type: { type: 'FLOAT16' } }
+    expect(unconvertMinMax(1.5, schema, false)).toEqual(new Uint8Array([0x00, 0x3e]))
+    expect(unconvertMinMax(-2, schema, true)).toEqual(new Uint8Array([0x00, 0xc0]))
+    expect(convertMetadata(unconvertMinMax(0.1, schema, true), schema, DEFAULT_PARSERS))
+      .toBe(parseFloat16(unconvertFloat16(0.1)))
+    expect(unconvertStatistics({ min_value: 0.30000001192092896, max_value: 0.30000001192092896 }, schema))
+      .toMatchObject({ field_7: undefined, field_8: undefined })
   })
 
   /** @type {Array<{name: string, schema: SchemaElement, value: bigint | Date, expected: bigint}>} */

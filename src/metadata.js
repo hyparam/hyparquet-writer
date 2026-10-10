@@ -94,6 +94,7 @@ export function writeMetadata(writer, metadata) {
       field_2: kv.value,
     })),
     field_6: metadata.created_by,
+    field_7: metadata.schema.filter(element => element.type).map(() => ({ field_1: {} })),
   }
 
   // write metadata as thrift

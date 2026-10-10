@@ -1,5 +1,6 @@
 import { parquetMetadataAsync, parquetQuery, parquetReadObjects } from 'hyparquet'
 import { readColumnIndex } from 'hyparquet/src/indexes.js'
+import { deserializeTCompactProtocol } from 'hyparquet/src/thrift.js'
 import { describe, expect, it } from 'vitest'
 import { parquetWriteBuffer } from '../src/index.js'
 
@@ -34,6 +35,30 @@ async function readStats(buffer) {
   const stats = meta.row_groups[0].columns[0].meta_data?.statistics
   if (!stats) throw new Error('expected statistics')
   return stats
+}
+
+/**
+ * Decode the footer without hyparquet's parsing, for fields it does not read.
+ *
+ * @param {ArrayBuffer} buffer
+ * @returns {any}
+ */
+function readRawFooter(buffer) {
+  const view = new DataView(buffer)
+  const metadataLength = view.getUint32(buffer.byteLength - 8, true)
+  return deserializeTCompactProtocol({ view, offset: buffer.byteLength - 8 - metadataLength })
+}
+
+/**
+ * @param {ArrayBuffer} buffer
+ * @returns {Promise<any>}
+ */
+async function readRawColumnIndex(buffer) {
+  const meta = await parquetMetadataAsync(buffer)
+  const column = meta.row_groups[0].columns[0]
+  if (column.column_index_offset === undefined) return undefined
+  const view = new DataView(buffer, Number(column.column_index_offset), column.column_index_length)
+  return deserializeTCompactProtocol({ view, offset: 0 })
 }
 
 describe('statistics truncation of long string values', () => {
@@ -239,5 +264,142 @@ describe('statistics for non-BMP strings', () => {
       expect(rows.length).toBe(20)
       expect(rows.every(r => r.col === value)).toBe(true)
     }
+  })
+})
+
+describe('statistics for number INT64 values', () => {
+  it('encodes number bounds of a DELTA_BINARY_PACKED INT64 column as int64', async () => {
+    const stats = await readStats(writeCol([3, -5, 2 ** 40], 'INT64', { encoding: 'DELTA_BINARY_PACKED' }))
+    expect(stats.min_value).toBe(-5n)
+    expect(stats.max_value).toBe(2n ** 40n)
+  })
+
+  it('encodes number bounds of a TIMESTAMP column as int64', async () => {
+    const buffer = writeCol([1000, 3000, 2000], 'TIMESTAMP')
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toEqual(new Date(1000))
+    expect(stats.max_value).toEqual(new Date(3000))
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $gt: new Date(2500) } } })
+    expect(rows).toEqual([{ col: new Date(3000) }])
+  })
+})
+
+describe('statistics for FLOAT16 columns', () => {
+  it('encodes bounds as float16, not text', async () => {
+    const buffer = writeCol([1.5, -2, NaN, null], 'FLOAT16')
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toBe(-2)
+    expect(stats.max_value).toBe(1.5)
+    expect(stats.is_min_value_exact).toBeUndefined()
+    expect(stats.is_max_value_exact).toBeUndefined()
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $gt: 1 } } })
+    expect(rows).toEqual([{ col: 1.5 }])
+  })
+
+  it('encodes page index bounds as float16', async () => {
+    const data = Array.from({ length: 40 }, (_, i) => i / 4)
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data, type: 'FLOAT16', columnIndex: true }],
+      statistics: false,
+      pageSize: 20,
+    })
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $gte: 9.5 } }, usePageIndex: true })
+    expect(rows.map(r => r.col)).toEqual([9.5, 9.75])
+  })
+})
+
+describe('statistics for Date values', () => {
+  it('writes bounds for a column of Dates', async () => {
+    const buffer = writeCol([new Date(5000), new Date(1000), null], 'TIMESTAMP')
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toEqual(new Date(1000))
+    expect(stats.max_value).toEqual(new Date(5000))
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $gt: new Date(2000) } } })
+    expect(rows).toEqual([{ col: new Date(5000) }])
+  })
+
+  it('compares Dates and bigints in the column unit', async () => {
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data: [new Date(20), 1000n, 9000n] }],
+      schema: [
+        { name: 'root', num_children: 1 },
+        { name: 'col', type: 'INT64', converted_type: 'TIMESTAMP_MICROS', repetition_type: 'OPTIONAL' },
+      ],
+      statistics: true,
+    })
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toEqual(new Date(1))
+    expect(stats.max_value).toEqual(new Date(20))
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $gt: new Date(10) } } })
+    expect(rows).toEqual([{ col: new Date(20) }])
+  })
+
+  it('writes DATE bounds in days', async () => {
+    const day = 86400000
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data: [new Date(3 * day), 1, new Date(2 * day)] }],
+      schema: [
+        { name: 'root', num_children: 1 },
+        { name: 'col', type: 'INT32', converted_type: 'DATE', repetition_type: 'OPTIONAL' },
+      ],
+      statistics: true,
+    })
+    const stats = await readStats(buffer)
+    expect(stats.min_value).toEqual(new Date(day))
+    expect(stats.max_value).toEqual(new Date(3 * day))
+  })
+})
+
+describe('NaN statistics', () => {
+  it('writes nan_count for floating point columns, even when zero', () => {
+    /** @type {[BasicType, any[], bigint][]} */
+    const cases = [
+      ['DOUBLE', [1, NaN, null, 3, NaN], 2n],
+      ['FLOAT', [1, NaN, 2], 1n],
+      ['FLOAT16', [NaN, 0.5], 1n],
+      ['DOUBLE', [1, 2], 0n],
+    ]
+    for (const [type, data, nanCount] of cases) {
+      const stats = readRawFooter(writeCol(data, type)).field_4[0].field_1[0].field_3.field_12
+      expect(stats.field_9).toBe(nanCount)
+    }
+  })
+
+  it('omits nan_count for other columns', () => {
+    const stats = readRawFooter(writeCol([1, 2], 'INT32')).field_4[0].field_1[0].field_3.field_12
+    expect(stats.field_9).toBeUndefined()
+  })
+
+  it('omits min and max when every non-null value is NaN', () => {
+    const stats = readRawFooter(writeCol([NaN, null, NaN], 'DOUBLE')).field_4[0].field_1[0].field_3.field_12
+    expect(stats.field_5).toBeUndefined()
+    expect(stats.field_6).toBeUndefined()
+    expect(stats.field_9).toBe(2n)
+  })
+
+  it('writes nan_counts in the column index', async () => {
+    const data = [1, NaN, 2, 3, 4, NaN, NaN, 6]
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data, type: 'DOUBLE', encoding: 'PLAIN', columnIndex: true }],
+      pageSize: 24, // two values per page
+    })
+    const columnIndex = await readRawColumnIndex(buffer)
+    expect(columnIndex.field_8).toEqual([1n, 0n, 1n, 1n])
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $gt: 5 } }, usePageIndex: true })
+    expect(rows).toEqual([{ col: 6 }])
+  })
+
+  it('writes no column index when a page is all NaN', async () => {
+    const data = [1, 2, NaN, NaN, 4, 5]
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'col', data, type: 'DOUBLE', encoding: 'PLAIN', columnIndex: true }],
+      pageSize: 24, // two values per page
+    })
+    const meta = await parquetMetadataAsync(buffer)
+    const column = meta.row_groups[0].columns[0]
+    expect(column.column_index_offset).toBeUndefined()
+    expect(column.offset_index_offset).toBeDefined()
+    const rows = await parquetQuery({ file: buffer, filter: { col: { $gt: 4 } }, usePageIndex: true })
+    expect(rows).toEqual([{ col: 5 }])
   })
 })
