@@ -202,12 +202,13 @@ function deltaBinaryPackBigInt(writer, values, bits) {
     const blockSize = blockEnd - index
 
     // Compute deltas for this block
-    let minDelta = BigInt.asIntN(bits, BigInt(values[index]) - BigInt(values[index - 1]))
-    blockDeltas[0] = minDelta
-    for (let i = 1; i < blockSize; i++) {
-      const delta = BigInt.asIntN(bits, BigInt(values[index + i]) - BigInt(values[index + i - 1]))
-      blockDeltas[i] = delta
-      if (delta < minDelta) minDelta = delta
+    // BigInt64Array wraps stored deltas to int64, so read them back
+    let minDelta = 0n
+    for (let i = 0; i < blockSize; i++) {
+      blockDeltas[i] = BigInt(values[index + i]) - BigInt(values[index + i - 1])
+      if (bits === 32) blockDeltas[i] = BigInt.asIntN(32, blockDeltas[i])
+      const delta = blockDeltas[i]
+      if (i === 0 || delta < minDelta) minDelta = delta
     }
     writer.appendZigZag(minDelta)
 
