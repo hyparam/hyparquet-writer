@@ -24,6 +24,35 @@ describe('DELTA_BINARY_PACKED encoding', () => {
     const result = await parquetReadObjects({ file })
     expect(result).toEqual(data.map(bigint => ({ bigint })))
   })
+
+  it('writes DELTA_BINARY_PACKED for INT32 extremes', async () => {
+    const data = [0x7fffffff, -0x80000000, 0x7fffffff, -0x80000000, 0, -1, 1]
+    const file = parquetWriteBuffer({
+      columnData: [{ name: 'int', data, encoding: 'DELTA_BINARY_PACKED' }],
+    })
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual(data.map(int => ({ int })))
+  })
+
+  it('writes DELTA_BINARY_PACKED for INT64 extremes', async () => {
+    const min = -(2n ** 63n)
+    const max = 2n ** 63n - 1n
+    const data = [min, max, min, 0n, max, -1n, 1n]
+    const file = parquetWriteBuffer({
+      columnData: [{ name: 'bigint', data, encoding: 'DELTA_BINARY_PACKED' }],
+    })
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual(data.map(bigint => ({ bigint })))
+  })
+
+  it('writes DELTA_BINARY_PACKED for INT64 numbers outside int32', async () => {
+    const file = parquetWriteBuffer({
+      columnData: [{ name: 'bigint', type: 'INT64', data: [2 ** 31, 1, 5], encoding: 'DELTA_BINARY_PACKED' }],
+      statistics: false,
+    })
+    const result = await parquetReadObjects({ file })
+    expect(result).toEqual([{ bigint: 2n ** 31n }, { bigint: 1n }, { bigint: 5n }])
+  })
 })
 
 describe('DELTA_LENGTH_BYTE_ARRAY encoding', () => {

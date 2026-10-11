@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ByteWriter } from '../src/bytewriter.js'
 import { deltaBinaryPack, deltaByteArray, deltaLengthByteArray } from '../src/delta.js'
 import { deltaBinaryUnpack, deltaByteArray as deltaByteArrayRead, deltaLengthByteArray as deltaLengthByteArrayRead } from 'hyparquet/src/delta.js'
+import { readVarInt, readZigZagBigInt } from 'hyparquet/src/thrift.js'
 
 const decoder = new TextDecoder()
 const encoder = new TextEncoder()
@@ -14,7 +15,7 @@ const encoder = new TextEncoder()
  */
 function roundTripInt32(values) {
   const writer = new ByteWriter()
-  deltaBinaryPack(writer, values)
+  deltaBinaryPack(writer, values, 'INT32')
   const reader = { view: writer.view, offset: 0 }
   const output = new Int32Array(values.length)
   deltaBinaryUnpack(reader, values.length, output)
@@ -24,13 +25,38 @@ function roundTripInt32(values) {
 /**
  * Encode values for byte-level comparisons between encoder paths.
  *
- * @param {number[] | Int32Array | bigint[]} values
+ * @param {number[] | Int32Array | Uint32Array | bigint[]} values
+ * @param {'INT32' | 'INT64'} type
  * @returns {Uint8Array}
  */
-function encodeIntValues(values) {
+function encodeIntValues(values, type) {
   const writer = new ByteWriter()
-  deltaBinaryPack(writer, values)
+  deltaBinaryPack(writer, values, type)
   return writer.getBytes()
+}
+
+/**
+ * Read the first value and the min delta and miniblock bit widths of every block.
+ *
+ * @param {Uint8Array} bytes
+ * @returns {{ first: bigint, minDeltas: bigint[], bitWidths: number[] }}
+ */
+function readBlockHeaders(bytes) {
+  const reader = { view: new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), offset: 0 }
+  const blockSize = readVarInt(reader)
+  const miniblocks = readVarInt(reader)
+  const count = readVarInt(reader)
+  const first = readZigZagBigInt(reader)
+  const minDeltas = []
+  const bitWidths = []
+  for (let read = 1; read < count; read += blockSize) {
+    minDeltas.push(readZigZagBigInt(reader))
+    const widths = Array.from(bytes.subarray(reader.offset, reader.offset + miniblocks))
+    reader.offset += miniblocks
+    for (const width of widths) reader.offset += width * blockSize / miniblocks / 8
+    bitWidths.push(...widths)
+  }
+  return { first, minDeltas, bitWidths }
 }
 
 /**
@@ -41,7 +67,7 @@ function encodeIntValues(values) {
  */
 function roundTripBigInt(values) {
   const writer = new ByteWriter()
-  deltaBinaryPack(writer, values)
+  deltaBinaryPack(writer, values, 'INT64')
   const reader = { view: writer.view, offset: 0 }
   const output = new BigInt64Array(values.length)
   deltaBinaryUnpack(reader, values.length, output)
@@ -161,8 +187,10 @@ describe('deltaBinaryPack', () => {
 
     for (const values of fixtures) {
       const bigintValues = Array.from(values, value => BigInt(value))
-      expect(encodeIntValues(values)).toEqual(encodeIntValues(bigintValues))
+      expect(encodeIntValues(values, 'INT32')).toEqual(encodeIntValues(bigintValues, 'INT32'))
+      expect(encodeIntValues(values, 'INT64')).toEqual(encodeIntValues(bigintValues, 'INT64'))
       expect(roundTripInt32(values)).toEqual(Array.from(values))
+      expect(roundTripBigInt(bigintValues)).toEqual(bigintValues)
     }
   })
 
@@ -170,9 +198,9 @@ describe('deltaBinaryPack', () => {
     'should match bigint bytes for constant deltas with %i values', count => {
       for (const step of [-7, 0, 7]) {
         const values = Array.from({ length: count }, (_, i) => 1000 + i * step)
-        const expected = encodeIntValues(values.map(BigInt))
-        expect(encodeIntValues(values)).toEqual(expected)
-        expect(encodeIntValues(Int32Array.from(values))).toEqual(expected)
+        const expected = encodeIntValues(values.map(BigInt), 'INT32')
+        expect(encodeIntValues(values, 'INT32')).toEqual(expected)
+        expect(encodeIntValues(Int32Array.from(values), 'INT32')).toEqual(expected)
         expect(roundTripInt32(values)).toEqual(values)
       }
     }
@@ -186,7 +214,7 @@ describe('deltaBinaryPack', () => {
         value += varying ? i % 5 - 2 : 3
         return value
       })
-      expect(encodeIntValues(values)).toEqual(encodeIntValues(values.map(BigInt)))
+      expect(encodeIntValues(values, 'INT32')).toEqual(encodeIntValues(values.map(BigInt), 'INT32'))
       expect(roundTripInt32(values)).toEqual(values)
       const bigints = values.map(value => 10000000000n + BigInt(value))
       expect(roundTripBigInt(bigints)).toEqual(bigints)
@@ -195,7 +223,51 @@ describe('deltaBinaryPack', () => {
 
   it('should use the bigint fallback when later values are outside int32', () => {
     const values = [0, 0x80000000, 0x80000001, -0x80000001, -0x80000002]
-    expect(encodeIntValues(values)).toEqual(encodeIntValues(values.map(BigInt)))
+    expect(encodeIntValues(values, 'INT64')).toEqual(encodeIntValues(values.map(BigInt), 'INT64'))
+  })
+
+  it('should wrap INT32 deltas to at most 32 bits', () => {
+    const extremes = [0x7fffffff, -0x80000000, 0x7fffffff, -0x80000000, 0, -1, 1]
+    const fixtures = [
+      extremes,
+      [-0x80000000, 0x7fffffff],
+      Array.from({ length: 300 }, (_, i) => i % 2 ? 0x7fffffff - i : -0x80000000 + i),
+    ]
+    for (const values of fixtures) {
+      const { first, minDeltas, bitWidths } = readBlockHeaders(encodeIntValues(values, 'INT32'))
+      expect(first).toBe(BigInt(values[0]))
+      for (const minDelta of minDeltas) {
+        expect(minDelta).toBeGreaterThanOrEqual(-0x80000000n)
+        expect(minDelta).toBeLessThanOrEqual(0x7fffffffn)
+      }
+      expect(Math.max(...bitWidths)).toBeLessThanOrEqual(32)
+      expect(roundTripInt32(values)).toEqual(values)
+    }
+  })
+
+  it('should wrap unsigned INT32 values to 32 bits', () => {
+    const values = Uint32Array.of(0, 0xffffffff, 1, 0x80000000)
+    const { first, minDeltas, bitWidths } = readBlockHeaders(encodeIntValues(values, 'INT32'))
+    expect(first).toBe(0n)
+    expect(minDeltas[0]).toBeGreaterThanOrEqual(-0x80000000n)
+    expect(Math.max(...bitWidths)).toBeLessThanOrEqual(32)
+    expect(roundTripInt32(Array.from(values))).toEqual([0, -1, 1, -0x80000000])
+  })
+
+  it('should wrap INT64 deltas to at most 64 bits', () => {
+    const min = -(2n ** 63n)
+    const max = 2n ** 63n - 1n
+    const values = [min, max, min, 0n, max, -1n, 1n]
+    const { minDeltas, bitWidths } = readBlockHeaders(encodeIntValues(values, 'INT64'))
+    expect(minDeltas[0]).toBeGreaterThanOrEqual(min)
+    expect(Math.max(...bitWidths)).toBeLessThanOrEqual(64)
+    expect(roundTripBigInt(values)).toEqual(values)
+  })
+
+  it('should encode a first value outside int32 for INT64 numbers', () => {
+    const values = [0x80000000, 1, 5]
+    expect(encodeIntValues(values, 'INT64')).toEqual(encodeIntValues(values.map(BigInt), 'INT64'))
+    expect(roundTripBigInt(values.map(BigInt))).toEqual(values.map(BigInt))
   })
 
   it('should round-trip bigint values', () => {
@@ -218,7 +290,7 @@ describe('deltaBinaryPack', () => {
 
   it('should throw for unsupported types', () => {
     const writer = new ByteWriter()
-    expect(() => deltaBinaryPack(writer, ['string'])).toThrow('deltaBinaryPack only supports number or bigint arrays')
+    expect(() => deltaBinaryPack(writer, ['string'], 'INT32')).toThrow('deltaBinaryPack only supports number or bigint arrays')
   })
 
   it('should handle values requiring bit flush at end of miniblock', () => {
