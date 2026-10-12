@@ -1,9 +1,9 @@
-import { getSchemaPath } from 'hyparquet/src/schema.js'
 import { writeBlooms } from './bloom.js'
 import { writeColumn } from './column.js'
 import { encodeNestedValues } from './dremel.js'
 import { writeIndexes } from './indexes.js'
 import { writeMetadata } from './metadata.js'
+import { schemaPathResolver } from './schema.js'
 import { snappyCompress } from './snappy.js'
 import { encodeVariantColumn } from './variant.js'
 
@@ -68,6 +68,7 @@ export class ParquetWriter {
       }
     }
     const columnDataRows = columnData[0]?.data?.length || 0
+    const resolveSchemaPath = schemaPathResolver(this.schema)
     /** @type {Promise<void> | undefined} */
     let pending
     for (const { groupStartIndex, groupSize } of groupIterator({ columnDataRows, rowGroupSize })) {
@@ -89,7 +90,7 @@ export class ParquetWriter {
           }
 
           const groupData = data.slice(groupStartIndex, groupStartIndex + groupSize)
-          const columnPath = getSchemaPath(this.schema, [name])
+          const columnPath = resolveSchemaPath([name])
           const leafPaths = getLeafSchemaPaths(columnPath)
 
           // For VARIANT logical type, encode JS values into {metadata, value} structs
