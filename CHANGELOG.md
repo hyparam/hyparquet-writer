@@ -1,5 +1,12 @@
 # Hyparquet-writer Changelog
 
+## [0.16.12]
+ - Add per-column `statistics` option
+ - Throw when a codec has no compressor
+ - Fix delta binary packed overflow by wrapping deltas at the physical type width
+ - Cap bloom filters at `maxBytes` instead of dropping them
+ - Round bloom filter size up to a power of two
+
 ## [0.16.11]
  - Fix string statistics ordering for non-BMP characters
  - Fix truncated max statistics mutating the caller's Buffer
