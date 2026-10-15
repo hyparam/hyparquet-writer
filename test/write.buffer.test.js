@@ -1,4 +1,5 @@
 import { parquetMetadata, parquetReadObjects } from 'hyparquet'
+import { deserializeTCompactProtocol } from 'hyparquet/src/thrift.js'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { ByteWriter, ParquetWriter, parquetWriteBuffer } from '../src/index.js'
@@ -16,6 +17,32 @@ import { exampleData, exampleMetadata } from './example.js'
 async function roundTripDeserialize(columnData, schema) {
   const file = parquetWriteBuffer({ columnData, schema })
   return await parquetReadObjects({ file, utf8: false })
+}
+
+/**
+ * Walk a column chunk's pages and sum header plus page sizes.
+ *
+ * @import {ColumnMetaData} from 'hyparquet'
+ * @param {ArrayBuffer} file
+ * @param {ColumnMetaData} meta
+ * @returns {{ compressed: number, uncompressed: number }}
+ */
+function chunkPageSizes(file, meta) {
+  const start = Number(meta.dictionary_page_offset ?? meta.data_page_offset)
+  const end = start + Number(meta.total_compressed_size)
+  const reader = { view: new DataView(file), offset: start }
+  let compressed = 0
+  let uncompressed = 0
+  while (reader.offset < end) {
+    const headerStart = reader.offset
+    const header = deserializeTCompactProtocol(reader)
+    const headerSize = reader.offset - headerStart
+    compressed += headerSize + header.field_3
+    uncompressed += headerSize + header.field_2
+    reader.offset += header.field_3
+  }
+  expect(reader.offset).toBe(end)
+  return { compressed, uncompressed }
 }
 
 describe('parquetWriteBuffer', () => {
@@ -38,13 +65,13 @@ describe('parquetWriteBuffer', () => {
   it('serializes a string as a BYTE_ARRAY', () => {
     const data = ['string1', 'string2', 'string3']
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data, type: 'BYTE_ARRAY' }] })
-    expect(file.byteLength).toBe(173)
+    expect(file.byteLength).toBe(175)
   })
 
   it('serializes booleans as RLE', async () => {
     const data = Array(100).fill(true)
     const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data }] })
-    expect(file.byteLength).toBe(140)
+    expect(file.byteLength).toBe(142)
     const metadata = parquetMetadata(file)
     expect(metadata.row_groups[0].columns[0].meta_data?.encodings).toEqual(['RLE'])
     const result = await parquetReadObjects({ file })
@@ -58,9 +85,9 @@ describe('parquetWriteBuffer', () => {
     data[500] = true
     data[9999] = false
     const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data }], rowGroupSize: 10000 })
-    expect(file.byteLength).toBe(168)
+    expect(file.byteLength).toBe(170)
     const metadata = parquetMetadata(file)
-    expect(metadata.metadata_length).toBe(101)
+    expect(metadata.metadata_length).toBe(103)
     const result = await parquetReadObjects({ file })
     expect(result.length).toBe(10000)
     expect(result[0]).toEqual({ bool: null })
@@ -74,14 +101,44 @@ describe('parquetWriteBuffer', () => {
   it('efficiently serializes long string', () => {
     const str = 'a'.repeat(10000)
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data: [str] }] })
-    expect(file.byteLength).toBe(649)
+    expect(file.byteLength).toBe(654)
   })
 
   it('less efficiently serializes string without compression', () => {
     const str = 'a'.repeat(10000)
     const columnData = [{ name: 'string', data: [str] }]
     const file = parquetWriteBuffer({ columnData, codec: 'UNCOMPRESSED' })
-    expect(file.byteLength).toBe(10178)
+    expect(file.byteLength).toBe(10182)
+  })
+
+  it('writes uncompressed and compressed chunk and row group sizes', () => {
+    /** @type {ColumnSource[]} */
+    const columnData = [
+      { name: 'plain', data: Array.from({ length: 20 }, (_, i) => 'a'.repeat(1000) + i) },
+      { name: 'dict', data: Array.from({ length: 20 }, (_, i) => 'b'.repeat(1000) + i % 2) },
+      { name: 'raw', data: Array.from({ length: 20 }, (_, i) => 'c'.repeat(1000) + i), codec: 'UNCOMPRESSED' },
+    ]
+    const file = parquetWriteBuffer({ columnData, pageSize: 4000 })
+    const [rowGroup] = parquetMetadata(file).row_groups
+    let compressedSum = 0n
+    let uncompressedSum = 0n
+    for (const { meta_data } of rowGroup.columns) {
+      if (!meta_data) throw new Error('missing meta_data')
+      const { compressed, uncompressed } = chunkPageSizes(file, meta_data)
+      expect(meta_data.total_compressed_size).toBe(BigInt(compressed))
+      expect(meta_data.total_uncompressed_size).toBe(BigInt(uncompressed))
+      compressedSum += meta_data.total_compressed_size
+      uncompressedSum += meta_data.total_uncompressed_size
+    }
+    const [plain, dict, raw] = rowGroup.columns.map(c => c.meta_data)
+    expect(plain?.total_uncompressed_size).toBeGreaterThan(20000n)
+    expect(plain?.total_compressed_size).toBeLessThan(5000n)
+    expect(dict?.dictionary_page_offset).toBeDefined()
+    expect(dict?.total_uncompressed_size).toBeGreaterThan(2000n)
+    expect(dict?.total_compressed_size).toBeLessThan(500n)
+    expect(raw?.total_uncompressed_size).toBe(raw?.total_compressed_size)
+    expect(rowGroup.total_byte_size).toBe(uncompressedSum)
+    expect(rowGroup.total_compressed_size).toBe(compressedSum)
   })
 
   it('honors per-column codec override', async () => {
@@ -104,7 +161,7 @@ describe('parquetWriteBuffer', () => {
       .fill('aaaa', 0, 50000)
       .fill('bbbb', 50000, 100000)
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data }], statistics: false, rowGroupSize: 100000 })
-    expect(file.byteLength).toBe(170)
+    expect(file.byteLength).toBe(172)
     // round trip
     const result = await parquetReadObjects({ file })
     expect(result.length).toBe(100000)
@@ -115,8 +172,8 @@ describe('parquetWriteBuffer', () => {
   it('writes statistics when enabled', () => {
     const withStats = parquetWriteBuffer({ columnData: exampleData, statistics: true })
     const noStats = parquetWriteBuffer({ columnData: exampleData, statistics: false })
-    expect(withStats.byteLength).toBe(784)
-    expect(noStats.byteLength).toBe(611)
+    expect(withStats.byteLength).toBe(787)
+    expect(noStats.byteLength).toBe(614)
   })
 
   it('serializes list types', async () => {
