@@ -147,26 +147,63 @@ function unconvertUuid(value) {
   throw new Error('UUID must be a string or Uint8Array')
 }
 
-// Statistics min/max values are truncated to this many bytes to bound footer size.
+// Default byte length that statistics min/max values are truncated to.
 const STATS_TRUNCATE_LENGTH = 16
 
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+
 /**
- * Truncate a byte-array statistic to STATS_TRUNCATE_LENGTH bytes.
+ * Truncate a byte-array statistic to at most `length` bytes.
  *
- * A truncated prefix is a valid lower bound (min) but not a valid upper bound:
- * for a max we must round the prefix up to the smallest byte string that is
- * still >= the original. We do that by incrementing the last byte that is
- * < 0xFF, dropping any trailing 0xFF bytes first. If every prefix byte is 0xFF
- * there is no shorter upper bound, so the max is omitted (returns undefined).
+ * A prefix is a valid lower bound (min). A max is rounded up to a short value
+ * that is still >= the original. STRING and ENUM bounds are cut on a code point
+ * boundary so they stay valid UTF-8. A prefix of a JSON or BSON document is not
+ * a valid document, so those bounds are kept whole. When no short upper bound
+ * exists, the max is kept whole.
+ *
+ * @param {Uint8Array} bytes
+ * @param {SchemaElement} element
+ * @param {boolean} isMax
+ * @param {number} length
+ * @returns {Uint8Array}
+ */
+function truncateStatistic(bytes, element, isMax, length) {
+  if (bytes.length <= length || !isTruncatable(element)) return bytes
+  const truncated = isUtf8(element) ? truncateUtf8(bytes, isMax, length) : truncateBytes(bytes, isMax, length)
+  return truncated ?? bytes
+}
+
+/**
+ * @param {SchemaElement} element
+ * @returns {boolean}
+ */
+function isTruncatable({ type, converted_type, logical_type }) {
+  if (type !== 'BYTE_ARRAY') return false // a FIXED_LEN_BYTE_ARRAY bound must keep its length
+  if (converted_type === 'DECIMAL' || converted_type === 'JSON' || converted_type === 'BSON') return false
+  return logical_type?.type !== 'JSON' && logical_type?.type !== 'BSON'
+}
+
+/**
+ * @param {SchemaElement} element
+ * @returns {boolean}
+ */
+function isUtf8({ converted_type, logical_type }) {
+  return converted_type === 'UTF8' || converted_type === 'ENUM' ||
+    logical_type?.type === 'STRING' || logical_type?.type === 'ENUM'
+}
+
+/**
+ * Byte-wise truncation. A max increments the last byte that is < 0xFF after
+ * dropping trailing 0xFF bytes.
  *
  * @param {Uint8Array} bytes
  * @param {boolean} isMax
+ * @param {number} length
  * @returns {Uint8Array | undefined}
  */
-function truncateStatistic(bytes, isMax) {
-  if (bytes.length <= STATS_TRUNCATE_LENGTH) return bytes
+function truncateBytes(bytes, isMax, length) {
   // copy: Buffer.prototype.slice returns a view, and rounding mutates in place
-  const prefix = new Uint8Array(bytes.subarray(0, STATS_TRUNCATE_LENGTH))
+  const prefix = new Uint8Array(bytes.subarray(0, length))
   if (!isMax) return prefix // a prefix is a valid lower bound
   let i = prefix.length - 1
   while (i >= 0 && prefix[i] === 0xff) i-- // drop trailing 0xFF
@@ -177,6 +214,37 @@ function truncateStatistic(bytes, isMax) {
 }
 
 /**
+ * UTF-8 truncation on a code point boundary. A max increments the last code
+ * point that has a successor fitting the length, skipping surrogates.
+ * Invalid UTF-8 falls back to byte-wise truncation.
+ *
+ * @param {Uint8Array} bytes
+ * @param {boolean} isMax
+ * @param {number} length
+ * @returns {Uint8Array | undefined}
+ */
+function truncateUtf8(bytes, isMax, length) {
+  let end = length
+  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--
+  if (!isMax) return new Uint8Array(bytes.subarray(0, end))
+  let text
+  try {
+    text = utf8Decoder.decode(bytes.subarray(0, end))
+  } catch {
+    return truncateBytes(bytes, isMax, length)
+  }
+  const codePoints = Array.from(text, c => c.codePointAt(0) ?? 0)
+  const encoder = new TextEncoder()
+  for (let i = codePoints.length - 1; i >= 0; i--) {
+    const code = codePoints[i]
+    if (code === 0x10ffff) continue
+    const next = code === 0xd7ff ? 0xe000 : code + 1
+    const rounded = encoder.encode(String.fromCodePoint(...codePoints.slice(0, i), next))
+    if (rounded.length <= length) return rounded
+  }
+}
+
+/**
  * Returns false when a min/max value had to be truncated, otherwise undefined.
  *
  * We only emit the (optional) exactness flag when it is false; an absent flag
@@ -184,17 +252,15 @@ function truncateStatistic(bytes, isMax) {
  *
  * @param {MinMaxType | undefined} value
  * @param {SchemaElement} element
+ * @param {boolean} isMax
+ * @param {number} length
  * @returns {boolean | undefined}
  */
-function minMaxIsExact(value, element) {
+function minMaxIsExact(value, element, isMax, length) {
   if (value === undefined || value === null) return undefined
-  const { type } = element
-  // only byte-array statistics are ever truncated
-  if (type !== 'BYTE_ARRAY' && type !== 'FIXED_LEN_BYTE_ARRAY') return undefined
-  if (element.logical_type?.type === 'UUID') return undefined // exactly 16 bytes, never truncated
-  if (element.converted_type === 'DECIMAL') return undefined // encoded as full, exact physical bytes
+  if (!isTruncatable(element)) return undefined
   const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(value.toString())
-  return bytes.length > STATS_TRUNCATE_LENGTH ? false : undefined
+  return truncateStatistic(bytes, element, isMax, length) === bytes ? undefined : false
 }
 
 /**
@@ -203,9 +269,10 @@ function minMaxIsExact(value, element) {
  * @param {MinMaxType | undefined} value
  * @param {SchemaElement} element
  * @param {boolean} isMax whether this is a max value (rounds truncation up)
+ * @param {number} [truncateLength] max bytes for a byte-array value
  * @returns {Uint8Array | undefined}
  */
-export function unconvertMinMax(value, element, isMax) {
+export function unconvertMinMax(value, element, isMax, truncateLength = STATS_TRUNCATE_LENGTH) {
   if (value === undefined || value === null) return undefined
   const { type, converted_type } = element
   if (type === 'BOOLEAN') return new Uint8Array([value ? 1 : 0])
@@ -235,7 +302,7 @@ export function unconvertMinMax(value, element, isMax) {
   }
   if (type === 'BYTE_ARRAY' || type === 'FIXED_LEN_BYTE_ARRAY') {
     const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(value.toString())
-    return truncateStatistic(bytes, isMax)
+    return truncateStatistic(bytes, element, isMax, truncateLength)
   }
   if (type === 'FLOAT' && typeof value === 'number') {
     const buffer = new ArrayBuffer(4)
@@ -288,18 +355,19 @@ export function unconvertMinMax(value, element, isMax) {
 /**
  * @param {Statistics} stats
  * @param {SchemaElement} element
+ * @param {number} [truncateLength] max bytes for a byte-array min/max
  * @returns {ThriftObject}
  */
-export function unconvertStatistics(stats, element) {
+export function unconvertStatistics(stats, element, truncateLength = STATS_TRUNCATE_LENGTH) {
   return {
-    field_1: unconvertMinMax(stats.max, element, true),
-    field_2: unconvertMinMax(stats.min, element, false),
+    field_1: unconvertMinMax(stats.max, element, true, truncateLength),
+    field_2: unconvertMinMax(stats.min, element, false, truncateLength),
     field_3: stats.null_count,
     field_4: stats.distinct_count,
-    field_5: unconvertMinMax(stats.max_value, element, true),
-    field_6: unconvertMinMax(stats.min_value, element, false),
-    field_7: stats.is_max_value_exact ?? minMaxIsExact(stats.max_value ?? stats.max, element),
-    field_8: stats.is_min_value_exact ?? minMaxIsExact(stats.min_value ?? stats.min, element),
+    field_5: unconvertMinMax(stats.max_value, element, true, truncateLength),
+    field_6: unconvertMinMax(stats.min_value, element, false, truncateLength),
+    field_7: stats.is_max_value_exact ?? minMaxIsExact(stats.max_value ?? stats.max, element, true, truncateLength),
+    field_8: stats.is_min_value_exact ?? minMaxIsExact(stats.min_value ?? stats.min, element, false, truncateLength),
   }
 }
 

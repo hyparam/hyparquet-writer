@@ -53,6 +53,36 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     expect(columnIndex.boundary_order).toBe('ASCENDING')
   })
 
+  it('truncates column index bounds to statisticsTruncateLength', () => {
+    const data = Array.from({ length: 6 }, (_, i) => `${i}${'x'.repeat(19)}€`) // 23 bytes each
+    /**
+     * @param {number} [statisticsTruncateLength]
+     * @returns {{ min_values: any[], max_values: any[] }}
+     */
+    function columnIndexFor(statisticsTruncateLength) {
+      const buffer = parquetWriteBuffer({
+        columnData: [{ name: 'value', data, type: 'STRING', columnIndex: true }],
+        pageSize: 1,
+        statisticsTruncateLength,
+      })
+      const metadata = parquetMetadata(buffer)
+      const column = metadata.row_groups[0].columns[0]
+      const reader = indexReader(buffer, column.column_index_offset, column.column_index_length)
+      return readColumnIndex(reader, metadata.schema[1])
+    }
+    const byDefault = columnIndexFor()
+    expect(byDefault.min_values).toEqual(data.map((_, i) => `${i}${'x'.repeat(15)}`))
+    expect(byDefault.max_values).toEqual(data.map((_, i) => `${i}${'x'.repeat(14)}y`))
+
+    const short = columnIndexFor(21)
+    expect(short.min_values).toEqual(data.map((_, i) => `${i}${'x'.repeat(19)}`))
+    expect(short.max_values).toEqual(data.map((_, i) => `${i}${'x'.repeat(18)}y`))
+
+    const whole = columnIndexFor(23)
+    expect(whole.min_values).toEqual(data)
+    expect(whole.max_values).toEqual(data)
+  })
+
   it('writes column index and offset index when both are true', async () => {
     const buffer = parquetWriteBuffer({
       columnData: [
