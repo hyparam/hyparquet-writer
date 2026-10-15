@@ -1,7 +1,8 @@
+import { parquetSchema } from 'hyparquet'
 import { normalizeShreddingConfig } from './variant.js'
 
 /**
- * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement} from 'hyparquet'
+ * @import {ConvertedType, DecodedArray, FieldRepetitionType, ParquetType, SchemaElement, SchemaTree} from 'hyparquet'
  * @import {BasicType, ColumnSource, ShredType} from '../src/types.js'
  */
 
@@ -254,4 +255,39 @@ export function getMaxRepetitionLevel(schemaPath) {
     }
   }
   return maxLevel
+}
+
+/**
+ * Create a function that resolves element paths against a schema.
+ * The schema tree is built once, so resolving every column of a wide schema
+ * costs O(columns) instead of the O(columns²) of calling getSchemaPath per column.
+ *
+ * @param {SchemaElement[]} schema
+ * @returns {(path: string[]) => SchemaTree[]} schema elements from the root to the named element
+ */
+export function schemaPathResolver(schema) {
+  const root = parquetSchema({ schema })
+  /** @type {Map<SchemaTree, Map<string, SchemaTree>>} */
+  const childrenByName = new Map()
+
+  return path => {
+    let tree = root
+    const schemaPath = [tree]
+    for (const part of path) {
+      let children = childrenByName.get(tree)
+      if (!children) {
+        children = new Map()
+        for (const child of tree.children) {
+          // first match wins, like Array.prototype.find
+          if (!children.has(child.element.name)) children.set(child.element.name, child)
+        }
+        childrenByName.set(tree, children)
+      }
+      const child = children.get(part)
+      if (!child) throw new Error(`parquet schema element not found: ${path}`)
+      schemaPath.push(child)
+      tree = child
+    }
+    return schemaPath
+  }
 }
