@@ -1,6 +1,8 @@
 import { parquetMetadata } from 'hyparquet'
+import { deserializeTCompactProtocol } from 'hyparquet/src/thrift.js'
 import { describe, expect, it, vi } from 'vitest'
 import { ByteWriter } from '../src/bytewriter.js'
+import { parquetWriteBuffer } from '../src/index.js'
 import { logicalType, writeMetadata } from '../src/metadata.js'
 import { exampleMetadata } from './example.js'
 
@@ -24,7 +26,7 @@ describe('writeMetadata', () => {
         { key: 'key1', value: 'value1' },
         { key: 'key2', value: 'value2' },
       ],
-      metadata_length: 540,
+      metadata_length: 563,
     }
     writeMetadata(writer, withKvMetadata)
 
@@ -115,7 +117,7 @@ describe('writeMetadata', () => {
         total_compressed_size: 8n,
       }],
       key_value_metadata: [{ key: 'meta', value: 'data' }],
-      metadata_length: 283,
+      metadata_length: 288,
     }
 
     writeMetadata(writer, extendedMetadata)
@@ -123,6 +125,38 @@ describe('writeMetadata', () => {
 
     const outputMetadata = parquetMetadata(writer.getBuffer())
     expect(outputMetadata).toEqual(extendedMetadata)
+  })
+
+  it('writes a TYPE_ORDER column order for each leaf column', () => {
+    const file = parquetWriteBuffer({
+      columnData: [
+        { name: 'id', data: [1, 2] },
+        { name: 'point', data: [{ x: 1, y: 2 }, { x: 3, y: 4 }] },
+        { name: 'tags', data: [['a'], ['b', 'c']] },
+      ],
+      schema: [
+        { name: 'root', num_children: 3 },
+        { name: 'id', type: 'INT32', repetition_type: 'REQUIRED' },
+        { name: 'point', repetition_type: 'REQUIRED', num_children: 2 },
+        { name: 'x', type: 'DOUBLE', repetition_type: 'REQUIRED' },
+        { name: 'y', type: 'DOUBLE', repetition_type: 'REQUIRED' },
+        { name: 'tags', repetition_type: 'OPTIONAL', converted_type: 'LIST', num_children: 1 },
+        { name: 'list', repetition_type: 'REPEATED', num_children: 1 },
+        { name: 'element', type: 'BYTE_ARRAY', converted_type: 'UTF8', repetition_type: 'OPTIONAL' },
+      ],
+    })
+    const view = new DataView(file)
+    const metadataLength = view.getUint32(file.byteLength - 8, true)
+    const footer = deserializeTCompactProtocol({ view, offset: file.byteLength - 8 - metadataLength })
+    expect(footer.field_7).toEqual([{ field_1: {} }, { field_1: {} }, { field_1: {} }, { field_1: {} }])
+  })
+
+  it('writes no column order for a file without columns', () => {
+    const file = parquetWriteBuffer({ columnData: [] })
+    const view = new DataView(file)
+    const metadataLength = view.getUint32(file.byteLength - 8, true)
+    const footer = deserializeTCompactProtocol({ view, offset: file.byteLength - 8 - metadataLength })
+    expect(footer.field_7).toEqual([])
   })
 
   it('converts bounding boxes to explicitly typed DOUBLE fields', () => {
