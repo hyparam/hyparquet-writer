@@ -25,6 +25,13 @@ describe('parquetWriteBuffer', () => {
     expect(metadata).toEqual(exampleMetadata)
   })
 
+  it('writes created_by from the createdBy option', () => {
+    const createdBy = 'my-app version 1.2.0 (build abc123)'
+    const file = parquetWriteBuffer({ columnData: exampleData, createdBy })
+    expect(parquetMetadata(file).created_by).toBe(createdBy)
+    expect(parquetMetadata(parquetWriteBuffer({ columnData: exampleData })).created_by).toBe('hyparquet')
+  })
+
   it('serializes basic types', async () => {
     const result = await roundTripDeserialize(exampleData)
     expect(result).toEqual([

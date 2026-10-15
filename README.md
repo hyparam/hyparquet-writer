@@ -87,6 +87,7 @@ interface ParquetWriteOptions {
   dictionarySize?: number // hard cap on dictionary bytes per column chunk (default: uncapped, dictionaries kept while they at least halve the encoded size)
   rowGroupSize?: number | number[] // target row group size in rows (default [1000, 100000])
   kvMetadata?: { key: string; value?: string }[] // extra key-value metadata
+  createdBy?: string // application that wrote the file, e.g. 'my-app version 1.2.0' (default 'hyparquet')
 }
 ```
 

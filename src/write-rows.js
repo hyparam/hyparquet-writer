@@ -27,7 +27,7 @@ import { schemaFromColumnData } from './schema.js'
  * inferred from the first group's values unless one is supplied.
  *
  * Takes the same write options as {@link parquetWrite} (codec, compressors,
- * statistics, rowGroupSize, pageSize, dictionarySize, kvMetadata, schema) at
+ * statistics, rowGroupSize, pageSize, dictionarySize, kvMetadata, createdBy, schema) at
  * the top level,
  * minus `columnData`, since `rows` and `columns` describe the data instead.
  *

@@ -24,8 +24,9 @@ export class ParquetWriter {
    * @param {Compressors} [options.compressors]
    * @param {boolean} [options.statistics]
    * @param {KeyValue[]} [options.kvMetadata]
+   * @param {string} [options.createdBy]
    */
-  constructor({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, kvMetadata }) {
+  constructor({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, kvMetadata, createdBy = 'hyparquet' }) {
     this.writer = writer
     /** @type {SchemaElement[]} */
     this.schema = schema
@@ -36,6 +37,7 @@ export class ParquetWriter {
     this.statistics = statistics
     /** @type {KeyValue[] | undefined} */
     this.kvMetadata = kvMetadata
+    this.createdBy = createdBy
 
     /** @type {RowGroup[]} */
     this.row_groups = []
@@ -165,7 +167,7 @@ export class ParquetWriter {
     /** @type {FileMetaData} */
     const metadata = {
       version: 2,
-      created_by: 'hyparquet',
+      created_by: this.createdBy,
       schema: this.schema,
       num_rows: this.num_rows,
       row_groups: this.row_groups,
