@@ -236,11 +236,18 @@ function truncateUtf8(bytes, isMax, length) {
   const codePoints = Array.from(text, c => c.codePointAt(0) ?? 0)
   const encoder = new TextEncoder()
   for (let i = codePoints.length - 1; i >= 0; i--) {
+    // Remove this code point from the prefix, preserving its original UTF-8 bytes.
+    end--
+    while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--
     const code = codePoints[i]
     if (code === 0x10ffff) continue
     const next = code === 0xd7ff ? 0xe000 : code + 1
-    const rounded = encoder.encode(String.fromCodePoint(...codePoints.slice(0, i), next))
-    if (rounded.length <= length) return rounded
+    const suffix = encoder.encode(String.fromCodePoint(next))
+    if (end + suffix.length > length) continue
+    const rounded = new Uint8Array(end + suffix.length)
+    rounded.set(bytes.subarray(0, end))
+    rounded.set(suffix, end)
+    return rounded
   }
 }
 

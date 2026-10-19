@@ -20,6 +20,22 @@ function indexReader(buffer, offset, length) {
 }
 
 describe('parquetWrite columnIndex and offsetIndex', () => {
+  it('truncates large string bounds in column indexes', () => {
+    const value = 'a'.repeat(200_001)
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'value', data: [value, value], type: 'STRING', columnIndex: true }],
+      statistics: false,
+      statisticsTruncateLength: 200_000,
+      pageSize: 1,
+    })
+    const metadata = parquetMetadata(buffer)
+    const column = metadata.row_groups[0].columns[0]
+    const reader = indexReader(buffer, column.column_index_offset, column.column_index_length)
+    const columnIndex = readColumnIndex(reader, metadata.schema[1])
+    expect(columnIndex.min_values).toEqual(Array(2).fill('a'.repeat(200_000)))
+    expect(columnIndex.max_values).toEqual(Array(2).fill('a'.repeat(199_999) + 'b'))
+  })
+
   it('writes byte-array UTF-8 values with the same statistics and pages as strings', () => {
     const strings = ['alpha', 'alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot']
     const encoder = new TextEncoder()

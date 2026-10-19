@@ -139,6 +139,20 @@ describe('statistics truncation inside a multi-byte code point', () => {
 })
 
 describe('statisticsTruncateLength', () => {
+  it('truncates large string bounds without exceeding the argument limit', async () => {
+    const prefix = 'a'.repeat(200_000)
+    for (const suffix of ['a', '€', '\u{10ffff}']) {
+      const value = prefix + suffix + 'z'
+      const length = new TextEncoder().encode(prefix + suffix).length
+      const stats = await readStats(writeCol([value], 'STRING', {}, { statisticsTruncateLength: length }))
+      expect(stats.min_value).toBe(prefix + suffix)
+      expect(stats.max_value).toBe(suffix === 'a' ? prefix + 'b'
+        : suffix === '€' ? prefix + '\u20ad' : 'a'.repeat(199_999) + 'b')
+      expect(stats.is_min_value_exact).toBe(false)
+      expect(stats.is_max_value_exact).toBe(false)
+    }
+  })
+
   it('truncates bounds to the configured length', async () => {
     const stats = await readStats(writeCol([LONG], 'STRING', {}, { statisticsTruncateLength: 4 }))
     expect(stats.min_value).toBe('this')
