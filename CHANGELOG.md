@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.16.13]
+ - Fix string statistics truncation splitting a code point
+
 ## [0.16.12]
  - Add per-column `statistics` option
  - Throw when a codec has no compressor
