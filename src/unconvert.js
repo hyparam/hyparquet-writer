@@ -307,6 +307,9 @@ export function unconvertMinMax(value, element, isMax, truncateLength = STATS_TR
       return new Uint8Array(buffer)
     }
   }
+  if (element.logical_type?.type === 'FLOAT16' && typeof value === 'number') {
+    return unconvertFloat16(value)
+  }
   if (type === 'BYTE_ARRAY' || type === 'FIXED_LEN_BYTE_ARRAY') {
     const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(value.toString())
     return truncateStatistic(bytes, element, isMax, truncateLength)
@@ -326,9 +329,9 @@ export function unconvertMinMax(value, element, isMax, truncateLength = STATS_TR
     new DataView(buffer).setInt32(0, value, true)
     return new Uint8Array(buffer)
   }
-  if (type === 'INT64' && typeof value === 'bigint') {
+  if (type === 'INT64' && (typeof value === 'bigint' || typeof value === 'number' && Number.isInteger(value))) {
     const buffer = new ArrayBuffer(8)
-    new DataView(buffer).setBigInt64(0, value, true)
+    new DataView(buffer).setBigInt64(0, BigInt(value), true)
     return new Uint8Array(buffer)
   }
   if (type === 'INT32' && converted_type === 'DATE' && value instanceof Date) {
