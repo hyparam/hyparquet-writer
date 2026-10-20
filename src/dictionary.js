@@ -218,7 +218,7 @@ export function useDictionary(values, type, type_length, encoding, dictionarySiz
  * @param {Writer} writer
  * @param {ColumnEncoder} column
  * @param {DecodedArray} dictionary
- * @returns {number} uncompressed minus compressed page size
+ * @returns {number} uncompressed page size including the header
  */
 export function writeDictionaryPage(writer, column, dictionary) {
   const { element, codec, compressors } = column
@@ -234,6 +234,7 @@ export function writeDictionaryPage(writer, column, dictionary) {
   const compressedBytes = compressors[codec]?.(dictionaryBytes) ?? dictionaryBytes
 
   // write dictionary page header
+  const headerStart = writer.offset
   writePageHeader(writer, {
     type: 'DICTIONARY_PAGE',
     uncompressed_page_size: dictionaryBytes.byteLength,
@@ -243,6 +244,7 @@ export function writeDictionaryPage(writer, column, dictionary) {
       encoding: 'PLAIN',
     },
   })
+  const headerSize = writer.offset - headerStart
   writer.appendBytes(compressedBytes)
-  return dictionaryBytes.byteLength - compressedBytes.byteLength
+  return headerSize + dictionaryBytes.byteLength
 }

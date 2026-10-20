@@ -13,7 +13,7 @@ import { serializeTCompactProtocol } from './thrift.js'
  * @param {ColumnEncoder} options.column
  * @param {Encoding} options.encoding
  * @param {PageData} options.pageData
- * @returns {number} uncompressed minus compressed page size
+ * @returns {number} uncompressed page size including the header
  */
 export function writeDataPageV2({ writer, column, encoding, pageData }) {
   const { columnName, element, codec, compressors } = column
@@ -78,6 +78,7 @@ export function writeDataPageV2({ writer, column, encoding, pageData }) {
   const compressedBytes = compressors[codec]?.(pageBytes) ?? pageBytes
 
   // write page header
+  const headerStart = writer.offset
   writePageHeader(writer, {
     type: 'DATA_PAGE_V2',
     uncompressed_page_size: levelWriter.offset + page.offset,
@@ -94,12 +95,14 @@ export function writeDataPageV2({ writer, column, encoding, pageData }) {
     },
   })
 
+  const headerSize = writer.offset - headerStart
+
   // write levels
   writer.appendBytes(levelWriter.getBytes())
 
   // write page data
   writer.appendBytes(compressedBytes)
-  return page.offset - compressedBytes.length
+  return headerSize + levelWriter.offset + page.offset
 }
 
 /**

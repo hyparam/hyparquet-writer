@@ -25,7 +25,7 @@ export function writeColumn({ writer, column, pageData }) {
   if (!type) throw new Error(`column ${columnName} cannot determine type`)
   const { values, definitionLevels, repetitionLevels, maxDefinitionLevel } = pageData
   const offsetStart = writer.offset
-  let compressionSavings = 0
+  let uncompressedSize = 0
 
   /** @type {Encoding[]} */
   const encodings = []
@@ -71,7 +71,7 @@ export function writeColumn({ writer, column, pageData }) {
     // write dictionary page first
     dictionary_page_offset = BigInt(writer.offset)
     const unconverted = selectPhysical ? dictionary : unconvert(element, dictionary)
-    compressionSavings += writeDictionaryPage(writer, column, unconverted)
+    uncompressedSize += writeDictionaryPage(writer, column, unconverted)
     encodings.push('PLAIN')
   } else {
     // unconvert values from rich types to simple
@@ -119,7 +119,7 @@ export function writeColumn({ writer, column, pageData }) {
       repetitionLevels: repetitionLevels.slice(start, end),
       maxDefinitionLevel,
     }
-    compressionSavings += writeDataPageV2({ writer, column, encoding, pageData: pageChunk })
+    uncompressedSize += writeDataPageV2({ writer, column, encoding, pageData: pageChunk })
 
     // ColumnIndex construction
     if (columnIndex) {
@@ -194,7 +194,7 @@ export function writeColumn({ writer, column, pageData }) {
         codec: column.codec ?? 'UNCOMPRESSED',
         num_values: BigInt(values.length),
         total_compressed_size: BigInt(writer.offset - offsetStart),
-        total_uncompressed_size: BigInt(writer.offset - offsetStart + compressionSavings),
+        total_uncompressed_size: BigInt(uncompressedSize),
         data_page_offset,
         dictionary_page_offset,
         statistics,
