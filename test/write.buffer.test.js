@@ -1,4 +1,5 @@
 import { parquetMetadata, parquetReadObjects } from 'hyparquet'
+import { deserializeTCompactProtocol } from 'hyparquet/src/thrift.js'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { ByteWriter, ParquetWriter, parquetWriteBuffer } from '../src/index.js'
@@ -18,11 +19,44 @@ async function roundTripDeserialize(columnData, schema) {
   return await parquetReadObjects({ file, utf8: false })
 }
 
+/**
+ * Walk a column chunk's pages and sum header plus page sizes.
+ *
+ * @import {ColumnMetaData} from 'hyparquet'
+ * @param {ArrayBuffer} file
+ * @param {ColumnMetaData} meta
+ * @returns {{ compressed: number, uncompressed: number }}
+ */
+function chunkPageSizes(file, meta) {
+  const start = Number(meta.dictionary_page_offset ?? meta.data_page_offset)
+  const end = start + Number(meta.total_compressed_size)
+  const reader = { view: new DataView(file), offset: start }
+  let compressed = 0
+  let uncompressed = 0
+  while (reader.offset < end) {
+    const headerStart = reader.offset
+    const header = deserializeTCompactProtocol(reader)
+    const headerSize = reader.offset - headerStart
+    compressed += headerSize + header.field_3
+    uncompressed += headerSize + header.field_2
+    reader.offset += header.field_3
+  }
+  expect(reader.offset).toBe(end)
+  return { compressed, uncompressed }
+}
+
 describe('parquetWriteBuffer', () => {
   it('writes expected metadata', () => {
     const file = parquetWriteBuffer({ columnData: exampleData })
     const metadata = parquetMetadata(file)
     expect(metadata).toEqual(exampleMetadata)
+  })
+
+  it('writes created_by from the createdBy option', () => {
+    const createdBy = 'my-app version 1.2.0 (build abc123)'
+    const file = parquetWriteBuffer({ columnData: exampleData, createdBy })
+    expect(parquetMetadata(file).created_by).toBe(createdBy)
+    expect(parquetMetadata(parquetWriteBuffer({ columnData: exampleData })).created_by).toBe('hyparquet')
   })
 
   it('serializes basic types', async () => {
@@ -38,13 +72,13 @@ describe('parquetWriteBuffer', () => {
   it('serializes a string as a BYTE_ARRAY', () => {
     const data = ['string1', 'string2', 'string3']
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data, type: 'BYTE_ARRAY' }] })
-    expect(file.byteLength).toBe(173)
+    expect(file.byteLength).toBe(180)
   })
 
   it('serializes booleans as RLE', async () => {
     const data = Array(100).fill(true)
     const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data }] })
-    expect(file.byteLength).toBe(140)
+    expect(file.byteLength).toBe(147)
     const metadata = parquetMetadata(file)
     expect(metadata.row_groups[0].columns[0].meta_data?.encodings).toEqual(['RLE'])
     const result = await parquetReadObjects({ file })
@@ -58,9 +92,9 @@ describe('parquetWriteBuffer', () => {
     data[500] = true
     data[9999] = false
     const file = parquetWriteBuffer({ columnData: [{ name: 'bool', data }], rowGroupSize: 10000 })
-    expect(file.byteLength).toBe(168)
+    expect(file.byteLength).toBe(175)
     const metadata = parquetMetadata(file)
-    expect(metadata.metadata_length).toBe(101)
+    expect(metadata.metadata_length).toBe(108)
     const result = await parquetReadObjects({ file })
     expect(result.length).toBe(10000)
     expect(result[0]).toEqual({ bool: null })
@@ -74,14 +108,44 @@ describe('parquetWriteBuffer', () => {
   it('efficiently serializes long string', () => {
     const str = 'a'.repeat(10000)
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data: [str] }] })
-    expect(file.byteLength).toBe(649)
+    expect(file.byteLength).toBe(659)
   })
 
   it('less efficiently serializes string without compression', () => {
     const str = 'a'.repeat(10000)
     const columnData = [{ name: 'string', data: [str] }]
     const file = parquetWriteBuffer({ columnData, codec: 'UNCOMPRESSED' })
-    expect(file.byteLength).toBe(10178)
+    expect(file.byteLength).toBe(10187)
+  })
+
+  it('writes uncompressed and compressed chunk and row group sizes', () => {
+    /** @type {ColumnSource[]} */
+    const columnData = [
+      { name: 'plain', data: Array.from({ length: 20 }, (_, i) => 'a'.repeat(1000) + i) },
+      { name: 'dict', data: Array.from({ length: 20 }, (_, i) => 'b'.repeat(1000) + i % 2) },
+      { name: 'raw', data: Array.from({ length: 20 }, (_, i) => 'c'.repeat(1000) + i), codec: 'UNCOMPRESSED' },
+    ]
+    const file = parquetWriteBuffer({ columnData, pageSize: 4000 })
+    const [rowGroup] = parquetMetadata(file).row_groups
+    let compressedSum = 0n
+    let uncompressedSum = 0n
+    for (const { meta_data } of rowGroup.columns) {
+      if (!meta_data) throw new Error('missing meta_data')
+      const { compressed, uncompressed } = chunkPageSizes(file, meta_data)
+      expect(meta_data.total_compressed_size).toBe(BigInt(compressed))
+      expect(meta_data.total_uncompressed_size).toBe(BigInt(uncompressed))
+      compressedSum += meta_data.total_compressed_size
+      uncompressedSum += meta_data.total_uncompressed_size
+    }
+    const [plain, dict, raw] = rowGroup.columns.map(c => c.meta_data)
+    expect(plain?.total_uncompressed_size).toBeGreaterThan(20000n)
+    expect(plain?.total_compressed_size).toBeLessThan(5000n)
+    expect(dict?.dictionary_page_offset).toBeDefined()
+    expect(dict?.total_uncompressed_size).toBeGreaterThan(2000n)
+    expect(dict?.total_compressed_size).toBeLessThan(500n)
+    expect(raw?.total_uncompressed_size).toBe(raw?.total_compressed_size)
+    expect(rowGroup.total_byte_size).toBe(uncompressedSum)
+    expect(rowGroup.total_compressed_size).toBe(compressedSum)
   })
 
   it('honors per-column codec override', async () => {
@@ -104,7 +168,7 @@ describe('parquetWriteBuffer', () => {
       .fill('aaaa', 0, 50000)
       .fill('bbbb', 50000, 100000)
     const file = parquetWriteBuffer({ columnData: [{ name: 'string', data }], statistics: false, rowGroupSize: 100000 })
-    expect(file.byteLength).toBe(170)
+    expect(file.byteLength).toBe(177)
     // round trip
     const result = await parquetReadObjects({ file })
     expect(result.length).toBe(100000)
@@ -115,8 +179,8 @@ describe('parquetWriteBuffer', () => {
   it('writes statistics when enabled', () => {
     const withStats = parquetWriteBuffer({ columnData: exampleData, statistics: true })
     const noStats = parquetWriteBuffer({ columnData: exampleData, statistics: false })
-    expect(withStats.byteLength).toBe(784)
-    expect(noStats.byteLength).toBe(611)
+    expect(withStats.byteLength).toBe(814)
+    expect(noStats.byteLength).toBe(637)
   })
 
   it('serializes list types', async () => {
@@ -328,6 +392,61 @@ describe('parquetWriteBuffer', () => {
       ]
     )
     expect(result).toEqual(data.map(uint64 => ({ uint64 })))
+  })
+
+  it('rejects INT64 overflow with and without statistics for every integer encoding', () => {
+    /** @type {import('hyparquet').Encoding[]} */
+    const encodings = ['PLAIN', 'RLE_DICTIONARY', 'DELTA_BINARY_PACKED']
+    for (const encoding of encodings) {
+      for (const statistics of [true, false]) {
+        for (const value of [2n ** 63n, -(2n ** 63n) - 1n]) {
+          expect(() => parquetWriteBuffer({
+            columnData: [{ name: 'value', data: [0n, value, 0n, value], type: 'INT64', encoding }],
+            statistics,
+          })).toThrow('parquet INT64 value out of range')
+        }
+      }
+    }
+    for (const statistics of [true, false]) {
+      for (const value of [2 ** 63, -(2 ** 63) - 2048]) {
+        expect(() => parquetWriteBuffer({
+          columnData: [{ name: 'value', data: [0, value], type: 'INT64', encoding: 'DELTA_BINARY_PACKED' }],
+          statistics,
+        })).toThrow('parquet INT64 value out of range')
+      }
+    }
+  })
+
+  it('validates unsigned INT64 ranges for both schema annotations', async () => {
+    /** @type {SchemaElement[]} */
+    const elements = [
+      { name: 'value', type: 'INT64', converted_type: 'UINT_64' },
+      { name: 'value', type: 'INT64', logical_type: { type: 'INTEGER', bitWidth: 64, isSigned: false } },
+    ]
+    for (const element of elements) {
+      const schema = [{ name: 'root', num_children: 1 }, element]
+      const data = [0n, 2n ** 63n, 2n ** 64n - 1n]
+      expect(await roundTripDeserialize([{ name: 'value', data }], schema))
+        .toEqual(data.map(value => ({ value })))
+      for (const value of [-1n, 2n ** 64n]) {
+        expect(() => parquetWriteBuffer({
+          columnData: [{ name: 'value', data: [value] }],
+          schema,
+          statistics: false,
+        })).toThrow('parquet INT64 value out of range')
+      }
+    }
+  })
+
+  it('validates INT64 ranges after timestamp conversion', () => {
+    expect(() => parquetWriteBuffer({
+      columnData: [{ name: 'value', data: [new Date('2500-01-01')] }],
+      schema: [
+        { name: 'root', num_children: 1 },
+        { name: 'value', type: 'INT64', logical_type: { type: 'TIMESTAMP', unit: 'NANOS', isAdjustedToUTC: true } },
+      ],
+      statistics: false,
+    })).toThrow('parquet INT64 value out of range')
   })
 
   it('throws for wrong type specified', () => {

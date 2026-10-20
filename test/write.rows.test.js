@@ -1,4 +1,4 @@
-import { parquetReadObjects } from 'hyparquet'
+import { parquetMetadata, parquetReadObjects } from 'hyparquet'
 import { describe, expect, it } from 'vitest'
 import { ByteWriter, parquetWriteBuffer, parquetWriteRows } from '../src/index.js'
 
@@ -29,6 +29,11 @@ describe('parquetWriteRows', () => {
     const fromColumns = parquetWriteBuffer({ columnData, rowGroupSize: 64 })
     const fromRows = writeRows({ rows, columns, rowGroupSize: 64 })
     expect(new Uint8Array(fromRows)).toEqual(new Uint8Array(fromColumns))
+  })
+
+  it('passes createdBy through to the footer', () => {
+    const buffer = writeRows({ rows, columns, createdBy: 'my-app version 1.2.0' })
+    expect(parquetMetadata(buffer).created_by).toBe('my-app version 1.2.0')
   })
 
   it('round-trips with windows spanning row groups', async () => {

@@ -1,4 +1,4 @@
-import type { ColumnChunk, ColumnIndex, CompressionCodec, DecodedArray, Encoding, KeyValue, OffsetIndex, SchemaElement } from 'hyparquet'
+import type { ColumnChunk, ColumnIndex, CompressionCodec, DecodedArray, Encoding, KeyValue, OffsetIndex, SchemaElement, Statistics } from 'hyparquet'
 
 export type Compressor = (input: Uint8Array) => Uint8Array
 export type Compressors = { [K in CompressionCodec]?: Compressor }
@@ -32,10 +32,12 @@ export interface ParquetWriteOptions {
   codec?: CompressionCodec // global default codec, default 'SNAPPY'
   compressors?: Compressors // custom compressors, required for any codec other than SNAPPY and UNCOMPRESSED
   statistics?: boolean // enable column statistics, default true
+  statisticsTruncateLength?: number // max bytes of a STRING or BYTE_ARRAY min/max in statistics and column indexes (default 16, Infinity keeps whole values; FIXED_LEN_BYTE_ARRAY, JSON, BSON and DECIMAL bounds are never truncated)
   rowGroupSize?: number | number[] // number of rows per row group
   pageSize?: number // target uncompressed page size in bytes, default 1048576
   dictionarySize?: number // hard cap on distinct-value bytes per column chunk dictionary; unset = keep any dictionary that at least halves the encoded size
   kvMetadata?: KeyValue[]
+  createdBy?: string // FileMetaData created_by, default 'hyparquet'
 }
 
 // Same write options as ParquetWriteOptions, but the data is supplied as rows
@@ -78,6 +80,7 @@ export interface ColumnEncoder {
   codec: CompressionCodec
   compressors: Compressors
   stats: boolean
+  statisticsTruncateLength?: number
   pageSize: number
   dictionarySize?: number
   // Spec: If ColumnIndex is present, OffsetIndex must also be present
@@ -87,9 +90,18 @@ export interface ColumnEncoder {
   bloomFilter?: boolean | BloomFilterOptions
 }
 
+// nan_count and nan_counts are written but not yet typed by hyparquet
+export interface ChunkStatistics extends Statistics {
+  nan_count?: bigint
+}
+
+export interface PageColumnIndex extends ColumnIndex {
+  nan_counts?: bigint[]
+}
+
 export interface PageIndexes {
   chunk: ColumnChunk
-  columnIndex?: ColumnIndex
+  columnIndex?: PageColumnIndex
   offsetIndex?: OffsetIndex
   bloomFilter?: Uint32Array // finalized SBBF blocks
 }

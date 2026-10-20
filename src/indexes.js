@@ -2,8 +2,8 @@ import { BoundaryOrders } from 'hyparquet/src/constants.js'
 import { serializeTCompactProtocol } from './thrift.js'
 
 /**
- * @import {ColumnChunk, ColumnIndex, OffsetIndex} from 'hyparquet'
- * @import {PageIndexes, Writer} from '../src/types.js'
+ * @import {ColumnChunk, OffsetIndex} from 'hyparquet'
+ * @import {PageColumnIndex, PageIndexes, Writer} from '../src/types.js'
  */
 
 /**
@@ -24,7 +24,7 @@ export function writeIndexes(writer, pageIndexes) {
 /**
  * @param {Writer} writer
  * @param {ColumnChunk} columnChunk
- * @param {ColumnIndex} [columnIndex]
+ * @param {PageColumnIndex} [columnIndex]
  */
 function writeColumnIndex(writer, columnChunk, columnIndex) {
   // Page indexes only help when multiple pages
@@ -36,6 +36,7 @@ function writeColumnIndex(writer, columnChunk, columnIndex) {
     field_3: columnIndex.max_values,
     field_4: BoundaryOrders.indexOf(columnIndex.boundary_order),
     field_5: columnIndex.null_counts,
+    field_8: columnIndex.nan_counts,
   })
   columnChunk.column_index_offset = BigInt(columnIndexOffset)
   columnChunk.column_index_length = writer.offset - columnIndexOffset

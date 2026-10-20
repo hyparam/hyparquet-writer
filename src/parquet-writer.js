@@ -23,9 +23,15 @@ export class ParquetWriter {
    * @param {CompressionCodec} [options.codec]
    * @param {Compressors} [options.compressors]
    * @param {boolean} [options.statistics]
+   * @param {number} [options.statisticsTruncateLength]
    * @param {KeyValue[]} [options.kvMetadata]
+   * @param {string} [options.createdBy]
    */
-  constructor({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, kvMetadata }) {
+  constructor({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, statisticsTruncateLength, kvMetadata, createdBy = 'hyparquet' }) {
+    if (statisticsTruncateLength !== undefined && statisticsTruncateLength !== Infinity &&
+      !(Number.isInteger(statisticsTruncateLength) && statisticsTruncateLength > 0)) {
+      throw new Error('statisticsTruncateLength must be a positive integer or Infinity')
+    }
     this.writer = writer
     /** @type {SchemaElement[]} */
     this.schema = schema
@@ -34,8 +40,10 @@ export class ParquetWriter {
     // Include built-in snappy as fallback
     this.compressors = { SNAPPY: snappyCompress, ...compressors }
     this.statistics = statistics
+    this.statisticsTruncateLength = statisticsTruncateLength
     /** @type {KeyValue[] | undefined} */
     this.kvMetadata = kvMetadata
+    this.createdBy = createdBy
 
     /** @type {RowGroup[]} */
     this.row_groups = []
@@ -113,6 +121,7 @@ export class ParquetWriter {
               codec,
               compressors: this.compressors,
               stats: statistics,
+              statisticsTruncateLength: this.statisticsTruncateLength,
               pageSize,
               dictionarySize,
               columnIndex,
@@ -133,11 +142,14 @@ export class ParquetWriter {
           }
         }
 
+        let total_byte_size = 0n
+        for (const { meta_data } of columns) total_byte_size += meta_data?.total_uncompressed_size ?? 0n
         this.num_rows += BigInt(groupSize)
         this.row_groups.push({
           columns,
-          total_byte_size: BigInt(this.writer.offset - groupStartOffset),
+          total_byte_size,
           num_rows: BigInt(groupSize),
+          total_compressed_size: BigInt(this.writer.offset - groupStartOffset),
         })
         return this.writer.flush?.()
       }
@@ -166,7 +178,7 @@ export class ParquetWriter {
     /** @type {FileMetaData} */
     const metadata = {
       version: 2,
-      created_by: 'hyparquet',
+      created_by: this.createdBy,
       schema: this.schema,
       num_rows: this.num_rows,
       row_groups: this.row_groups,
@@ -175,7 +187,7 @@ export class ParquetWriter {
     }
     // @ts-ignore don't want to actually serialize metadata_length
     delete metadata.metadata_length
-    writeMetadata(this.writer, metadata)
+    writeMetadata(this.writer, metadata, this.statisticsTruncateLength)
 
     // write footer PAR1
     this.writer.appendUint32(0x31524150)

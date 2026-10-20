@@ -324,8 +324,7 @@ describe('unconvertMinMax', () => {
     expect(unconvertMinMax(false, schema, false)).toEqual(new Uint8Array([0]))
   })
 
-  it('should truncate BYTE_ARRAY or FIXED_LEN_BYTE_ARRAY to 16 bytes', () => {
-    // longer string to test truncation
+  it('should truncate BYTE_ARRAY to 16 bytes', () => {
     const longStr = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     const longStrUint8 = new TextEncoder().encode(longStr)
 
@@ -335,9 +334,20 @@ describe('unconvertMinMax', () => {
     expect(result1?.length).toBe(16)
 
     // value is a string
-    const result2 = unconvertMinMax(longStr, { name: 'test', type: 'FIXED_LEN_BYTE_ARRAY' }, false)
+    const result2 = unconvertMinMax(longStr, { name: 'test', type: 'BYTE_ARRAY' }, false)
     expect(result2).toBeInstanceOf(Uint8Array)
     expect(result2?.length).toBe(16)
+  })
+
+  it('should not truncate FIXED_LEN_BYTE_ARRAY', () => {
+    const value = new Uint8Array(20).fill(7)
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', type: 'FIXED_LEN_BYTE_ARRAY', type_length: 20 }
+    expect(unconvertMinMax(value, schema, false)).toEqual(value)
+    expect(unconvertMinMax(value, schema, true)).toEqual(value)
+    const thrift = unconvertStatistics({ min_value: value, max_value: value }, schema)
+    expect(thrift.field_7).toBeUndefined()
+    expect(thrift.field_8).toBeUndefined()
   })
 
   it('should truncate a min value to a plain 16-byte prefix', () => {
@@ -382,11 +392,15 @@ describe('unconvertMinMax', () => {
     expect(value).toEqual(original)
   })
 
-  it('should omit a truncated max when every prefix byte is 0xFF', () => {
+  it('should keep a max whole when every prefix byte is 0xFF', () => {
     const value = new Uint8Array(20).fill(0xff)
-    const max = unconvertMinMax(value, { name: 'test', type: 'BYTE_ARRAY' }, true)
-    // no shorter byte string is >= all-0xFF, so the max is omitted
-    expect(max).toBeUndefined()
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', type: 'BYTE_ARRAY' }
+    // no shorter byte string is >= all-0xFF, so the max stays exact
+    expect(unconvertMinMax(value, schema, true)).toEqual(value)
+    const thrift = unconvertStatistics({ min_value: value, max_value: value }, schema)
+    expect(thrift.field_7).toBeUndefined()
+    expect(thrift.field_8).toBe(false)
   })
 
   it('should encode a UUID as 16 raw bytes, not ASCII text', () => {
@@ -456,11 +470,38 @@ describe('unconvertMinMax', () => {
       .toThrow('unsupported type for statistics: INT96 with value 123')
   })
 
-  it('should throw an error for INT64 if value is a number instead of bigint or Date', () => {
+  it('should encode a safe integer number as INT64', () => {
     /** @type {SchemaElement} */
     const schema = { name: 'test', type: 'INT64' }
-    expect(() => unconvertMinMax(123, schema, false))
-      .toThrow('unsupported type for statistics: INT64 with value 123')
+    const result = unconvertMinMax(-123, schema, false)
+    expect(result).toEqual(new Uint8Array([0x85, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]))
+    expect(convertMetadata(result, schema, DEFAULT_PARSERS)).toBe(-123n)
+  })
+
+  it('should throw for INT64 if a number is not an integer', () => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', type: 'INT64' }
+    expect(() => unconvertMinMax(1.5, schema, false))
+      .toThrow('unsupported type for statistics: INT64 with value 1.5')
+  })
+
+  it('should encode an integer number above 2^53 as INT64', () => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', type: 'INT64' }
+    const expected = new Uint8Array(8)
+    new DataView(expected.buffer).setBigInt64(0, 2n ** 53n, true)
+    expect(unconvertMinMax(2 ** 53, schema, false)).toEqual(expected)
+  })
+
+  it('should encode FLOAT16 bounds as float16 bytes', () => {
+    /** @type {SchemaElement} */
+    const schema = { name: 'test', type: 'FIXED_LEN_BYTE_ARRAY', type_length: 2, logical_type: { type: 'FLOAT16' } }
+    expect(unconvertMinMax(1.5, schema, false)).toEqual(new Uint8Array([0x00, 0x3e]))
+    expect(unconvertMinMax(-2, schema, true)).toEqual(new Uint8Array([0x00, 0xc0]))
+    expect(convertMetadata(unconvertMinMax(0.1, schema, true), schema, DEFAULT_PARSERS))
+      .toBe(parseFloat16(unconvertFloat16(0.1)))
+    expect(unconvertStatistics({ min_value: 0.30000001192092896, max_value: 0.30000001192092896 }, schema))
+      .toMatchObject({ field_7: undefined, field_8: undefined })
   })
 
   /** @type {Array<{name: string, schema: SchemaElement, value: bigint | Date, expected: bigint}>} */
@@ -525,6 +566,101 @@ describe('unconvertMinMax', () => {
     if (!result) throw new Error('expected result')
     const view = new DataView(result.buffer)
     expect(view.getBigInt64(0, true)).toEqual(expected)
+  })
+})
+
+describe('unconvertMinMax UTF-8 truncation', () => {
+  const encoder = new TextEncoder()
+  const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+  /** @type {SchemaElement} */
+  const string = { name: 'test', type: 'BYTE_ARRAY', converted_type: 'UTF8' }
+  /** @type {SchemaElement} */
+  const logicalString = { name: 'test', type: 'BYTE_ARRAY', logical_type: { type: 'STRING' } }
+  /** @type {SchemaElement} */
+  const enumType = { name: 'test', type: 'BYTE_ARRAY', converted_type: 'ENUM' }
+
+  /**
+   * @param {string} value
+   * @param {SchemaElement} schema
+   * @returns {{ min: string, max: string }}
+   */
+  function bounds(value, schema) {
+    const min = unconvertMinMax(value, schema, false)
+    const max = unconvertMinMax(value, schema, true)
+    if (!min || !max) throw new Error('expected bounds')
+    const full = encoder.encode(value)
+    expect(compareBytes(min, full)).toBeLessThanOrEqual(0)
+    expect(compareBytes(max, full)).toBeGreaterThanOrEqual(0)
+    expect(min.length).toBeLessThanOrEqual(16)
+    expect(max.length).toBeLessThanOrEqual(16)
+    return { min: decoder.decode(min), max: decoder.decode(max) }
+  }
+
+  it('should cut before a multi-byte code point', () => {
+    const value = 'a'.repeat(15) + '€'
+    for (const schema of [string, logicalString, enumType]) {
+      expect(bounds(value, schema)).toEqual({ min: 'a'.repeat(15), max: 'a'.repeat(14) + 'b' })
+    }
+  })
+
+  it('should round up the last code point of a max', () => {
+    expect(bounds('a'.repeat(13) + '€zz', string).max).toBe('a'.repeat(13) + '\u20ad')
+  })
+
+  it('should skip surrogates when rounding up a max', () => {
+    expect(bounds('a'.repeat(13) + '\ud7ffzz', string).max).toBe('a'.repeat(13) + '\ue000')
+  })
+
+  it('should carry when the next code point needs more bytes', () => {
+    expect(bounds('a'.repeat(15) + '\x7fz', string).max).toBe('a'.repeat(14) + 'b')
+  })
+
+  it('should carry past U+10FFFF', () => {
+    expect(bounds('a' + '\u{10ffff}'.repeat(4), string)).toEqual({ min: 'a\u{10ffff}\u{10ffff}\u{10ffff}', max: 'b' })
+  })
+
+  it('should keep a max whole when no code point can be rounded up', () => {
+    const value = '\u{10ffff}'.repeat(5)
+    expect(unconvertMinMax(value, string, true)).toEqual(encoder.encode(value))
+    const thrift = unconvertStatistics({ min_value: value, max_value: value }, string)
+    expect(thrift.field_7).toBeUndefined()
+    expect(thrift.field_8).toBe(false)
+  })
+
+  it('should keep a byte order mark', () => {
+    const value = '\ufeff' + 'a'.repeat(14)
+    expect(bounds(value, string)).toEqual({ min: '\ufeff' + 'a'.repeat(13), max: '\ufeff' + 'a'.repeat(12) + 'b' })
+  })
+
+  it('should fall back to bytes for invalid UTF-8', () => {
+    const value = new Uint8Array([...encoder.encode('a'.repeat(15)), 0xf5, 0x61, 0x61])
+    const max = unconvertMinMax(value, string, true)
+    expect(max).toEqual(new Uint8Array([...encoder.encode('a'.repeat(15)), 0xf6]))
+    expect(compareBytes(max, value)).toBeGreaterThan(0)
+  })
+
+  it('should mark truncated string bounds inexact', () => {
+    const value = 'a'.repeat(15) + '€'
+    const thrift = unconvertStatistics({ min_value: value, max_value: value }, string)
+    expect(thrift.field_7).toBe(false)
+    expect(thrift.field_8).toBe(false)
+  })
+
+  it('should not truncate JSON or BSON', () => {
+    const value = JSON.stringify({ key: 'a'.repeat(30) })
+    /** @type {SchemaElement[]} */
+    const schemas = [
+      { name: 'test', type: 'BYTE_ARRAY', converted_type: 'JSON' },
+      { name: 'test', type: 'BYTE_ARRAY', logical_type: { type: 'JSON' } },
+      { name: 'test', type: 'BYTE_ARRAY', converted_type: 'BSON' },
+    ]
+    for (const schema of schemas) {
+      expect(unconvertMinMax(value, schema, false)).toEqual(encoder.encode(value))
+      expect(unconvertMinMax(value, schema, true)).toEqual(encoder.encode(value))
+      const thrift = unconvertStatistics({ min_value: value, max_value: value }, schema)
+      expect(thrift.field_7).toBeUndefined()
+      expect(thrift.field_8).toBeUndefined()
+    }
   })
 })
 
@@ -636,9 +772,35 @@ describe('unconvertFloat16', () => {
     expect(unconvertFloat16(65504)).toEqual(new Uint8Array([0xff, 0x7b]))
     expect(unconvertFloat16(65505)).toEqual(new Uint8Array([0xff, 0x7b]))
     // subnormal
-    expect(unconvertFloat16(2 ** -24)).toEqual(new Uint8Array([0x02, 0x00]))
+    expect(unconvertFloat16(2 ** -24)).toEqual(new Uint8Array([0x01, 0x00]))
     // mantissa overflow
     expect(unconvertFloat16(2047.9999)).toEqual(new Uint8Array([0x00, 0x68]))
+  })
+
+  it('rounds tiny values, ties, and overflow directly from float64', () => {
+    const cases = [
+      [Number.MIN_VALUE, 0], [1e-20, 0], [1e-10, 0], [1e-8, 0],
+      [2 ** -25, 0], [2 ** -25 + 2 ** -55, 1],
+      [3 * 2 ** -25, 2], [5 * 2 ** -25, 2],
+      [2 ** -14 - 2 ** -25, 0x400],
+      [1 + 2 ** -11, 0x3c00], [1 + 3 * 2 ** -11, 0x3c02],
+      [1 + 2 ** -11 - 2 ** -30, 0x3c00],
+      [1 + 2 ** -11 + 2 ** -30, 0x3c01],
+      [65520 - 2 ** -20, 0x7bff], [65520, 0x7c00],
+      [Number.MAX_VALUE, 0x7c00],
+    ]
+    for (const [value, bits] of cases) {
+      expect(unconvertFloat16(value)).toEqual(new Uint8Array([bits & 255, bits >> 8]))
+      expect(unconvertFloat16(-value)).toEqual(new Uint8Array([bits & 255, bits >> 8 | 0x80]))
+    }
+  })
+
+  it('preserves every finite float16 bit pattern', () => {
+    for (let bits = 0; bits <= 0xffff; bits++) {
+      if ((bits & 0x7c00) === 0x7c00) continue
+      const bytes = new Uint8Array([bits & 255, bits >> 8])
+      expect(unconvertFloat16(parseFloat16(bytes))).toEqual(bytes)
+    }
   })
 
   it('should round-trip Float16', () => {

@@ -20,8 +20,10 @@ export function parquetWrite({
   codec = 'SNAPPY',
   compressors,
   statistics = true,
+  statisticsTruncateLength,
   rowGroupSize = [1000, 100000],
   kvMetadata,
+  createdBy,
   pageSize = 1048576,
   dictionarySize,
 }) {
@@ -50,7 +52,9 @@ export function parquetWrite({
     codec,
     compressors,
     statistics,
+    statisticsTruncateLength,
     kvMetadata,
+    createdBy,
   })
   const w = pq.write({
     columnData,

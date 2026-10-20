@@ -5,9 +5,9 @@ import { geospatialStatistics } from './geospatial.js'
 import { unconvert, unconvertMinMax } from './unconvert.js'
 
 /**
- * @import {ColumnChunk, ColumnIndex, DecodedArray, Encoding, OffsetIndex, ParquetType, SchemaElement, Statistics} from 'hyparquet'
+ * @import {ColumnChunk, DecodedArray, Encoding, OffsetIndex, ParquetType, SchemaElement} from 'hyparquet'
  * @import {PageEncodingStats} from 'hyparquet/src/types.js'
- * @import {ColumnEncoder, PageData, Writer} from '../src/types.js'
+ * @import {ChunkStatistics, ColumnEncoder, PageColumnIndex, PageData, Writer} from '../src/types.js'
  */
 
 /**
@@ -17,7 +17,7 @@ import { unconvert, unconvertMinMax } from './unconvert.js'
  * @param {Writer} options.writer
  * @param {ColumnEncoder} options.column
  * @param {PageData} options.pageData
- * @returns {{ chunk: ColumnChunk, columnIndex?: ColumnIndex, offsetIndex?: OffsetIndex, bloomFilter?: Uint32Array }}
+ * @returns {{ chunk: ColumnChunk, columnIndex?: PageColumnIndex, offsetIndex?: OffsetIndex, bloomFilter?: Uint32Array }}
  */
 export function writeColumn({ writer, column, pageData }) {
   const { columnName, element, schemaPath, stats, pageSize, dictionarySize, encoding: userEncoding } = column
@@ -25,6 +25,7 @@ export function writeColumn({ writer, column, pageData }) {
   if (!type) throw new Error(`column ${columnName} cannot determine type`)
   const { values, definitionLevels, repetitionLevels, maxDefinitionLevel } = pageData
   const offsetStart = writer.offset
+  let uncompressedSize = 0
 
   /** @type {Encoding[]} */
   const encodings = []
@@ -32,7 +33,6 @@ export function writeColumn({ writer, column, pageData }) {
   const isGeospatial = element?.logical_type?.type === 'GEOMETRY' || element?.logical_type?.type === 'GEOGRAPHY'
 
   // Compute statistics
-  const statistics = stats ? getStatistics(values, element) : undefined
   const geospatial_statistics = stats && isGeospatial ? geospatialStatistics(values) : undefined
 
   // Build bloom filter from original values (hashParquetValue reads schema info from element)
@@ -49,6 +49,21 @@ export function writeColumn({ writer, column, pageData }) {
   let dictionary_page_offset
   const selectPhysical = element.converted_type !== 'UTF8'
   const dictionaryValues = selectPhysical ? unconvert(element, values) : values
+  // Validate physical values before statistics or encoders can wrap them.
+  if (type === 'INT64') {
+    const unsigned = element.converted_type === 'UINT_64' ||
+      element.logical_type?.type === 'INTEGER' && !element.logical_type.isSigned
+    const min = unsigned ? 0n : -(2n ** 63n)
+    const max = unsigned ? 2n ** 64n - 1n : 2n ** 63n - 1n
+    for (const value of dictionaryValues) {
+      if (value !== null && value !== undefined && (value < min || value > max)) {
+        throw new RangeError(`parquet INT64 value out of range: ${value}`)
+      }
+    }
+  }
+  // JSON bounds order the encoded bytes, not the JS values
+  const statisticsValues = element.converted_type === 'JSON' ? dictionaryValues : values
+  const statistics = stats ? getStatistics(statisticsValues, element) : undefined
   const { dictionary, indexes } = useDictionary(
     dictionaryValues, type, type_length, userEncoding, dictionarySize, maxDefinitionLevel === 0
   )
@@ -68,7 +83,8 @@ export function writeColumn({ writer, column, pageData }) {
     // write dictionary page first
     dictionary_page_offset = BigInt(writer.offset)
     const unconverted = selectPhysical ? dictionary : unconvert(element, dictionary)
-    writeDictionaryPage(writer, column, unconverted)
+    uncompressedSize += writeDictionaryPage(writer, column, unconverted)
+    encodings.push('PLAIN')
   } else {
     // unconvert values from rich types to simple
     writeValues = selectPhysical ? dictionaryValues : unconvert(element, values)
@@ -83,13 +99,14 @@ export function writeColumn({ writer, column, pageData }) {
   const pageBoundaries = getPageBoundaries(writeValues, writeType, type_length, pageSize, repetitionLevels)
 
   // Initialize index structures if requested
-  /** @type {ColumnIndex | undefined} */
-  const columnIndex = column.columnIndex && pageBoundaries.length > 1 ? {
+  /** @type {PageColumnIndex | undefined} */
+  let columnIndex = column.columnIndex && pageBoundaries.length > 1 ? {
     null_pages: [],
     min_values: [],
     max_values: [],
     boundary_order: 'UNORDERED',
     null_counts: [],
+    nan_counts: isFloat(element) ? [] : undefined,
   } : undefined
   /** @type {OffsetIndex | undefined} */
   const offsetIndex = column.offsetIndex && pageBoundaries.length > 1 ? {
@@ -115,32 +132,40 @@ export function writeColumn({ writer, column, pageData }) {
       repetitionLevels: repetitionLevels.slice(start, end),
       maxDefinitionLevel,
     }
-    writeDataPageV2({ writer, column, encoding, pageData: pageChunk })
+    uncompressedSize += writeDataPageV2({ writer, column, encoding, pageData: pageChunk })
 
     // ColumnIndex construction
     if (columnIndex) {
-      const pageValues = values.slice(start, end) // original values not indexes
-      const { min_value, max_value, null_count = 0n } = getStatistics(pageValues, element)
+      const pageValues = statisticsValues.slice(start, end) // original values not indexes
+      const { min_value, max_value, null_count = 0n, nan_count } = getStatistics(pageValues, element)
+      const nullPage = null_count === BigInt(end - start)
+      const minBytes = unconvertMinMax(min_value, element, false, column.statisticsTruncateLength)
+      const maxBytes = unconvertMinMax(max_value, element, true, column.statisticsTruncateLength)
+      if (!nullPage && (!minBytes || !maxBytes)) {
+        // Spec: bounds are required, so a non-null page without them (all NaN) drops the index
+        columnIndex = undefined
+      } else {
+        columnIndex.null_pages.push(nullPage)
+        // Spec: for all-null pages set "byte[0]"
+        columnIndex.min_values.push(minBytes ?? new Uint8Array())
+        columnIndex.max_values.push(maxBytes ?? new Uint8Array())
+        columnIndex.null_counts?.push(null_count)
+        if (nan_count !== undefined) columnIndex.nan_counts?.push(nan_count)
 
-      columnIndex.null_pages.push(null_count === BigInt(end - start)) // all nulls
-      // Spec: for all-null pages set "byte[0]"
-      columnIndex.min_values.push(unconvertMinMax(min_value, element, false) ?? new Uint8Array())
-      columnIndex.max_values.push(unconvertMinMax(max_value, element, true) ?? new Uint8Array())
-      columnIndex.null_counts?.push(null_count)
-
-      // Track boundary order using original JS values
-      if (prevMinValue !== undefined && min_value !== undefined) {
-        const order = compareValues(prevMinValue, min_value)
-        if (order > 0) ascending = false
-        if (order < 0) descending = false
+        // Track boundary order using original JS values
+        if (prevMinValue !== undefined && min_value !== undefined) {
+          const order = compareValues(prevMinValue, min_value)
+          if (order > 0) ascending = false
+          if (order < 0) descending = false
+        }
+        if (prevMaxValue !== undefined && max_value !== undefined) {
+          const order = compareValues(prevMaxValue, max_value)
+          if (order > 0) ascending = false
+          if (order < 0) descending = false
+        }
+        prevMinValue = min_value
+        prevMaxValue = max_value
       }
-      if (prevMaxValue !== undefined && max_value !== undefined) {
-        const order = compareValues(prevMaxValue, max_value)
-        if (order > 0) ascending = false
-        if (order < 0) descending = false
-      }
-      prevMinValue = min_value
-      prevMaxValue = max_value
     }
 
     // OffsetIndex construction
@@ -190,7 +215,7 @@ export function writeColumn({ writer, column, pageData }) {
         codec: column.codec ?? 'UNCOMPRESSED',
         num_values: BigInt(values.length),
         total_compressed_size: BigInt(writer.offset - offsetStart),
-        total_uncompressed_size: BigInt(writer.offset - offsetStart), // TODO: uncompressed pages + headers
+        total_uncompressed_size: BigInt(uncompressedSize),
         data_page_offset,
         dictionary_page_offset,
         statistics,
@@ -251,32 +276,59 @@ export function getPageBoundaries(values, type, type_length, pageSize, repetitio
 /**
  * @param {DecodedArray} values
  * @param {SchemaElement} element
- * @returns {Statistics}
+ * @returns {ChunkStatistics}
  */
 function getStatistics(values, element) {
   let min_value = undefined
   let max_value = undefined
   let null_count = 0n
+  let nan_count = isFloat(element) ? 0n : undefined
   for (const value of values) {
     if (value === null || value === undefined) {
       null_count++
       continue
     }
-    if (typeof value === 'object' && !(value instanceof Uint8Array)) continue
-    if (typeof value === 'number' && Number.isNaN(value)) continue // skip NaN per parquet spec
-    // DECIMAL numbers are logical values while bigints are already unscaled.
-    // Compare both representations as unscaled bigints and return that common
-    // representation for metadata conversion.
-    const statisticValue = element.converted_type === 'DECIMAL' && typeof value === 'number'
-      ? BigInt(Math.round(value * 10 ** (element.scale || 0)))
-      : value
+    const statisticValue = physicalStatistic(value, element)
+    if (typeof statisticValue === 'object' && !(statisticValue instanceof Uint8Array)) continue
+    if (typeof statisticValue === 'number' && Number.isNaN(statisticValue)) {
+      if (nan_count !== undefined) nan_count++
+      continue // skip NaN per parquet spec
+    }
     if (min_value === undefined || compareValues(statisticValue, min_value) < 0) min_value = statisticValue
     if (max_value === undefined || compareValues(statisticValue, max_value) > 0) max_value = statisticValue
   }
   // Normalize signed zero per parquet spec: min becomes -0, max becomes +0
   if (min_value === 0) min_value = -0
   if (max_value === 0) max_value = 0
-  return { min_value, max_value, null_count }
+  return { min_value, max_value, null_count, nan_count }
+}
+
+/**
+ * @param {SchemaElement} element
+ * @returns {boolean}
+ */
+function isFloat({ type, logical_type }) {
+  return type === 'FLOAT' || type === 'DOUBLE' || logical_type?.type === 'FLOAT16'
+}
+
+/**
+ * Normalize values that have more than one input representation, so that
+ * statistics compare them as the physical values they are written as. DECIMAL
+ * numbers are logical values while bigints are already unscaled, and a Date in
+ * a DATE or TIMESTAMP column is stored in the column's unit.
+ *
+ * @param {any} value
+ * @param {SchemaElement} element
+ * @returns {any}
+ */
+function physicalStatistic(value, element) {
+  if (element.converted_type === 'DECIMAL' && typeof value === 'number') {
+    return BigInt(Math.round(value * 10 ** (element.scale || 0)))
+  }
+  if (value instanceof Date && (element.type === 'INT32' || element.type === 'INT64')) {
+    return unconvert(element, [value])[0]
+  }
+  return value
 }
 
 /**
