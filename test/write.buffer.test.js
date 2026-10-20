@@ -387,6 +387,61 @@ describe('parquetWriteBuffer', () => {
     expect(result).toEqual(data.map(uint64 => ({ uint64 })))
   })
 
+  it('rejects INT64 overflow with and without statistics for every integer encoding', () => {
+    /** @type {import('hyparquet').Encoding[]} */
+    const encodings = ['PLAIN', 'RLE_DICTIONARY', 'DELTA_BINARY_PACKED']
+    for (const encoding of encodings) {
+      for (const statistics of [true, false]) {
+        for (const value of [2n ** 63n, -(2n ** 63n) - 1n]) {
+          expect(() => parquetWriteBuffer({
+            columnData: [{ name: 'value', data: [0n, value, 0n, value], type: 'INT64', encoding }],
+            statistics,
+          })).toThrow('parquet INT64 value out of range')
+        }
+      }
+    }
+    for (const statistics of [true, false]) {
+      for (const value of [2 ** 63, -(2 ** 63) - 2048]) {
+        expect(() => parquetWriteBuffer({
+          columnData: [{ name: 'value', data: [0, value], type: 'INT64', encoding: 'DELTA_BINARY_PACKED' }],
+          statistics,
+        })).toThrow('parquet INT64 value out of range')
+      }
+    }
+  })
+
+  it('validates unsigned INT64 ranges for both schema annotations', async () => {
+    /** @type {SchemaElement[]} */
+    const elements = [
+      { name: 'value', type: 'INT64', converted_type: 'UINT_64' },
+      { name: 'value', type: 'INT64', logical_type: { type: 'INTEGER', bitWidth: 64, isSigned: false } },
+    ]
+    for (const element of elements) {
+      const schema = [{ name: 'root', num_children: 1 }, element]
+      const data = [0n, 2n ** 63n, 2n ** 64n - 1n]
+      expect(await roundTripDeserialize([{ name: 'value', data }], schema))
+        .toEqual(data.map(value => ({ value })))
+      for (const value of [-1n, 2n ** 64n]) {
+        expect(() => parquetWriteBuffer({
+          columnData: [{ name: 'value', data: [value] }],
+          schema,
+          statistics: false,
+        })).toThrow('parquet INT64 value out of range')
+      }
+    }
+  })
+
+  it('validates INT64 ranges after timestamp conversion', () => {
+    expect(() => parquetWriteBuffer({
+      columnData: [{ name: 'value', data: [new Date('2500-01-01')] }],
+      schema: [
+        { name: 'root', num_children: 1 },
+        { name: 'value', type: 'INT64', logical_type: { type: 'TIMESTAMP', unit: 'NANOS', isAdjustedToUTC: true } },
+      ],
+      statistics: false,
+    })).toThrow('parquet INT64 value out of range')
+  })
+
   it('throws for wrong type specified', () => {
     expect(() => parquetWriteBuffer({ columnData: [{ name: 'int', data: [1, 2, 3], type: 'INT64' }] }))
       .toThrow('parquet expected bigint value')

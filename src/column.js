@@ -49,6 +49,18 @@ export function writeColumn({ writer, column, pageData }) {
   let dictionary_page_offset
   const selectPhysical = element.converted_type !== 'UTF8'
   const dictionaryValues = selectPhysical ? unconvert(element, values) : values
+  // Validate physical values before statistics or encoders can wrap them.
+  if (type === 'INT64') {
+    const unsigned = element.converted_type === 'UINT_64' ||
+      element.logical_type?.type === 'INTEGER' && !element.logical_type.isSigned
+    const min = unsigned ? 0n : -(2n ** 63n)
+    const max = unsigned ? 2n ** 64n - 1n : 2n ** 63n - 1n
+    for (const value of dictionaryValues) {
+      if (value !== null && value !== undefined && (value < min || value > max)) {
+        throw new RangeError(`parquet INT64 value out of range: ${value}`)
+      }
+    }
+  }
   // JSON bounds order the encoded bytes, not the JS values
   const statisticsValues = element.converted_type === 'JSON' ? dictionaryValues : values
   const statistics = stats ? getStatistics(statisticsValues, element) : undefined
