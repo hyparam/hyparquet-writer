@@ -183,5 +183,5 @@ export const exampleMetadata = {
     num_rows: 4n,
     total_compressed_size: 264n,
   }],
-  metadata_length: 511,
+  metadata_length: 538,
 }
