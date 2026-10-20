@@ -11,7 +11,7 @@
 
 Hyparquet Writer is a JavaScript library for writing [Apache Parquet](https://parquet.apache.org) files. It is designed to be lightweight, fast and store data very efficiently. It is a companion to the [hyparquet](https://github.com/hyparam/hyparquet) library, which is a JavaScript library for reading parquet files.
 
-> Part of **[HypStack](https://hypstack.ai/)**, an open-source stack for AI observability.
+> Powers **[HypAware](https://hypaware.ai/?utm_source=github-readme)**, the improvement loop for all your agents.
 
 ## Quick Start
 
@@ -83,6 +83,7 @@ interface ParquetWriteOptions {
   codec?: CompressionCodec // compression codec (default 'SNAPPY')
   compressors?: Compressors // custom compressors (default includes snappy, required for other codecs)
   statistics?: boolean // enable column statistics (default true)
+  statisticsTruncateLength?: number // max bytes of a STRING or BYTE_ARRAY min/max in statistics and column indexes (default 16, Infinity keeps whole values; FIXED_LEN_BYTE_ARRAY, JSON, BSON and DECIMAL bounds are never truncated)
   pageSize?: number // target page size in bytes (default 1 mb)
   dictionarySize?: number // hard cap on dictionary bytes per column chunk (default: uncapped, dictionaries kept while they at least halve the encoded size)
   rowGroupSize?: number | number[] // target row group size in rows (default [1000, 100000])

@@ -25,6 +25,7 @@ export function writeColumn({ writer, column, pageData }) {
   if (!type) throw new Error(`column ${columnName} cannot determine type`)
   const { values, definitionLevels, repetitionLevels, maxDefinitionLevel } = pageData
   const offsetStart = writer.offset
+  let uncompressedSize = 0
 
   /** @type {Encoding[]} */
   const encodings = []
@@ -32,7 +33,6 @@ export function writeColumn({ writer, column, pageData }) {
   const isGeospatial = element?.logical_type?.type === 'GEOMETRY' || element?.logical_type?.type === 'GEOGRAPHY'
 
   // Compute statistics
-  const statistics = stats ? getStatistics(values, element) : undefined
   const geospatial_statistics = stats && isGeospatial ? geospatialStatistics(values) : undefined
 
   // Build bloom filter from original values (hashParquetValue reads schema info from element)
@@ -49,6 +49,21 @@ export function writeColumn({ writer, column, pageData }) {
   let dictionary_page_offset
   const selectPhysical = element.converted_type !== 'UTF8'
   const dictionaryValues = selectPhysical ? unconvert(element, values) : values
+  // Validate physical values before statistics or encoders can wrap them.
+  if (type === 'INT64') {
+    const unsigned = element.converted_type === 'UINT_64' ||
+      element.logical_type?.type === 'INTEGER' && !element.logical_type.isSigned
+    const min = unsigned ? 0n : -(2n ** 63n)
+    const max = unsigned ? 2n ** 64n - 1n : 2n ** 63n - 1n
+    for (const value of dictionaryValues) {
+      if (value !== null && value !== undefined && (value < min || value > max)) {
+        throw new RangeError(`parquet INT64 value out of range: ${value}`)
+      }
+    }
+  }
+  // JSON bounds order the encoded bytes, not the JS values
+  const statisticsValues = element.converted_type === 'JSON' ? dictionaryValues : values
+  const statistics = stats ? getStatistics(statisticsValues, element) : undefined
   const { dictionary, indexes } = useDictionary(
     dictionaryValues, type, type_length, userEncoding, dictionarySize, maxDefinitionLevel === 0
   )
@@ -68,7 +83,8 @@ export function writeColumn({ writer, column, pageData }) {
     // write dictionary page first
     dictionary_page_offset = BigInt(writer.offset)
     const unconverted = selectPhysical ? dictionary : unconvert(element, dictionary)
-    writeDictionaryPage(writer, column, unconverted)
+    uncompressedSize += writeDictionaryPage(writer, column, unconverted)
+    encodings.push('PLAIN')
   } else {
     // unconvert values from rich types to simple
     writeValues = selectPhysical ? dictionaryValues : unconvert(element, values)
@@ -116,15 +132,15 @@ export function writeColumn({ writer, column, pageData }) {
       repetitionLevels: repetitionLevels.slice(start, end),
       maxDefinitionLevel,
     }
-    writeDataPageV2({ writer, column, encoding, pageData: pageChunk })
+    uncompressedSize += writeDataPageV2({ writer, column, encoding, pageData: pageChunk })
 
     // ColumnIndex construction
     if (columnIndex) {
-      const pageValues = values.slice(start, end) // original values not indexes
+      const pageValues = statisticsValues.slice(start, end) // original values not indexes
       const { min_value, max_value, null_count = 0n, nan_count } = getStatistics(pageValues, element)
       const nullPage = null_count === BigInt(end - start)
-      const minBytes = unconvertMinMax(min_value, element, false)
-      const maxBytes = unconvertMinMax(max_value, element, true)
+      const minBytes = unconvertMinMax(min_value, element, false, column.statisticsTruncateLength)
+      const maxBytes = unconvertMinMax(max_value, element, true, column.statisticsTruncateLength)
       if (!nullPage && (!minBytes || !maxBytes)) {
         // Spec: bounds are required, so a non-null page without them (all NaN) drops the index
         columnIndex = undefined
@@ -199,7 +215,7 @@ export function writeColumn({ writer, column, pageData }) {
         codec: column.codec ?? 'UNCOMPRESSED',
         num_values: BigInt(values.length),
         total_compressed_size: BigInt(writer.offset - offsetStart),
-        total_uncompressed_size: BigInt(writer.offset - offsetStart), // TODO: uncompressed pages + headers
+        total_uncompressed_size: BigInt(uncompressedSize),
         data_page_offset,
         dictionary_page_offset,
         statistics,
