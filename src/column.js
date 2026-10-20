@@ -25,6 +25,7 @@ export function writeColumn({ writer, column, pageData }) {
   if (!type) throw new Error(`column ${columnName} cannot determine type`)
   const { values, definitionLevels, repetitionLevels, maxDefinitionLevel } = pageData
   const offsetStart = writer.offset
+  let uncompressedSize = 0
 
   /** @type {Encoding[]} */
   const encodings = []
@@ -32,7 +33,6 @@ export function writeColumn({ writer, column, pageData }) {
   const isGeospatial = element?.logical_type?.type === 'GEOMETRY' || element?.logical_type?.type === 'GEOGRAPHY'
 
   // Compute statistics
-  const statistics = stats ? getStatistics(values, element) : undefined
   const geospatial_statistics = stats && isGeospatial ? geospatialStatistics(values) : undefined
 
   // Build bloom filter from original values (hashParquetValue reads schema info from element)
@@ -49,6 +49,9 @@ export function writeColumn({ writer, column, pageData }) {
   let dictionary_page_offset
   const selectPhysical = element.converted_type !== 'UTF8'
   const dictionaryValues = selectPhysical ? unconvert(element, values) : values
+  // JSON bounds order the encoded bytes, not the JS values
+  const statisticsValues = element.converted_type === 'JSON' ? dictionaryValues : values
+  const statistics = stats ? getStatistics(statisticsValues, element) : undefined
   const { dictionary, indexes } = useDictionary(
     dictionaryValues, type, type_length, userEncoding, dictionarySize, maxDefinitionLevel === 0
   )
@@ -68,7 +71,8 @@ export function writeColumn({ writer, column, pageData }) {
     // write dictionary page first
     dictionary_page_offset = BigInt(writer.offset)
     const unconverted = selectPhysical ? dictionary : unconvert(element, dictionary)
-    writeDictionaryPage(writer, column, unconverted)
+    uncompressedSize += writeDictionaryPage(writer, column, unconverted)
+    encodings.push('PLAIN')
   } else {
     // unconvert values from rich types to simple
     writeValues = selectPhysical ? dictionaryValues : unconvert(element, values)
@@ -115,17 +119,17 @@ export function writeColumn({ writer, column, pageData }) {
       repetitionLevels: repetitionLevels.slice(start, end),
       maxDefinitionLevel,
     }
-    writeDataPageV2({ writer, column, encoding, pageData: pageChunk })
+    uncompressedSize += writeDataPageV2({ writer, column, encoding, pageData: pageChunk })
 
     // ColumnIndex construction
     if (columnIndex) {
-      const pageValues = values.slice(start, end) // original values not indexes
+      const pageValues = statisticsValues.slice(start, end) // original values not indexes
       const { min_value, max_value, null_count = 0n } = getStatistics(pageValues, element)
 
       columnIndex.null_pages.push(null_count === BigInt(end - start)) // all nulls
       // Spec: for all-null pages set "byte[0]"
-      columnIndex.min_values.push(unconvertMinMax(min_value, element, false) ?? new Uint8Array())
-      columnIndex.max_values.push(unconvertMinMax(max_value, element, true) ?? new Uint8Array())
+      columnIndex.min_values.push(unconvertMinMax(min_value, element, false, column.statisticsTruncateLength) ?? new Uint8Array())
+      columnIndex.max_values.push(unconvertMinMax(max_value, element, true, column.statisticsTruncateLength) ?? new Uint8Array())
       columnIndex.null_counts?.push(null_count)
 
       // Track boundary order using original JS values
@@ -190,7 +194,7 @@ export function writeColumn({ writer, column, pageData }) {
         codec: column.codec ?? 'UNCOMPRESSED',
         num_values: BigInt(values.length),
         total_compressed_size: BigInt(writer.offset - offsetStart),
-        total_uncompressed_size: BigInt(writer.offset - offsetStart), // TODO: uncompressed pages + headers
+        total_uncompressed_size: BigInt(uncompressedSize),
         data_page_offset,
         dictionary_page_offset,
         statistics,

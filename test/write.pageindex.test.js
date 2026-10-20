@@ -20,6 +20,22 @@ function indexReader(buffer, offset, length) {
 }
 
 describe('parquetWrite columnIndex and offsetIndex', () => {
+  it('truncates large string bounds in column indexes', () => {
+    const value = 'a'.repeat(200_001)
+    const buffer = parquetWriteBuffer({
+      columnData: [{ name: 'value', data: [value, value], type: 'STRING', columnIndex: true }],
+      statistics: false,
+      statisticsTruncateLength: 200_000,
+      pageSize: 1,
+    })
+    const metadata = parquetMetadata(buffer)
+    const column = metadata.row_groups[0].columns[0]
+    const reader = indexReader(buffer, column.column_index_offset, column.column_index_length)
+    const columnIndex = readColumnIndex(reader, metadata.schema[1])
+    expect(columnIndex.min_values).toEqual(Array(2).fill('a'.repeat(200_000)))
+    expect(columnIndex.max_values).toEqual(Array(2).fill('a'.repeat(199_999) + 'b'))
+  })
+
   it('writes byte-array UTF-8 values with the same statistics and pages as strings', () => {
     const strings = ['alpha', 'alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot']
     const encoder = new TextEncoder()
@@ -51,6 +67,36 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     expect(columnIndex.min_values).toEqual(['alpha', 'bravo', 'charlie', 'delta', 'foxtrot'])
     expect(columnIndex.max_values).toEqual(['alpha', 'bravo', 'charlie', 'echo', 'foxtrot'])
     expect(columnIndex.boundary_order).toBe('ASCENDING')
+  })
+
+  it('truncates column index bounds to statisticsTruncateLength', () => {
+    const data = Array.from({ length: 6 }, (_, i) => `${i}${'x'.repeat(19)}€`) // 23 bytes each
+    /**
+     * @param {number} [statisticsTruncateLength]
+     * @returns {{ min_values: any[], max_values: any[] }}
+     */
+    function columnIndexFor(statisticsTruncateLength) {
+      const buffer = parquetWriteBuffer({
+        columnData: [{ name: 'value', data, type: 'STRING', columnIndex: true }],
+        pageSize: 1,
+        statisticsTruncateLength,
+      })
+      const metadata = parquetMetadata(buffer)
+      const column = metadata.row_groups[0].columns[0]
+      const reader = indexReader(buffer, column.column_index_offset, column.column_index_length)
+      return readColumnIndex(reader, metadata.schema[1])
+    }
+    const byDefault = columnIndexFor()
+    expect(byDefault.min_values).toEqual(data.map((_, i) => `${i}${'x'.repeat(15)}`))
+    expect(byDefault.max_values).toEqual(data.map((_, i) => `${i}${'x'.repeat(14)}y`))
+
+    const short = columnIndexFor(21)
+    expect(short.min_values).toEqual(data.map((_, i) => `${i}${'x'.repeat(19)}`))
+    expect(short.max_values).toEqual(data.map((_, i) => `${i}${'x'.repeat(18)}y`))
+
+    const whole = columnIndexFor(23)
+    expect(whole.min_values).toEqual(data)
+    expect(whole.max_values).toEqual(data)
   })
 
   it('writes column index and offset index when both are true', async () => {
