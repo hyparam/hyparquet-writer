@@ -28,7 +28,7 @@ import { schemaFromColumnData } from './schema.js'
  *
  * Takes the same write options as {@link parquetWrite} (codec, compressors,
  * statistics, statisticsTruncateLength, rowGroupSize, pageSize, dictionarySize,
- * kvMetadata, schema) at the top level,
+ * kvMetadata, createdBy, schema) at the top level,
  * minus `columnData`, since `rows` and `columns` describe the data instead.
  *
  * @param {ParquetWriteRowsOptions} options

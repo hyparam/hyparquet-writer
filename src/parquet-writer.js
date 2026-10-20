@@ -25,8 +25,9 @@ export class ParquetWriter {
    * @param {boolean} [options.statistics]
    * @param {number} [options.statisticsTruncateLength]
    * @param {KeyValue[]} [options.kvMetadata]
+   * @param {string} [options.createdBy]
    */
-  constructor({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, statisticsTruncateLength, kvMetadata }) {
+  constructor({ writer, schema, codec = 'SNAPPY', compressors, statistics = true, statisticsTruncateLength, kvMetadata, createdBy = 'hyparquet' }) {
     if (statisticsTruncateLength !== undefined && statisticsTruncateLength !== Infinity &&
       !(Number.isInteger(statisticsTruncateLength) && statisticsTruncateLength > 0)) {
       throw new Error('statisticsTruncateLength must be a positive integer or Infinity')
@@ -42,6 +43,7 @@ export class ParquetWriter {
     this.statisticsTruncateLength = statisticsTruncateLength
     /** @type {KeyValue[] | undefined} */
     this.kvMetadata = kvMetadata
+    this.createdBy = createdBy
 
     /** @type {RowGroup[]} */
     this.row_groups = []
@@ -175,7 +177,7 @@ export class ParquetWriter {
     /** @type {FileMetaData} */
     const metadata = {
       version: 2,
-      created_by: 'hyparquet',
+      created_by: this.createdBy,
       schema: this.schema,
       num_rows: this.num_rows,
       row_groups: this.row_groups,
