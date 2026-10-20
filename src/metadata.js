@@ -1,5 +1,5 @@
-import { getSchemaPath } from 'hyparquet/src/schema.js'
 import { CompressionCodecs, ConvertedTypes, EdgeInterpolationAlgorithms, Encodings, FieldRepetitionTypes, PageTypes, ParquetTypes } from 'hyparquet/src/constants.js'
+import { schemaPathResolver } from './schema.js'
 import { DOUBLE, ThriftStruct, serializeTCompactProtocol } from './thrift.js'
 import { unconvertStatistics } from './unconvert.js'
 
@@ -16,6 +16,7 @@ import { unconvertStatistics } from './unconvert.js'
  * @param {number} [statisticsTruncateLength] max bytes for a byte-array min/max
  */
 export function writeMetadata(writer, metadata, statisticsTruncateLength) {
+  const resolveSchemaPath = schemaPathResolver(metadata.schema)
   /** @type {ThriftObject} */
   const compact = {
     field_1: metadata.version,
@@ -53,7 +54,7 @@ export function writeMetadata(writer, metadata, statisticsTruncateLength) {
           field_11: c.meta_data.dictionary_page_offset,
           field_12: c.meta_data.statistics && unconvertStatistics(
             c.meta_data.statistics,
-            schemaElement(metadata.schema, c.meta_data.path_in_schema),
+            schemaElement(c.meta_data.path_in_schema),
             statisticsTruncateLength
           ),
           field_13: c.meta_data.encoding_stats && c.meta_data.encoding_stats.map(es => ({
@@ -105,6 +106,17 @@ export function writeMetadata(writer, metadata, statisticsTruncateLength) {
   // write metadata length
   const metadataLength = writer.offset - metadataStart
   writer.appendUint32(metadataLength)
+
+  /**
+   * Resolve schema element for statistics using the stored path.
+   *
+   * @param {string[]} path
+   * @returns {SchemaElement}
+   */
+  function schemaElement(path) {
+    const tree = resolveSchemaPath(path)
+    return tree[tree.length - 1].element
+  }
 }
 
 /**
@@ -124,18 +136,6 @@ function thriftBoundingBox(bbox) {
     [7, DOUBLE, bbox.mmin],
     [8, DOUBLE, bbox.mmax],
   ])
-}
-
-/**
- * Resolve schema element for statistics using the stored path.
- *
- * @param {SchemaElement[]} schema
- * @param {string[]} path
- * @returns {SchemaElement}
- */
-function schemaElement(schema, path) {
-  const tree = getSchemaPath(schema, path)
-  return tree[tree.length - 1].element
 }
 
 /**

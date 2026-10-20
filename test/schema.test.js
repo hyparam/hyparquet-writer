@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { autoSchemaElement, getMaxRepetitionLevel, schemaFromColumnData } from '../src/schema.js'
+import { getSchemaPath } from 'hyparquet/src/schema.js'
+import { autoSchemaElement, getMaxRepetitionLevel, schemaFromColumnData, schemaPathResolver } from '../src/schema.js'
 
 describe('schemaFromColumnData', () => {
   describe('basic types', () => {
@@ -330,5 +331,35 @@ describe('max repetition level helper', () => {
       { name: 'child', repetition_type: 'OPTIONAL' },
       { name: 'leaf', repetition_type: 'REPEATED' },
     ])).toBe(1)
+  })
+})
+
+describe('schemaPathResolver', () => {
+  /** @type {import('hyparquet').SchemaElement[]} */
+  const schema = [
+    { name: 'root', num_children: 3 },
+    { name: 'id', type: 'INT32', repetition_type: 'REQUIRED' },
+    { name: 'tags', repetition_type: 'OPTIONAL', converted_type: 'LIST', num_children: 1 },
+    { name: 'list', repetition_type: 'REPEATED', num_children: 1 },
+    { name: 'element', type: 'BYTE_ARRAY', converted_type: 'UTF8', repetition_type: 'OPTIONAL' },
+    { name: 'name', type: 'BYTE_ARRAY', converted_type: 'UTF8', repetition_type: 'OPTIONAL' },
+  ]
+
+  it('resolves the same paths as getSchemaPath', () => {
+    const resolve = schemaPathResolver(schema)
+    for (const path of [[], ['id'], ['tags'], ['tags', 'list', 'element'], ['name']]) {
+      expect(resolve(path)).toEqual(getSchemaPath(schema, path))
+    }
+  })
+
+  it('throws for an unknown element', () => {
+    const resolve = schemaPathResolver(schema)
+    expect(() => resolve(['missing'])).toThrow('parquet schema element not found: missing')
+    expect(() => resolve(['tags', 'missing'])).toThrow('parquet schema element not found: tags,missing')
+  })
+
+  it('builds the tree once for repeated lookups', () => {
+    const resolve = schemaPathResolver(schema)
+    expect(resolve(['id'])[1]).toBe(resolve(['id'])[1])
   })
 })
