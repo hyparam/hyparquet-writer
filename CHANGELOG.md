@@ -1,5 +1,16 @@
 # Hyparquet-writer Changelog
 
+## [0.17.0]
+ - Add `createdBy` option
+ - Add `statisticsTruncateLength` option
+ - Write column orders and NaN counts
+ - Write uncompressed sizes and dictionary page encoding in metadata
+ - Reject out-of-range INT64 values
+ - Fix statistics for number INT64, FLOAT16 and Date values
+ - Fix FLOAT16 rounding and underflow
+ - Fix JSON statistics to bound the encoded bytes
+ - Fix large string statistics truncation
+
 ## [0.16.13]
  - Fix string statistics truncation splitting a code point
 
