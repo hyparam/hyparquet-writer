@@ -20,6 +20,7 @@ export function parquetWrite({
   codec = 'SNAPPY',
   compressors,
   statistics = true,
+  statisticsTruncateLength,
   rowGroupSize = [1000, 100000],
   kvMetadata,
   createdBy,
@@ -51,6 +52,7 @@ export function parquetWrite({
     codec,
     compressors,
     statistics,
+    statisticsTruncateLength,
     kvMetadata,
     createdBy,
   })

@@ -1,4 +1,4 @@
-import type { ColumnChunk, ColumnIndex, CompressionCodec, DecodedArray, Encoding, KeyValue, OffsetIndex, SchemaElement } from 'hyparquet'
+import type { ColumnChunk, ColumnIndex, CompressionCodec, DecodedArray, Encoding, KeyValue, OffsetIndex, SchemaElement, Statistics } from 'hyparquet'
 
 export type Compressor = (input: Uint8Array) => Uint8Array
 export type Compressors = { [K in CompressionCodec]?: Compressor }
@@ -32,6 +32,7 @@ export interface ParquetWriteOptions {
   codec?: CompressionCodec // global default codec, default 'SNAPPY'
   compressors?: Compressors // custom compressors, required for any codec other than SNAPPY and UNCOMPRESSED
   statistics?: boolean // enable column statistics, default true
+  statisticsTruncateLength?: number // max bytes of a STRING or BYTE_ARRAY min/max in statistics and column indexes (default 16, Infinity keeps whole values; FIXED_LEN_BYTE_ARRAY, JSON, BSON and DECIMAL bounds are never truncated)
   rowGroupSize?: number | number[] // number of rows per row group
   pageSize?: number // target uncompressed page size in bytes, default 1048576
   dictionarySize?: number // hard cap on distinct-value bytes per column chunk dictionary; unset = keep any dictionary that at least halves the encoded size
@@ -53,6 +54,7 @@ export interface ColumnSource {
   nullable?: boolean
   encoding?: Encoding
   codec?: CompressionCodec // per-column codec override, default ParquetWriteOptions.codec
+  statistics?: boolean // per-column statistics override (also encoding_stats and geospatial statistics), default ParquetWriteOptions.statistics
   columnIndex?: boolean // write column indexes, default false
   offsetIndex?: boolean // write offset indexes, default true
   shredding?: true | ShredType // variant shredding config (true = auto-detect)
@@ -68,7 +70,7 @@ export interface PageData {
 
 export interface BloomFilterOptions {
   fpp?: number // false positive probability, default 0.01
-  maxBytes?: number // skip emission above this size, default 1 MiB
+  maxBytes?: number // cap the filter at the largest power of two <= maxBytes, default 1 MiB
 }
 
 export interface ColumnEncoder {
@@ -78,6 +80,7 @@ export interface ColumnEncoder {
   codec: CompressionCodec
   compressors: Compressors
   stats: boolean
+  statisticsTruncateLength?: number
   pageSize: number
   dictionarySize?: number
   // Spec: If ColumnIndex is present, OffsetIndex must also be present
@@ -87,9 +90,18 @@ export interface ColumnEncoder {
   bloomFilter?: boolean | BloomFilterOptions
 }
 
+// nan_count and nan_counts are written but not yet typed by hyparquet
+export interface ChunkStatistics extends Statistics {
+  nan_count?: bigint
+}
+
+export interface PageColumnIndex extends ColumnIndex {
+  nan_counts?: bigint[]
+}
+
 export interface PageIndexes {
   chunk: ColumnChunk
-  columnIndex?: ColumnIndex
+  columnIndex?: PageColumnIndex
   offsetIndex?: OffsetIndex
   bloomFilter?: Uint32Array // finalized SBBF blocks
 }

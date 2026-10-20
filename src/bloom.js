@@ -123,7 +123,8 @@ export function createBloomFilter(ndv, fpp = 0.01) {
  * Collects distinct hashes of column values and finalizes them into an SBBF
  * sized for the actual distinct count. `finalize` returns `undefined` if any
  * non-null value was unhashable (the filter would have false negatives), if
- * no values were seen, or if the optimal size exceeds `maxBytes`.
+ * no values were seen, or if `maxBytes` is below one block. Above `maxBytes`
+ * the filter is capped at the largest power of two that fits, like parquet-java.
  */
 export class BloomBuilder {
   /**
@@ -154,7 +155,8 @@ export class BloomBuilder {
   /** @returns {Uint32Array | undefined} */
   finalize() {
     if (this.skipped > 0 || this.hashes.size === 0) return undefined
-    const numBytes = optimalNumBytes(this.hashes.size, this.fpp)
+    let numBytes = optimalNumBytes(this.hashes.size, this.fpp)
+    while (numBytes > this.maxBytes && numBytes > MIN_BYTES) numBytes >>= 1
     if (numBytes > this.maxBytes) return undefined
     const blocks = new Uint32Array(numBytes >> 2)
     for (const h of this.hashes) sbbfInsert(blocks, h)

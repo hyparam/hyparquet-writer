@@ -175,12 +175,23 @@ describe('BloomBuilder', () => {
     expect(builder.finalize()).toBeUndefined()
   })
 
-  it('returns undefined when sizing exceeds maxBytes', () => {
+  it('caps the filter at the largest power of two within maxBytes', () => {
     const builder = new BloomBuilder(
       { name: 's', type: 'BYTE_ARRAY' },
-      { fpp: 0.001, maxBytes: 256 }
+      { fpp: 0.001, maxBytes: 300 }
     )
     for (let i = 0; i < 1000; i++) builder.insert(`v-${i}`)
+    const blocks = builder.finalize()
+    expect(blocks?.byteLength).toBe(256)
+    for (let i = 0; i < 1000; i++) {
+      const h = hashParquetValue(`v-${i}`, { name: 's', type: 'BYTE_ARRAY' }) ?? 0n
+      expect(sbbfContains(blocks ?? new Uint32Array(0), h)).toBe(true)
+    }
+  })
+
+  it('returns undefined when maxBytes is below one block', () => {
+    const builder = new BloomBuilder({ name: 's', type: 'BYTE_ARRAY' }, { maxBytes: 31 })
+    builder.insert('a')
     expect(builder.finalize()).toBeUndefined()
   })
 })

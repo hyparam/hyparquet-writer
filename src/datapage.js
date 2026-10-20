@@ -13,6 +13,7 @@ import { serializeTCompactProtocol } from './thrift.js'
  * @param {ColumnEncoder} options.column
  * @param {Encoding} options.encoding
  * @param {PageData} options.pageData
+ * @returns {number} uncompressed page size including the header
  */
 export function writeDataPageV2({ writer, column, encoding, pageData }) {
   const { columnName, element, codec, compressors } = column
@@ -55,7 +56,7 @@ export function writeDataPageV2({ writer, column, encoding, pageData }) {
     if (type !== 'INT32' && type !== 'INT64') {
       throw new Error('DELTA_BINARY_PACKED encoding only supported for INT32 and INT64 types')
     }
-    deltaBinaryPack(page, nonnull)
+    deltaBinaryPack(page, nonnull, type)
   } else if (encoding === 'DELTA_LENGTH_BYTE_ARRAY') {
     if (type !== 'BYTE_ARRAY') {
       throw new Error('DELTA_LENGTH_BYTE_ARRAY encoding only supported for BYTE_ARRAY type')
@@ -77,6 +78,7 @@ export function writeDataPageV2({ writer, column, encoding, pageData }) {
   const compressedBytes = compressors[codec]?.(pageBytes) ?? pageBytes
 
   // write page header
+  const headerStart = writer.offset
   writePageHeader(writer, {
     type: 'DATA_PAGE_V2',
     uncompressed_page_size: levelWriter.offset + page.offset,
@@ -93,11 +95,14 @@ export function writeDataPageV2({ writer, column, encoding, pageData }) {
     },
   })
 
+  const headerSize = writer.offset - headerStart
+
   // write levels
   writer.appendBytes(levelWriter.getBytes())
 
   // write page data
   writer.appendBytes(compressedBytes)
+  return headerSize + levelWriter.offset + page.offset
 }
 
 /**
