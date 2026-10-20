@@ -434,44 +434,22 @@ export function unconvertFloat16(value) {
   // ±0
   if (abs === 0) return new Uint8Array([0x00, sign << 7])
 
-  // write as f32 to get raw bits
-  const buf = new ArrayBuffer(4)
-  new Float32Array(buf)[0] = abs
-  const bits32 = new Uint32Array(buf)[0]
-
-  let exp32 = bits32 >>> 23 & 0xff
-  let mant32 = bits32 & 0x7fffff
-
-  // convert 32‑bit exponent to unbiased, then to 16‑bit
-  exp32 -= 127
-
-  // handle numbers too small for a normal 16‑bit exponent
-  if (exp32 < -14) {
-    // sub‑normal: shift mantissa so that result = mant * 2^-14
-    const shift = -14 - exp32
-    mant32 = (mant32 | 0x800000) >> shift + 13
-
-    // round‑to‑nearest‑even
-    if (mant32 & 1) mant32 += 1
-
-    const bits16 = sign << 15 | mant32
-    return new Uint8Array([bits16 & 0xff, bits16 >> 8])
+  // Round directly from float64: going through float32 can round twice.
+  if (abs >= 65520) return new Uint8Array([0x00, sign << 7 | 0x7c])
+  let exponent = -14
+  if (abs >= 2 ** -14) {
+    const view = new DataView(new ArrayBuffer(8))
+    view.setFloat64(0, abs)
+    exponent = (view.getUint32(0) >>> 20 & 0x7ff) - 1023
   }
+  // Subnormals have a fixed spacing of 2^-24.
+  const scaled = abs / 2 ** (exponent - 10)
+  let significand = Math.floor(scaled)
+  const remainder = scaled - significand
+  if (remainder > 0.5 || remainder === 0.5 && significand % 2) significand++
 
-  // overflow
-  if (exp32 > 15) return new Uint8Array([0x00, sign << 7 | 0x7c])
-
-  // normal number
-  let exp16 = exp32 + 15
-  mant32 = mant32 + 0x1000 // add rounding bit
-
-  // handle mantissa overflow after rounding
-  if (mant32 & 0x800000) {
-    mant32 = 0
-    if (++exp16 === 31) // became infinity
-      return new Uint8Array([0x00, sign << 7 | 0x7c])
-  }
-
-  const bits16 = sign << 15 | exp16 << 10 | mant32 >> 13
+  // Adding the rounded significand also handles carry into the next exponent.
+  const magnitude = abs < 2 ** -14 ? significand : (exponent + 14) * 1024 + significand
+  const bits16 = sign << 15 | magnitude
   return new Uint8Array([bits16 & 0xff, bits16 >> 8])
 }

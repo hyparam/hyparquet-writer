@@ -414,6 +414,23 @@ describe('statistics for number INT64 values', () => {
 })
 
 describe('statistics for FLOAT16 columns', () => {
+  it('keeps underflowed values in filtered reads with chunk and page statistics', async () => {
+    for (const statistics of [true, false]) {
+      const buffer = parquetWriteBuffer({
+        columnData: [{
+          name: 'col', type: 'FLOAT16', encoding: 'PLAIN', columnIndex: true,
+          data: [1e-20, 1e-10, 1e-8, 2 ** -24, 1],
+        }],
+        statistics,
+        pageSize: 4,
+      })
+      expect(await parquetReadObjects({ file: buffer }))
+        .toEqual([0, 0, 0, 2 ** -24, 1].map(col => ({ col })))
+      expect(await parquetQuery({ file: buffer, filter: { col: { $eq: 0 } }, usePageIndex: true }))
+        .toEqual([{ col: 0 }, { col: 0 }, { col: 0 }])
+    }
+  })
+
   it('encodes bounds as float16, not text', async () => {
     const buffer = writeCol([1.5, -2, NaN, null], 'FLOAT16')
     const stats = await readStats(buffer)

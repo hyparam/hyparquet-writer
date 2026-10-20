@@ -772,9 +772,35 @@ describe('unconvertFloat16', () => {
     expect(unconvertFloat16(65504)).toEqual(new Uint8Array([0xff, 0x7b]))
     expect(unconvertFloat16(65505)).toEqual(new Uint8Array([0xff, 0x7b]))
     // subnormal
-    expect(unconvertFloat16(2 ** -24)).toEqual(new Uint8Array([0x02, 0x00]))
+    expect(unconvertFloat16(2 ** -24)).toEqual(new Uint8Array([0x01, 0x00]))
     // mantissa overflow
     expect(unconvertFloat16(2047.9999)).toEqual(new Uint8Array([0x00, 0x68]))
+  })
+
+  it('rounds tiny values, ties, and overflow directly from float64', () => {
+    const cases = [
+      [Number.MIN_VALUE, 0], [1e-20, 0], [1e-10, 0], [1e-8, 0],
+      [2 ** -25, 0], [2 ** -25 + 2 ** -55, 1],
+      [3 * 2 ** -25, 2], [5 * 2 ** -25, 2],
+      [2 ** -14 - 2 ** -25, 0x400],
+      [1 + 2 ** -11, 0x3c00], [1 + 3 * 2 ** -11, 0x3c02],
+      [1 + 2 ** -11 - 2 ** -30, 0x3c00],
+      [1 + 2 ** -11 + 2 ** -30, 0x3c01],
+      [65520 - 2 ** -20, 0x7bff], [65520, 0x7c00],
+      [Number.MAX_VALUE, 0x7c00],
+    ]
+    for (const [value, bits] of cases) {
+      expect(unconvertFloat16(value)).toEqual(new Uint8Array([bits & 255, bits >> 8]))
+      expect(unconvertFloat16(-value)).toEqual(new Uint8Array([bits & 255, bits >> 8 | 0x80]))
+    }
+  })
+
+  it('preserves every finite float16 bit pattern', () => {
+    for (let bits = 0; bits <= 0xffff; bits++) {
+      if ((bits & 0x7c00) === 0x7c00) continue
+      const bytes = new Uint8Array([bits & 255, bits >> 8])
+      expect(unconvertFloat16(parseFloat16(bytes))).toEqual(bytes)
+    }
   })
 
   it('should round-trip Float16', () => {
