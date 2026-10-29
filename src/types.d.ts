@@ -18,7 +18,8 @@ export type BasicType =
   'FLOAT16' |
   'GEOMETRY' |
   'GEOGRAPHY' |
-  'VARIANT'
+  'VARIANT' |
+  'FILE'
 
 // Recursive variant shredding config: a scalar BasicType, an array of one
 // element shred type ([elem] = array-of-elem), or an object mapping field names
