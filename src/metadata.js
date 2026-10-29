@@ -178,6 +178,7 @@ export function logicalType(type) {
     field_1: type.crs,
     field_2: type.algorithm && EdgeInterpolationAlgorithms.indexOf(type.algorithm),
   } }
+  if (type.type === 'FILE') return { field_19: {} }
 }
 
 /**

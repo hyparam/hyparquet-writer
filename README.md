@@ -50,6 +50,7 @@ Note: if `type` is not provided, the type will be guessed from the data. The sup
 | `GEOMETRY` | `{ type: 'BYTE_ARRAY', logical_type: { type: 'GEOMETRY' } }` |
 | `GEOGRAPHY` | `{ type: 'BYTE_ARRAY', logical_type: { type: 'GEOGRAPHY' } }` |
 | `VARIANT` | variant group with `metadata` + `value` (and optional shredded `typed_value`) |
+| `FILE` | file reference group with optional `uri`, `offset`, `size`, `content_type`, `checksum`, `inline` |
 
 More types are supported but require defining the `schema` explicitly. See the [advanced usage](#advanced-usage) section for more details.
 

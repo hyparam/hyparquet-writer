@@ -58,6 +58,18 @@ export function schemaFromColumnData({ columnData, schemaOverrides }) {
           { name: 'value', type: 'BYTE_ARRAY', repetition_type: 'OPTIONAL' }
         )
       }
+    } else if (type === 'FILE') {
+      // file reference group, every field optional
+      const repetition_type = nullable === false ? 'REQUIRED' : 'OPTIONAL'
+      schema.push(
+        { name, repetition_type, num_children: 6, logical_type: { type: 'FILE' } },
+        { name: 'uri', type: 'BYTE_ARRAY', converted_type: 'UTF8', repetition_type: 'OPTIONAL' },
+        { name: 'offset', type: 'INT64', repetition_type: 'OPTIONAL' },
+        { name: 'size', type: 'INT64', repetition_type: 'OPTIONAL' },
+        { name: 'content_type', type: 'BYTE_ARRAY', converted_type: 'UTF8', repetition_type: 'OPTIONAL' },
+        { name: 'checksum', type: 'BYTE_ARRAY', converted_type: 'UTF8', repetition_type: 'OPTIONAL' },
+        { name: 'inline', type: 'BYTE_ARRAY', repetition_type: 'OPTIONAL' }
+      )
     } else if (type) {
       // use provided type
       schema.push(basicTypeToSchemaElement(name, type, nullable))
@@ -140,7 +152,7 @@ function shreddedLeafElement(type) {
 
 /**
  * @param {string} name
- * @param {Exclude<BasicType, 'VARIANT'>} type
+ * @param {Exclude<BasicType, 'VARIANT' | 'FILE'>} type
  * @param {boolean} [nullable]
  * @returns {SchemaElement}
  */

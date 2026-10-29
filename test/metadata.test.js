@@ -224,6 +224,7 @@ describe('logicalType', () => {
       { input: { type: 'VARIANT' }, expected: { field_16: {} } },
       { input: { type: 'GEOMETRY' }, expected: { field_17: {} } },
       { input: { type: 'GEOGRAPHY' }, expected: { field_18: {} } },
+      { input: { type: 'FILE' }, expected: { field_19: {} } },
     ]
 
     testCases.forEach(({ input, expected }) => {
