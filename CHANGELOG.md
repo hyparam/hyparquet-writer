@@ -1,5 +1,9 @@
 # Hyparquet-writer Changelog
 
+## [0.18.0]
+ - Add ALP encoding for float and double columns
+ - Add FILE logical type support
+
 ## [0.17.0]
  - Add `createdBy` option
  - Add `statisticsTruncateLength` option
