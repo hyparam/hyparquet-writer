@@ -1,6 +1,6 @@
 import { CompressionCodecs, ConvertedTypes, EdgeInterpolationAlgorithms, Encodings, FieldRepetitionTypes, PageTypes, ParquetTypes } from 'hyparquet/src/constants.js'
 import { schemaPathResolver } from './schema.js'
-import { DOUBLE, ThriftStruct, serializeTCompactProtocol } from './thrift.js'
+import { BYTE, DOUBLE, FALSE, TRUE, ThriftStruct, serializeTCompactProtocol } from './thrift.js'
 import { unconvertStatistics } from './unconvert.js'
 
 /**
@@ -161,10 +161,11 @@ export function logicalType(type) {
     field_1: type.isAdjustedToUTC,
     field_2: timeUnit(type.unit),
   } }
-  if (type.type === 'INTEGER') return { field_10: {
-    field_1: type.bitWidth,
-    field_2: type.isSigned,
-  } }
+  // IntType.bitWidth is an i8 in parquet.thrift, so it must be written as BYTE, not as an inferred I32
+  if (type.type === 'INTEGER') return { field_10: new ThriftStruct([
+    [1, BYTE, type.bitWidth],
+    [2, type.isSigned ? TRUE : FALSE, type.isSigned],
+  ]) }
   if (type.type === 'NULL') return { field_11: {} }
   if (type.type === 'JSON') return { field_12: {} }
   if (type.type === 'BSON') return { field_13: {} }

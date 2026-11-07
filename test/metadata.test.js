@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ByteWriter } from '../src/bytewriter.js'
 import { parquetWriteBuffer } from '../src/index.js'
 import { logicalType, writeMetadata } from '../src/metadata.js'
+import { BYTE, TRUE, ThriftStruct } from '../src/thrift.js'
 import { exampleMetadata } from './example.js'
 
 /**
@@ -214,7 +215,7 @@ describe('logicalType', () => {
       },
       {
         input: { type: 'INTEGER', bitWidth: 32, isSigned: true },
-        expected: { field_10: { field_1: 32, field_2: true } },
+        expected: { field_10: new ThriftStruct([[1, BYTE, 32], [2, TRUE, true]]) },
       },
       { input: { type: 'NULL' }, expected: { field_11: {} } },
       { input: { type: 'JSON' }, expected: { field_12: {} } },
