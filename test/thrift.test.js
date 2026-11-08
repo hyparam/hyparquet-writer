@@ -128,6 +128,23 @@ describe('serializeTCompactProtocol', () => {
     expect(result.field_1.field_17).toEqual({})
   })
 
+  it('writes INTEGER logicalType bitWidth as i8 (BYTE)', () => {
+    for (const bitWidth of [8, 16, 32, 64]) {
+      for (const isSigned of [true, false]) {
+        const writer = new ByteWriter()
+        serializeTCompactProtocol(writer, { field_1: logicalType({ type: 'INTEGER', bitWidth, isSigned }) })
+        const bytes = new Uint8Array(writer.getBuffer())
+        // field_1 struct (LogicalType), field_10 struct (IntType), field_1 bitWidth
+        // Compact header byte = delta << 4 | type, so 0x13 is field 1 with type BYTE (3), then the raw value
+        expect(Array.from(bytes.slice(0, 4))).toEqual([0x1c, 0xac, 0x13, bitWidth])
+        // field_2 isSigned is stored in the header type: TRUE (1) or FALSE (2)
+        expect(bytes[4]).toBe(isSigned ? 0x11 : 0x12)
+        const result = deserializeTCompactProtocol({ view: writer.view, offset: 0 })
+        expect(result.field_1.field_10).toEqual({ field_1: bitWidth, field_2: isSigned })
+      }
+    }
+  })
+
   it('throws on non-monotonic field IDs', () => {
     const invalidData = {
       field_2: 33,

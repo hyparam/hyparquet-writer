@@ -4,9 +4,9 @@
 
 // TCompactProtocol types
 const STOP = 0
-const TRUE = 1
-const FALSE = 2
-const BYTE = 3
+export const TRUE = 1
+export const FALSE = 2
+export const BYTE = 3
 const I32 = 5
 const I64 = 6
 export const DOUBLE = 7
