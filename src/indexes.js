@@ -48,8 +48,7 @@ function writeColumnIndex(writer, columnChunk, columnIndex) {
  * @param {OffsetIndex} [offsetIndex]
  */
 function writeOffsetIndex(writer, columnChunk, offsetIndex) {
-  // Page indexes only help when multiple pages
-  if (!offsetIndex || offsetIndex.page_locations.length <= 1) return
+  if (!offsetIndex || offsetIndex.page_locations.length === 0) return
   const offsetIndexOffset = writer.offset
   serializeTCompactProtocol(writer, {
     field_1: offsetIndex.page_locations.map(p => ({

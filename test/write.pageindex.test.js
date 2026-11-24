@@ -251,6 +251,23 @@ describe('parquetWrite columnIndex and offsetIndex', () => {
     expect(column0.offset_index_length).toBeUndefined()
   })
 
+  it('writes offset indexes for single-page chunks in always mode', async () => {
+    const buffer = parquetWriteBuffer({ columnData: [
+      { name: 'id', data: [1], type: 'INT32', offsetIndex: 'always' },
+      { name: 'value', data: [null], type: 'STRING', offsetIndex: 'always' },
+    ] })
+    const { columns } = parquetMetadata(buffer).row_groups[0]
+    for (const column of columns) {
+      expect(column.offset_index_offset).toBeDefined()
+      expect(column.offset_index_length).toBeGreaterThan(0)
+      const reader = indexReader(buffer, column.offset_index_offset, column.offset_index_length)
+      const { page_locations } = readOffsetIndex(reader)
+      expect(page_locations).toHaveLength(1)
+      expect(page_locations[0].first_row_index).toBe(0n)
+    }
+    expect(await parquetReadObjects({ file: buffer })).toEqual([{ id: 1, value: null }])
+  })
+
   it('correctly reports ASCENDING boundary order for overlapping page ranges', () => {
     // Data where each page has overlapping ranges but min/max are ascending
     // Pages: [1,10], [2,11], [3,12], [4,13]

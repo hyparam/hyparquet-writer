@@ -109,7 +109,7 @@ export function writeColumn({ writer, column, pageData }) {
     nan_counts: isFloat(element) ? [] : undefined,
   } : undefined
   /** @type {OffsetIndex | undefined} */
-  const offsetIndex = column.offsetIndex && pageBoundaries.length > 1 ? {
+  const offsetIndex = column.offsetIndex && (pageBoundaries.length > 1 || column.offsetIndex === 'always') ? {
     page_locations: [],
   } : undefined
 
