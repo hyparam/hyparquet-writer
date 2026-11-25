@@ -14,10 +14,16 @@ describe('package.json', () => {
     expect(packageJson.license).toBe('MIT')
   })
 
+  it('should have caret ranges for runtime dependencies', () => {
+    const { dependencies } = packageJson
+    Object.values(dependencies).forEach(version => {
+      expect(version).toMatch(/^\^\d+\.\d+\.\d+$/)
+    })
+  })
+
   it('should have precise dev dependency versions', () => {
-    const { dependencies, devDependencies } = packageJson
-    const allDependencies = { ...dependencies, ...devDependencies }
-    Object.values(allDependencies).forEach(version => {
+    const { devDependencies } = packageJson
+    Object.values(devDependencies).forEach(version => {
       expect(version).toMatch(/^\d+\.\d+\.\d+$/)
     })
   })
