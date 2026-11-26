@@ -43,8 +43,8 @@ describe('parquetWrite structs', () => {
     const rows = await parquetReadObjects({ file: buffer })
     expect(rows).toEqual([
       { person: { name: 'Ada', address: { city: 'London' } } },
-      { person: undefined },
-      { person: { name: 'Ben', address: undefined } },
+      { person: null },
+      { person: { name: 'Ben', address: null } },
       { person: { name: 'Cara', address: { city: null } } },
     ])
   })
@@ -74,7 +74,7 @@ describe('parquetWrite structs', () => {
       { points: [{ x: 1, y: 2 }, { x: 3, y: 4 }] },
       { points: [] },
       { points: [{ x: 5, y: null }] },
-      { points: undefined },
+      { points: null },
     ])
   })
 
@@ -101,7 +101,7 @@ describe('parquetWrite structs', () => {
     expect(rows).toEqual([
       { student: { name: 'Alice', scores: [100, 95] } },
       { student: { name: 'Bob', scores: [] } },
-      { student: { name: 'Carol', scores: undefined } },
+      { student: { name: 'Carol', scores: null } },
     ])
   })
 
@@ -155,9 +155,9 @@ describe('parquetWrite structs', () => {
     const rows = await parquetReadObjects({ file: buffer })
     expect(rows).toEqual([
       { deep: { a: { b: { c: 42 } } } },
-      { deep: { a: { b: undefined } } },
-      { deep: { a: undefined } },
-      { deep: undefined },
+      { deep: { a: { b: null } } },
+      { deep: { a: null } },
+      { deep: null },
     ])
   })
 
@@ -186,8 +186,8 @@ describe('parquetWrite structs', () => {
     const rows = await parquetReadObjects({ file: buffer })
     expect(rows).toEqual([
       { rect: { position: { x: 1, y: 2 }, size: { w: 10, h: 20 }, label: 'A' } },
-      { rect: { position: { x: 3, y: null }, size: undefined, label: 'B' } },
-      { rect: { position: undefined, size: { w: 5, h: 6 }, label: null } },
+      { rect: { position: { x: 3, y: null }, size: null, label: 'B' } },
+      { rect: { position: null, size: { w: 5, h: 6 }, label: null } },
     ])
   })
 
@@ -216,7 +216,7 @@ describe('parquetWrite structs', () => {
       { matrix: [[1, 2], [3, 4, 5]] },
       { matrix: [[]] },
       { matrix: [] },
-      { matrix: undefined },
+      { matrix: null },
     ])
   })
 
@@ -242,7 +242,7 @@ describe('parquetWrite structs', () => {
     expect(rows).toEqual([
       { counts: { a: 1, b: 2 } },
       { counts: {} },
-      { counts: undefined },
+      { counts: null },
     ])
   })
 

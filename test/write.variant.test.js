@@ -183,7 +183,7 @@ describe('variant writing', () => {
   it('treats undefined as missing at top level', async () => {
     const data = [undefined, { key: 1 }]
     const result = await roundTrip([{ name: 'v', data, type: 'VARIANT' }])
-    expect(result).toEqual([{ v: undefined }, { v: { key: 1 } }])
+    expect(result).toEqual([{ v: null }, { v: { key: 1 } }])
   })
 
   // A key whose value is `undefined` inside a variant object
@@ -350,7 +350,7 @@ describe('variant shredding', () => {
       name: 'v', data, type: 'VARIANT',
       shredding: { event_type: 'STRING' },
     }])
-    expect(result).toEqual([{ v: undefined }, { v: { event_type: 'login' } }])
+    expect(result).toEqual([{ v: null }, { v: { event_type: 'login' } }])
   })
 
   it('handles non-object values alongside objects', async () => {

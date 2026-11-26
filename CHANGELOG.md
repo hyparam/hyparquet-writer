@@ -1,5 +1,8 @@
 # Hyparquet-writer Changelog
 
+## [0.18.1]
+ - Fix INTEGER logical type bitWidth to be written as i8
+
 ## [0.18.0]
  - Add ALP encoding for float and double columns
  - Add FILE logical type support

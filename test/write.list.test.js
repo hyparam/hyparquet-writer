@@ -38,7 +38,7 @@ describe('parquetWrite lists', () => {
     const rows = await parquetReadObjects({ file: buffer })
     expect(rows).toEqual([
       { listy: [1, 2] },
-      { listy: undefined },
+      { listy: null },
       { listy: [] },
       { listy: [3, null, 4] },
       { listy: [null] },

@@ -31,7 +31,7 @@ describe('parquetWrite FILE logical type', () => {
       { file: { ...empty, inline: new Uint8Array(), uri: 's3://bucket/original', offset: 3n, size: 0n } },
       { file: { ...empty, uri: 's3://bucket/whole', checksum: 'ETAG:abc' } },
       { file: { ...empty, uri: 'relative.bin', offset: 9007199254740993n, size: 7n } },
-      { file: undefined },
+      { file: null },
     ])
   })
 
@@ -57,7 +57,7 @@ describe('parquetWrite FILE logical type', () => {
     expect(parquetMetadata(file).schema[1].logical_type).toEqual({ type: 'FILE' })
     expect(await parquetReadObjects({ file })).toEqual([
       { image: { inline: new Uint8Array([1, 2]) } },
-      { image: undefined },
+      { image: null },
     ])
   })
 })
