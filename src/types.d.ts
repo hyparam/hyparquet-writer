@@ -57,7 +57,7 @@ export interface ColumnSource {
   codec?: CompressionCodec // per-column codec override, default ParquetWriteOptions.codec
   statistics?: boolean // per-column statistics override (also encoding_stats and geospatial statistics), default ParquetWriteOptions.statistics
   columnIndex?: boolean // write column indexes, default false
-  offsetIndex?: boolean // write offset indexes, default true
+  offsetIndex?: boolean | 'always' // 'always' also indexes single-page chunks, default true
   shredding?: true | ShredType // variant shredding config (true = auto-detect)
   bloomFilter?: boolean | BloomFilterOptions // write bloom filter, default false
 }
@@ -86,7 +86,7 @@ export interface ColumnEncoder {
   dictionarySize?: number
   // Spec: If ColumnIndex is present, OffsetIndex must also be present
   columnIndex: boolean
-  offsetIndex: boolean
+  offsetIndex: boolean | 'always'
   encoding?: Encoding // user-specified encoding
   bloomFilter?: boolean | BloomFilterOptions
 }

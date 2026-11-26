@@ -107,7 +107,7 @@ interface ColumnSource {
   codec?: CompressionCodec // per-column codec override (default ParquetWriteOptions.codec)
   statistics?: boolean // per-column statistics override, also gates encoding_stats and geospatial statistics (default ParquetWriteOptions.statistics)
   columnIndex?: boolean // enable page-level column index (default false)
-  offsetIndex?: boolean // enable page-level offset index (default true)
+  offsetIndex?: boolean | 'always' // 'always' also indexes single-page chunks (default true)
   shredding?: true | Record<string, BasicType> // shredding config for VARIANT columns
   bloomFilter?: boolean | { fpp?: number, maxBytes?: number } // write a split block bloom filter (default false)
 }
